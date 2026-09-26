@@ -33,6 +33,8 @@ docs/protocols/DEVELOPMENT.md, docs/protocols/RUNTIME.md и docs/STATUS.md.
 Передай docs/prompts/LEAD.md и REVIEWER.md в соответствующие чаты с manifest
 документов, получи READY. Если история уже инициализирована, восстанови её
 по журналу и сверке session ID; не сбрасывай существующие решения.
+Bootstrap использует BOOTSTRAP_REQUEST/READY schemas из DEVELOPMENT.md;
+READY имеет taskId=null, cycle=0 и точный inReplyTo.
 
 2. PLAN AND ASSIGNMENT
 Отправь lead PLAN_REQUEST с текущим состоянием и запроси TASK_ASSIGNMENT.
@@ -47,6 +49,10 @@ Lead может разбить scope или назначить corrective PR с 
 проверки по ТЗ/DoD → commit/push → PR base=main с AC→evidence.
 Отправь REVIEW_REQUEST в REVIEWER_CHAT_URL по nr-dev/1, сохрани raw response,
 проверь session/message correlation, base/head и bundle hash.
+bundleHash вычисляй по всему каноническому reviewContext (spec/AC/scope/files/
+diff/evidence/limitations/fix context), а не по одному списку файлов. Проверяй
+полную approval identity. Новый evidence или scope требует нового verdict даже
+при прежнем head; FIX_REVIEW_RESULT валидируй по явной схеме DEVELOPMENT.md.
 При NEEDS_FIX исправь concrete blockers, запушь новый commit и запроси
 FIX_REVIEW_REQUEST для нового SHA. Не подменяй заключения reviewer.
 На 3-м безуспешном fix round, ambiguity или scope conflict отправь lead

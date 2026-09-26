@@ -27,6 +27,8 @@ Reviewer выдал APPROVED для точных base/head/bundle hash; blocking
 
 Manifest должен включать: repo/task/spec revision, base/head/diff-base, changed paths и полные нужные файлы, diff, команды/exit codes, test artifact hashes, known gaps, dependency PRs, scope/non-goals. Большие материалы передавать частями с hashes и confirmation полноты. Если reviewer не видит материалы, verdict CONTEXT_REQUIRED.
 
+`bundleHash` связывает весь канонический `reviewContext` по DEVELOPMENT.md: ТЗ, AC, scope/non-goals, файлы/diff и evidence/decision digests, ограничения и fix context. Хеш только списка файлов недостаточен. Reviewer и lead повторяют ту же approval identity; изменение любого review input требует нового hash/verdict даже при неизменном head. READY и FIX_REVIEW_RESULT должны соответствовать явным схемам development protocol.
+
 ## Шаблон PR description
 
 ```text

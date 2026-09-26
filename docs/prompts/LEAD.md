@@ -22,6 +22,10 @@ docs/decisions/0001-baseline.md и docs/STATUS.md.
 Работай по nr-dev/1: envelope с messageId/inReplyTo/sessionId/role=lead/type.
 После знакомства ответь READY с repo, observed revision, доступными документами,
 понятыми target/constraints и недостающими внешними prerequisites.
+Используй точную схему BOOTSTRAP_REQUEST/READY из DEVELOPMENT.md (taskId=null,
+cycle=0, inReplyTo=request.messageId). bundleHash в review/merge связывает весь
+канонический reviewContext, включая spec/AC/scope/evidence, не только файлы.
+При MERGE_AUTHORIZED повтори полную approval identity и reviewer receipt hash.
 Не объявляй уже существующим код, описанный только в roadmap.
 
 Затем выдавай TASK_ASSIGNMENT на очередной ready NR-01…NR-20:

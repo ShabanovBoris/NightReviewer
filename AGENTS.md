@@ -27,6 +27,8 @@ Every task ends with a **merged PR in main**, not just an open PR. If blocked on
 
 Use `docs/protocols/DEVELOPMENT.md` for messaging, raw receipt storage, stale approvals and compaction. No invented chat URL or response. If browser transport is unavailable, prepare the exact review bundle and request a manual relay; a prepared message is not a sent message. User login and connector setup must follow the available authentication workflow. Never copy cookies or bypass access controls.
 
+Use the protocol's explicit BOOTSTRAP_REQUEST/READY and FIX_REVIEW_RESULT schemas. `bundleHash` covers the canonical reviewContext including spec, scope, acceptance criteria and evidence digests, not merely file hashes. Bind reviewer and lead receipts to the same full approval identity; changed evidence or scope invalidates old approval even when Git SHAs are unchanged.
+
 Keep sanitized evidence in GitHub PR attachments/comments or a versioned release manifest. Private runtime logs/raw chats live under `.nightreviewer/` with restricted permissions. Public evidence uses stable URLs, file hashes and redacted relevant excerpts. Do not publish secrets or private target code.
 
 ## Runtime invariants

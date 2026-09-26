@@ -1,0 +1,14 @@
+{
+  "protocolVersion": "nr-dev/1",
+  "repository": "https://github.com/ShabanovBoris/NightReviewer",
+  "targetBranch": "main",
+  "leadChatUrl": "REQUIRED_USER_CREATED_CHAT_URL",
+  "reviewerChatUrl": "REQUIRED_DIFFERENT_USER_CREATED_CHAT_URL",
+  "sessionId": "GENERATE_AT_START",
+  "transport": "browser-or-manual-relay",
+  "model": "VERIFY_AVAILABLE_MODEL_AT_START",
+  "reasoningEffort": "high-if-supported",
+  "maxFixRoundsBeforeLead": 3,
+  "mergePolicy": "reviewer-approved-plus-lead-merge-authorized",
+  "runtimeConcurrency": 3
+}

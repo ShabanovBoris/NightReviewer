@@ -1,0 +1,14 @@
+.nightreviewer/
+.env
+.env.*
+!.env.example
+config/session.local.json
+node_modules/
+dist/
+coverage/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.log
+.DS_Store

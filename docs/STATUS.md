@@ -6,7 +6,7 @@
 
 | Task | Status | PR / evidence |
 |---|---|---|
-| NR-01 | PLANNED | — |
+| NR-01 | IN_PROGRESS | Lead assignment `73c55f02-551c-463c-b272-dcaf11a3b695`; exact Bun baseline accepted; implementation branch `nr-01-foundation` |
 | NR-02 | PLANNED | — |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |
@@ -27,6 +27,6 @@
 | NR-19 | PLANNED | — |
 | NR-20 | PLANNED | — |
 
-Session prerequisites: lead URL REQUIRED; reviewer URL REQUIRED; authenticated GitHub/browser access REQUIRED; actual runtime/model/connector capabilities NOT_VERIFIED.
+Session prerequisites: lead and reviewer returned READY for `main@d7086db6210ed96aedae835a56f9b60546ca3fd3`; ignored local config contains two different chat URLs; Bun 1.4.2 verified on macOS arm64; live model/connector and bridge capabilities NOT_VERIFIED.
 
 Final acceptance: NOT_REQUESTED. Main release SHA: отсутствует. PROJECT_ACCEPTED: отсутствует.

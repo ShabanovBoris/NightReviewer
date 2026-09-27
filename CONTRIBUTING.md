@@ -34,7 +34,7 @@ bun run verify
 
 CI повторяет frozen install и `bun run verify` на Linux с тем же Bun 1.4.2.
 
-Workflow `verify` — check для каждого PR в `main` и push в `main`; он использует только `contents: read`. При проверке настроек репозитория 2026-09-27 classic branch protection и repository rulesets не были включены. Check не обходится и не заменяется локальным PASS; владелец репозитория может отдельно сделать `verify` обязательным rule.
+Workflow `verify` — check для каждого PR в `main` и push в `main`; он использует только `contents: read`. При проверке GitHub Settings → Branches показал, что classic branch protections не настроены, а Settings → Rulesets — что rulesets не созданы. Временная отметка и видимые сигналы сохранены в [docs/evidence/NR-01-settings.json](docs/evidence/NR-01-settings.json). Check не обходится и не заменяется локальным PASS; перед merge следует заново проверить меняющиеся настройки.
 
 ## Pull requests
 

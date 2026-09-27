@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-01",
+  "observations": [
+    {
+      "source": "GitHub repository Settings UI in the Codex in-app browser",
+      "section": "Settings / Branches",
+      "url": "https://github.com/ShabanovBoris/NightReviewer/settings/branches",
+      "observedAtUtc": "2026-09-27T13:08:41Z",
+      "visibleText": "Classic branch protections have not been configured"
+    },
+    {
+      "source": "GitHub repository Settings UI in the Codex in-app browser",
+      "section": "Settings / Rulesets",
+      "url": "https://github.com/ShabanovBoris/NightReviewer/settings/rules",
+      "observedAtUtc": "2026-09-27T13:08:27Z",
+      "visibleText": "You haven't created any rulesets"
+    }
+  ],
+  "result": {
+    "classicBranchProtectionRules": 0,
+    "repositoryRulesets": 0,
+    "requiredChecksConfiguredByTheseRepositoryRules": []
+  },
+  "notes": "Read-only snapshot of repository settings at the recorded times. The absence of classic branch protections and repository rulesets means this repository did not configure a required verify check through those controls at observation time; settings may change later."
+}

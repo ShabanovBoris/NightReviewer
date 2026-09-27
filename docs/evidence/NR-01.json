@@ -3,25 +3,26 @@
   "repository": "ShabanovBoris/NightReviewer",
   "taskId": "NR-01",
   "baseSha": "d7086db6210ed96aedae835a56f9b60546ca3fd3",
-  "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
-  "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
+  "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+  "testedCodeTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
   "acceptance": [
     {
       "acceptanceId": "NR-01-AC1",
       "status": "PASS",
       "kind": "LIVE",
-      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
       "command": "bun install --frozen-lockfile; bun run verify",
       "exitCode": 0,
       "environment": "macOS 26.6.2 arm64; Bun 1.4.2, TypeScript 7.0.2, Biome 2.5.14",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
-        "macos-frozen-install",
-        "macos-verify",
-        "linux-recovery-verify"
+        "clean-macos-install",
+        "clean-macos-verify",
+        "linux-final-head-verify"
       ],
-      "notes": "Frozen install left the lockfile unchanged. Verify passed locally and in GitHub Actions on ubuntu-24.04 for the same executable code tree."
+      "notes": "A fresh git archive of the exact source revision had no node_modules before install. Frozen install left bun.lock unchanged and verify passed on macOS 26.6.2 arm64; verify also passed on ubuntu-24.04 for the same head.",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d"
     },
     {
       "acceptanceId": "NR-01-AC2",
@@ -69,7 +70,7 @@
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [],
-      "notes": "Independent reviewer verdict, lead merge authorization, and GitHub merge are pending. No approval is claimed."
+      "notes": "The independent reviewer returned NEEDS_FIX for head b68fbb6a9961f8fc49e0b157050851daefadbef6 with three findings. Corrective review is pending; lead merge authorization and GitHub merge have not been requested or performed."
     }
   ],
   "checks": [
@@ -88,7 +89,7 @@
       "environment": "macOS 26.6.2 arm64; Bun 1.4.2, TypeScript 7.0.2, Biome 2.5.14",
       "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
       "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
-      "summary": "Strict typecheck, Biome check, 3 tests, and Bun build all passed."
+      "summary": "A prior local verify run passed; clean-checkout verification is recorded separately in clean-macos-verify."
     },
     {
       "id": "linux-recovery-verify",
@@ -140,7 +141,7 @@
       "exitCode": 0,
       "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
       "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
-      "summary": "Three tests passed: valid sample config, equivalent chat URL rejection, and invalid protocol rejection."
+      "summary": "Three tests passed: valid sample config, rejection of equivalent conversation URLs, and rejection/redaction of non-HTTPS chat URLs."
     },
     {
       "id": "local-config-doctor",
@@ -167,6 +168,64 @@
       "environment": "macOS 26.6.2 arm64; Git",
       "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
       "summary": "The configured local session file is ignored and is not tracked; its contents are omitted."
+    },
+    {
+      "id": "clean-macos-install",
+      "command": "bun install --frozen-lockfile",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2 (1.4.2+744846f84)",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "sourceArchiveSha256": "5b911102993add2a74c604f8473e86343a2e5077258383a7b81ff8e8393c3422",
+      "sourceArchiveBytes": 358400,
+      "nodeModulesBeforeInstall": "absent",
+      "lockfileSha256Before": "360addaa7516c25890a6581e8e4a51a430d8e59c55106c622b01c85285729eba",
+      "lockfileSha256After": "360addaa7516c25890a6581e8e4a51a430d8e59c55106c622b01c85285729eba",
+      "summary": "The exact commit was extracted with git archive into a new temporary directory. test ! -e node_modules exited 0 before installation; frozen install completed and bun.lock remained unchanged. Detailed command output and archive are digest-bound in the local clean-macos-evidence artifact."
+    },
+    {
+      "id": "clean-macos-verify",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2 (1.4.2+744846f84), TypeScript 7.0.2, Biome 2.5.14",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "summary": "Typecheck and Biome passed; 3 tests passed, 0 failed; Bun build produced dist/index.js. Detailed command output is digest-bound in the local clean-macos-evidence artifact."
+    },
+    {
+      "id": "linux-final-head-verify",
+      "command": "GitHub Actions verify (pull_request)",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "ubuntu-24.04; GitHub Actions",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309730016",
+      "jobUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309730016/job/108593218611",
+      "summary": "Current-head verify passed on ubuntu-24.04 for the same source revision used in the clean macOS archive run."
+    },
+    {
+      "id": "repository-settings-ui",
+      "kind": "LIVE",
+      "source": "GitHub repository Settings UI in the Codex in-app browser",
+      "observations": [
+        {
+          "section": "Settings / Branches",
+          "url": "https://github.com/ShabanovBoris/NightReviewer/settings/branches",
+          "observedAtUtc": "2026-09-27T13:08:41Z",
+          "visibleText": "Classic branch protections have not been configured"
+        },
+        {
+          "section": "Settings / Rulesets",
+          "url": "https://github.com/ShabanovBoris/NightReviewer/settings/rules",
+          "observedAtUtc": "2026-09-27T13:08:27Z",
+          "visibleText": "You haven't created any rulesets"
+        }
+      ],
+      "artifactRef": "docs/evidence/NR-01-settings.json",
+      "summary": "No classic branch protection or repository rulesets were configured at the recorded observation times."
     }
   ]
 }

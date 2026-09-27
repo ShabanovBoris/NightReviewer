@@ -2,7 +2,13 @@
 
 Локальный сервис независимого ревью кода через ChatGPT Web, с MCP-контрактом для implementer, проверкой замечаний и повторной проверкой исправлений.
 
-**Статус: проектирование. Рабочего приложения пока нет.** Наличие этих документов не означает успешных тестов, review или приёмки.
+**Статус: NR-01 foundation в работе.** Продуктовый daemon и review-процесс пока не реализованы; наличие документации не означает успешных тестов, live review или приёмки.
+
+## Разработка и проверка
+
+Для foundation используется Bun **1.4.2**. Команды и локальная конфигурация описаны в [CONTRIBUTING.md](CONTRIBUTING.md): `bun install --frozen-lockfile`, `bun run config:doctor` и `bun run verify`.
+
+`config/session.example.json` содержит безопасные структурные примеры. Скопируйте его в игнорируемый `config/session.local.json`, замените ссылки на два разных сохранённых чата и не публикуйте их в PR или логах.
 
 ## Начать разработку
 
@@ -21,6 +27,7 @@
 - [Протокол разработки: implementer / reviewer / lead](docs/protocols/DEVELOPMENT.md).
 - [Протокол review-сервиса](docs/protocols/RUNTIME.md).
 - [Общий Definition of Done](docs/DEFINITION_OF_DONE.md).
+- [Разработка и локальный запуск](CONTRIBUTING.md).
 - [Матрица приёмки](docs/ACCEPTANCE.md).
 - [Проверенные исходные данные](docs/decisions/0001-baseline.md).
 - [Реестр выполнения](docs/STATUS.md).

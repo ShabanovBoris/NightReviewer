@@ -1,0 +1,231 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-01",
+  "baseSha": "d7086db6210ed96aedae835a56f9b60546ca3fd3",
+  "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+  "testedCodeTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+  "acceptance": [
+    {
+      "acceptanceId": "NR-01-AC1",
+      "status": "PASS",
+      "kind": "LIVE",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "command": "bun install --frozen-lockfile; bun run verify",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2, TypeScript 7.0.2, Biome 2.5.14",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "clean-macos-install",
+        "clean-macos-verify",
+        "linux-final-head-verify"
+      ],
+      "notes": "A fresh git archive of the exact source revision had no node_modules before install. Frozen install left bun.lock unchanged and verify passed on macOS 26.6.2 arm64; verify also passed on ubuntu-24.04 for the same head.",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d"
+    },
+    {
+      "acceptanceId": "NR-01-AC2",
+      "status": "PASS",
+      "kind": "LIVE",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "command": "GitHub Actions verify on the deliberate-fault commit, ordinary revert, and verify on the restored code tree",
+      "exitCode": 0,
+      "environment": "GitHub Actions ubuntu-24.04",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "ac2-red-ci",
+        "ac2-revert",
+        "ac2-green-recovery-ci"
+      ],
+      "notes": "The deliberate TypeScript type error made verify fail with exit 1 (TS2322 and TS6133). A normal revert restored the prior code tree exactly; verify then passed with exit 0."
+    },
+    {
+      "acceptanceId": "NR-01-AC3",
+      "status": "PASS",
+      "kind": "LIVE",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "command": "bun run verify; bun run config:doctor; bun run config:doctor -- <missing-config-path>; git check-ignore and git ls-files checks",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "session-config-tests",
+        "local-config-doctor",
+        "missing-config-doctor",
+        "local-config-git-check"
+      ],
+      "notes": "All three parser tests passed, including rejection of equivalent lead/reviewer conversation URLs. The local doctor exited 0 without printing URLs. The missing-config probe exited 1 with a clear message and no secret output. The real local config is ignored and untracked; its values are intentionally omitted."
+    },
+    {
+      "acceptanceId": "NR-01-AC4",
+      "status": "NOT_RUN",
+      "kind": "LIVE",
+      "testedSha": null,
+      "command": null,
+      "exitCode": null,
+      "environment": null,
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [],
+      "notes": "The independent reviewer returned NEEDS_FIX for head b68fbb6a9961f8fc49e0b157050851daefadbef6 with three findings. Corrective review is pending; lead merge authorization and GitHub merge have not been requested or performed."
+    }
+  ],
+  "checks": [
+    {
+      "id": "macos-frozen-install",
+      "command": "bun install --frozen-lockfile",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "summary": "Completed successfully; lockfile unchanged."
+    },
+    {
+      "id": "macos-verify",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2, TypeScript 7.0.2, Biome 2.5.14",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
+      "summary": "A prior local verify run passed; clean-checkout verification is recorded separately in clean-macos-verify."
+    },
+    {
+      "id": "linux-recovery-verify",
+      "command": "GitHub Actions verify (pull_request)",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "ubuntu-24.04; GitHub Actions",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309267256",
+      "jobUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309267256/job/108591935861",
+      "summary": "After the AC2 revert, frozen install, exact Bun version guard, and bun run verify passed."
+    },
+    {
+      "id": "ac2-red-ci",
+      "command": "GitHub Actions verify (pull_request) with one deliberate TypeScript type error",
+      "exitCode": 1,
+      "expectedFailure": true,
+      "kind": "LIVE",
+      "environment": "ubuntu-24.04; GitHub Actions",
+      "testedSha": "035d630b5e77266fd18c79c9522e75140d4a365c",
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309153776",
+      "jobUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309153776/job/108591604178",
+      "summary": "The verify job failed at tsc --noEmit with TypeScript errors TS2322 and TS6133, as expected."
+    },
+    {
+      "id": "ac2-revert",
+      "command": "git revert 035d630b5e77266fd18c79c9522e75140d4a365c",
+      "exitCode": 0,
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
+      "summary": "Ordinary revert commit 1e3c65b restored the exact executable code tree from before the deliberate fault."
+    },
+    {
+      "id": "ac2-green-recovery-ci",
+      "command": "GitHub Actions verify (pull_request) after ordinary revert",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "ubuntu-24.04; GitHub Actions",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "testedCodeTreeSha": "be840681870a42afd70a5defb66aaa976aee7f64",
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309267256",
+      "jobUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309267256/job/108591935861",
+      "summary": "The restored tree passed the complete verify workflow."
+    },
+    {
+      "id": "session-config-tests",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "summary": "Three tests passed: valid sample config, rejection of equivalent conversation URLs, and rejection/redaction of non-HTTPS chat URLs."
+    },
+    {
+      "id": "local-config-doctor",
+      "command": "bun run config:doctor",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "summary": "Ignored local config validated; chat URLs were not printed."
+    },
+    {
+      "id": "missing-config-doctor",
+      "command": "bun run config:doctor -- <missing-config-path>",
+      "exitCode": 1,
+      "expectedFailure": true,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "summary": "The missing-config check failed clearly without printing a chat URL or secret."
+    },
+    {
+      "id": "local-config-git-check",
+      "command": "git check-ignore -v config/session.local.json; git ls-files --error-unmatch config/session.local.json",
+      "checkIgnoreExitCode": 0,
+      "trackedFileCheckExitCode": 1,
+      "environment": "macOS 26.6.2 arm64; Git",
+      "testedSha": "1e3c65bbe1b38a0366a03712600d1adaac8aaaca",
+      "summary": "The configured local session file is ignored and is not tracked; its contents are omitted."
+    },
+    {
+      "id": "clean-macos-install",
+      "command": "bun install --frozen-lockfile",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2 (1.4.2+744846f84)",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "sourceArchiveSha256": "5b911102993add2a74c604f8473e86343a2e5077258383a7b81ff8e8393c3422",
+      "sourceArchiveBytes": 358400,
+      "nodeModulesBeforeInstall": "absent",
+      "lockfileSha256Before": "360addaa7516c25890a6581e8e4a51a430d8e59c55106c622b01c85285729eba",
+      "lockfileSha256After": "360addaa7516c25890a6581e8e4a51a430d8e59c55106c622b01c85285729eba",
+      "summary": "The exact commit was extracted with git archive into a new temporary directory. test ! -e node_modules exited 0 before installation; frozen install completed and bun.lock remained unchanged. Detailed command output and archive are digest-bound in the local clean-macos-evidence artifact."
+    },
+    {
+      "id": "clean-macos-verify",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2 (1.4.2+744846f84), TypeScript 7.0.2, Biome 2.5.14",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "summary": "Typecheck and Biome passed; 3 tests passed, 0 failed; Bun build produced dist/index.js. Detailed command output is digest-bound in the local clean-macos-evidence artifact."
+    },
+    {
+      "id": "linux-final-head-verify",
+      "command": "GitHub Actions verify (pull_request)",
+      "exitCode": 0,
+      "kind": "LIVE",
+      "environment": "ubuntu-24.04; GitHub Actions",
+      "testedSha": "b68fbb6a9961f8fc49e0b157050851daefadbef6",
+      "testedTreeSha": "9cded7408acdab8c03e3c2c520e2c548c9cea21d",
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309730016",
+      "jobUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36309730016/job/108593218611",
+      "summary": "Current-head verify passed on ubuntu-24.04 for the same source revision used in the clean macOS archive run."
+    },
+    {
+      "id": "repository-settings-ui",
+      "kind": "LIVE",
+      "source": "GitHub repository Settings UI in the Codex in-app browser",
+      "observations": [
+        {
+          "section": "Settings / Branches",
+          "url": "https://github.com/ShabanovBoris/NightReviewer/settings/branches",
+          "observedAtUtc": "2026-09-27T13:08:41Z",
+          "visibleText": "Classic branch protections have not been configured"
+        },
+        {
+          "section": "Settings / Rulesets",
+          "url": "https://github.com/ShabanovBoris/NightReviewer/settings/rules",
+          "observedAtUtc": "2026-09-27T13:08:27Z",
+          "visibleText": "You haven't created any rulesets"
+        }
+      ],
+      "artifactRef": "docs/evidence/NR-01-settings.json",
+      "summary": "No classic branch protection or repository rulesets were configured at the recorded observation times."
+    }
+  ]
+}

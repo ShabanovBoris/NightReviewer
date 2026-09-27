@@ -24,4 +24,9 @@ GitHub API при подготовке комплекта сообщил, что
 
 Изменение целей/порогов приёмки требует решения lead с evidence и явной фиксацией; implementer не снижает их ради завершения. Недоступный браузер/аккаунт/connector обозначается BLOCKED, не заменяется фиктивным успехом.
 
-NR-01 runtime evidence: macOS 26.6.2 arm64 запустил официальный Bun 1.4.2 (`1.4.2+744846f84`); archive SHA-256 сверена с официальной release asset. Результат Linux CI для точного implementation head фиксируется в PR evidence после запуска workflow; выбор версии сам по себе не считается доказательством Linux или bridge-совместимости.
+NR-01 runtime evidence:
+
+- macOS 26.6.2 arm64: официальный Bun archive SHA-256 совпал с опубликованным release digest; `bun --version` = 1.4.2, `bun --revision` = `1.4.2+744846f84`; `bun install --frozen-lockfile` и `bun run verify` завершились с exit 0 на implementation SHA `7366db6e21f9e6490bde26b6b1c9b48e5d8a05f5`.
+- Linux deterministic CI (`ubuntu-24.04`): GitHub Actions run [36308775820](https://github.com/ShabanovBoris/NightReviewer/actions/runs/36308775820) для `pull_request` и того же head завершился успешно. Workflow устанавливает версию из `.bun-version` и проверяет её перед frozen install и `bun run verify`.
+
+Эти результаты подтверждают только foundation toolchain и CI на указанных средах. Выбор версии сам по себе не доказывает совместимость bridge/browser/tool-loop; её обязан проверить NR-02.

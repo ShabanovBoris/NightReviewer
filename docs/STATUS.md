@@ -6,7 +6,7 @@
 
 | Task | Status | PR / evidence |
 |---|---|---|
-| NR-01 | IN_PROGRESS | Lead assignment `73c55f02-551c-463c-b272-dcaf11a3b695`; exact Bun baseline accepted; implementation branch `nr-01-foundation` |
+| NR-01 | IN_PROGRESS | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2); lead assignment `73c55f02-551c-463c-b272-dcaf11a3b695`; implementation branch `nr-01-foundation` |
 | NR-02 | PLANNED | — |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |

@@ -1,0 +1,1292 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-02",
+  "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+  "testedSha": null,
+  "acceptance": [
+    {
+      "acceptanceId": "NR-02-AC1",
+      "status": "BLOCKED",
+      "kind": "LIVE",
+      "testedSha": null,
+      "command": null,
+      "exitCode": null,
+      "environment": "Pinned 6.1.1 source; D3 qualifying production-profile route is authorized, but its distinct connector/profile is not ready. Ordinary DEV is now authorized for all development but remains non-qualifying.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "launcher-browser-smoke",
+        "pinned-dev-browser-smoke",
+        "isolated-dev-mcp-connector",
+        "direct-chat-unbound-tool-probe",
+        "lead-decision-d3",
+        "connector-identity-ui-check-current",
+        "lead-decision-d4",
+        "dev-driver-diagnostic-attempt",
+        "ordinary-dev-use-all-nightreviewer-development",
+        "nr-02-dev-recovery-20260928",
+        "pinned-dev-status-recheck-20260928-turn",
+        "pinned-dev-chat-list-recheck-20260928-turn",
+        "nr-02-dev-readiness-recheck-20260928",
+        "worktree-verify-after-d5-continuation",
+        "pinned-dev-runtime-status-recheck-continuation-20260928",
+        "pinned-dev-chat-list-recheck-continuation-20260928",
+        "connector-list-ui-recheck-20260928"
+      ],
+      "notes": "The user and lead confirmed ordinary DEV may be used for all NightReviewer development. Current exact-pin DEV status is still mcpRuntime.ready=false/state=starting; tunnel restart reports that the local service is not installed, and supported dev setup fails before config save because the launcher ChatGPT session cannot be verified. No Responses request, real answer, tool callback, fixture read, or digest was produced. AC1 remains BLOCKED pending the D3 production-profile owner path and a real fixture read."
+    },
+    {
+      "acceptanceId": "NR-02-AC2",
+      "status": "BLOCKED",
+      "kind": "LIVE",
+      "testedSha": null,
+      "command": null,
+      "exitCode": null,
+      "environment": null,
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "bridge-contract-fixtures",
+        "isolated-dev-mcp-connector",
+        "direct-chat-unbound-tool-probe",
+        "nr-02-worktree-verify",
+        "lead-decision-d3",
+        "connector-identity-ui-check-current",
+        "lead-decision-d4",
+        "dev-driver-diagnostic-attempt",
+        "ordinary-dev-use-all-nightreviewer-development",
+        "nr-02-dev-recovery-20260928",
+        "pinned-dev-status-recheck-20260928-turn",
+        "pinned-dev-chat-list-recheck-20260928-turn",
+        "nr-02-dev-readiness-recheck-20260928",
+        "lead-decision-d5",
+        "worktree-verify-after-d5-continuation",
+        "pinned-dev-runtime-status-recheck-continuation-20260928",
+        "pinned-dev-chat-list-recheck-continuation-20260928",
+        "lead-decision-d6",
+        "nr02-d6-cancellation-contract-audit-20260928",
+        "worktree-verify-after-d6-readerror-disposition-fix",
+        "worktree-verify-after-d6-preterminal-race",
+        "nr02-d6-cancellation-contract-audit-final",
+        "worktree-verify-after-d6-final-contract",
+        "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
+        "worktree-verify-d6-contract-window-final-20260928",
+        "nr02-d6-contract-audit-with-boundary-tests-20260928",
+        "connector-list-ui-recheck-20260928"
+      ],
+      "notes": "Lead D5 authorizes one bounded D3 production-profile unavailable-connector probe by temporarily changing only isolated AppConfig appName and automaticAppName to a unique nonexistent identity, then restoring Codex Native2 NR-02 and verifying post-restore health. No external connector permission, tunnel or credential may change. The unique connector is absent and action-time Create confirmation is pending; no qualifying 424 or cancellation outcome has been observed, so AC2 remains BLOCKED. Lead D6 now defines cancellation as the exact typed acknowledgement plus correlated non-completed stream termination within 10 seconds. The decision does not authorize a live run; D5 unavailable-connector and D6 cancellation outcomes are both still NOT_RUN/BLOCKED."
+    },
+    {
+      "acceptanceId": "NR-02-AC3",
+      "status": "BLOCKED",
+      "kind": "LIVE",
+      "testedSha": null,
+      "command": null,
+      "exitCode": null,
+      "environment": null,
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "isolated-dev-mcp-connector",
+        "direct-chat-unbound-tool-probe",
+        "lead-decision-d3",
+        "connector-identity-ui-check-current",
+        "lead-decision-d4",
+        "dev-driver-diagnostic-attempt",
+        "worktree-verify-after-canary-fix",
+        "nr-02-runtime-cleanup-source-audit",
+        "ordinary-dev-use-all-nightreviewer-development",
+        "nr-02-dev-recovery-20260928",
+        "pinned-dev-status-recheck-20260928-turn",
+        "pinned-dev-chat-list-recheck-20260928-turn",
+        "nr-02-dev-readiness-recheck-20260928",
+        "worktree-verify-after-d5-continuation",
+        "pinned-dev-runtime-status-recheck-continuation-20260928",
+        "pinned-dev-chat-list-recheck-continuation-20260928"
+      ],
+      "notes": "The harness scans first-response text, function-call arguments, and final structured output for neighboring canaries. No three-session LIVE receipts or cleanup receipts exist. Ordinary DEV remains non-qualifying; its launcher session could not be verified and no new chat was created. AC3 remains BLOCKED pending D3 runtime setup and live evidence."
+    },
+    {
+      "acceptanceId": "NR-02-AC4",
+      "status": "IN_PROGRESS",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "rg -n 'Supported|Поддерживается исходным код|Не поддерживается DEV-профилем|MIT|Provisional approach|Reproducible next step|bridge:live|bridge:cancel|bridge:unavailable|only the fixed `probe` key' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md",
+      "exitCode": 0,
+      "environment": "Pinned upstream 6.1.1 source audit; uncommitted NR-02 worktree; docs reviewed at current worktree contents.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "docs/decisions/0002-bridge-contract.md",
+        "spikes/bridge/README.md",
+        "nr-02-worktree-verify",
+        "lead-decision-d3",
+        "lead-decision-d4",
+        "dev-driver-diagnostic-attempt",
+        "nr02-ac4-documentation-audit",
+        "ordinary-dev-use-all-nightreviewer-development",
+        "nr-02-worktree-verify-20260928",
+        "config-doctor-after-resume",
+        "diff-check-after-resume",
+        "lead-decision-d5",
+        "nr02-d5-method-documentation-audit",
+        "worktree-verify-after-d5-continuation",
+        "worktree-verify-without-local-bun-path-20260928",
+        "worktree-verify-cancel-boundedness-preformat-20260928",
+        "cancel-probe-biome-format-20260928",
+        "worktree-verify-after-cancellation-boundedness-fix-20260928",
+        "nr02-cancellation-runbook-audit-20260928",
+        "scripts/bridge-spike.ts",
+        "lead-decision-d6",
+        "nr02-d6-cancellation-contract-audit-20260928",
+        "worktree-verify-after-d6-readerror-disposition-fix",
+        "worktree-verify-after-d6-preterminal-race",
+        "nr02-d6-cancellation-contract-audit-final",
+        "worktree-verify-after-d6-final-contract",
+        "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
+        "worktree-verify-d6-contract-window-final-20260928",
+        "nr02-d6-contract-audit-with-boundary-tests-20260928",
+        "config-doctor-after-session-check-20260928"
+      ],
+      "notes": "The original source-supported/unsupported capability, selected pin, license, and reproducible next-step requirements remain documented. Lead D5 additionally requires recording the temporary missing-identity failure-injection method and its actual result in the ADR. The method is documented; the actual LIVE result is NOT_RUN because the D3 profile/unique connector prerequisite is not ready, so AC4 remains IN_PROGRESS. D6 cancellation semantics are recorded in the ADR and runbook and the parser regression and the D6 acknowledgement-window helper are covered by contract tests. The live D5 result and cancellation result remain NOT_RUN, so AC4 stays IN_PROGRESS."
+    }
+  ],
+  "checks": [
+    {
+      "id": "frozen-install",
+      "kind": "LIVE",
+      "command": "./.nightreviewer/runtime/bun/bin/bun install --frozen-lockfile",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": null,
+      "summary": "Completed on the NR-02 worktree with locked local Bun 1.4.2; no dependency or lockfile changes. Worktree edits are uncommitted, so no source SHA is claimed."
+    },
+    {
+      "id": "verify-initial-path-attempt",
+      "kind": "LIVE",
+      "command": "local Bun run verify without the local Bun directory on PATH",
+      "exitCode": 127,
+      "expectedFailure": true,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2 executable available only by explicit path",
+      "testedSha": null,
+      "summary": "Nested package scripts could not resolve the bun executable. Re-running with the local Bun directory on PATH completed successfully."
+    },
+    {
+      "id": "verify-formatting-repair-attempt",
+      "kind": "LIVE",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 1,
+      "expectedFailure": true,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84, Biome 2.5.14",
+      "testedSha": null,
+      "summary": "Biome reported two formatting adjustments in the changed TypeScript file. The formatting was applied and the identical full verify command then passed."
+    },
+    {
+      "id": "worktree-verify",
+      "kind": "LIVE",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84, TypeScript 7.0.2, Biome 2.5.14",
+      "testedSha": null,
+      "testCount": 11,
+      "failedTestCount": 0,
+      "summary": "Current uncommitted NR-02 worktree passed typecheck, Biome, 11 tests (0 failed), and Bun build. HEAD is e9e7812ff4058ce9fc1184e7275be2ebdcd99588; the tested source includes uncommitted files, so testedSha remains null.",
+      "observedAtUtc": "2026-09-27T20:45:56Z",
+      "artifactRef": "nr-02-worktree-verify",
+      "artifactSha256": "9e505336e33641813998c91ad815394bc3296d4f814cdd811fc55881c612bf25",
+      "artifactSizeBytes": 1620
+    },
+    {
+      "id": "launcher-runtime-verification",
+      "kind": "LIVE",
+      "source": "Codex Web GPT Launcher Setup UI",
+      "status": "PASS",
+      "environment": "macOS; Launcher UI version 6.0.0",
+      "summary": "Verify runtime reported the Responses proxy healthy at 127.0.0.1:17841, pinned openai/tunnel-client installed, tunnel runtime healthy and ready, and connector Codex Native2 available. It did not establish connector permission scope or test /v1/responses."
+    },
+    {
+      "id": "bridge-health-version",
+      "kind": "LIVE",
+      "command": "GET http://127.0.0.1:17841/healthz",
+      "exitCode": 0,
+      "environment": "macOS; local Launcher bridge",
+      "status": "BLOCKED",
+      "observed": {
+        "service": "codex-chatgpt-web",
+        "version": "6.1.2",
+        "mode": "full",
+        "accepting_turns": true,
+        "active_http_turns": 0,
+        "active_browser_turns": 0
+      },
+      "summary": "Health endpoint is healthy, but the installed service version 6.1.2 does not match assigned upstream pin 6.1.1. The live harness stops before model traffic."
+    },
+    {
+      "id": "model-catalog-unauthenticated-attempt",
+      "kind": "LIVE",
+      "command": "GET http://127.0.0.1:17841/v1/models without Authorization",
+      "exitCode": 0,
+      "environment": "macOS; local Launcher bridge",
+      "status": "BLOCKED",
+      "observedError": {
+        "type": "server_error",
+        "code": "upstream_server_error"
+      },
+      "summary": "The HTTP request returned a JSON upstream error without authentication; no model catalog or supported effort was verified. A valid lookup requires a locally configured bearer key."
+    },
+    {
+      "id": "launcher-browser-smoke",
+      "kind": "LIVE",
+      "source": "Codex Web GPT Launcher Setup UI",
+      "status": "PASS",
+      "environment": "macOS; Launcher UI version 6.0.0; signed-in ChatGPT account; temporary chat",
+      "summary": "Setup reported Smoke test passed. Prompt: Reply with exactly: CODEX WEB GPT READY. The streamed answer was exactly CODEX WEB GPT READY. This does not establish the pinned service version or Responses/tool-loop behavior."
+    },
+    {
+      "id": "bridge-contract-fixtures",
+      "kind": "CONTRACT",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2",
+      "testedSha": null,
+      "summary": "The complete verify workflow passed after the declared workspace was restricted to the fixture directory: typecheck, Biome, 11 tests (0 failed), and build. This is deterministic contract coverage, not live connector evidence.",
+      "status": "PASS"
+    },
+    {
+      "id": "bridge-live-opt-in-guard",
+      "kind": "CONTRACT",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run scripts/bridge-spike.ts",
+      "exitCode": 1,
+      "expectedFailure": true,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84",
+      "testedSha": null,
+      "status": "PASS",
+      "summary": "Without the explicit --live flag the harness stopped before loading bridge settings or sending network traffic."
+    },
+    {
+      "id": "pinned-source-archive",
+      "kind": "CONTRACT",
+      "source": "https://github.com/miuuyy/codex-chatgpt-web/archive/a13cd09950969f43e3b7e25c71fa43efaf5446c5.tar.gz",
+      "status": "PASS",
+      "sha256": "ee2e39fb2a926ffe79b1b4a38ca4d4c75a1437fce6bbfb8fc10e3db5c2c48b80",
+      "sizeBytes": 13330398,
+      "observed": {
+        "packageVersion": "6.1.1",
+        "packageManager": "bun@1.4.0",
+        "bunEngine": "1.4.0",
+        "license": "MIT",
+        "sourceVersionFile": "6.1.1"
+      },
+      "summary": "Archive root contains the assigned immutable commit prefix; package.json and src/version.ts both identify 6.1.1."
+    },
+    {
+      "id": "pinned-upstream-install",
+      "kind": "LIVE",
+      "command": "bun install --frozen-lockfile --cache-dir /private/tmp/nr02-bun-cache",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; upstream Bun 1.4.0",
+      "testedSha": null,
+      "summary": "Installed 110 packages from the pinned source lockfile in /private/tmp; no package manifest or lock changes."
+    },
+    {
+      "id": "pinned-upstream-cli-version",
+      "kind": "LIVE",
+      "command": "bun run src/cli.ts --version",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; upstream Bun 1.4.0",
+      "observed": "6.1.1",
+      "summary": "The CLI from the exact source archive printed 6.1.1."
+    },
+    {
+      "id": "exact-pin-health-probe",
+      "kind": "LIVE",
+      "command": "Temporary probe importing pinned src/server.ts, starting a loopback-only browser-mode service, GET /healthz, then stopping it",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; source commit a13cd09950969f43e3b7e25c71fa43efaf5446c5; Bun 1.4.0; ephemeral loopback port 55322",
+      "observed": {
+        "sourceVersion": "6.1.1",
+        "service": "codex-chatgpt-web",
+        "version": "6.1.1",
+        "mode": "browser-only",
+        "pid": 31146,
+        "accepting_turns": true,
+        "active_http_turns": 0,
+        "active_browser_turns": 0
+      },
+      "privateEvidence": [
+        {
+          "fileName": "nr-02-exact-pin-health.json",
+          "sha256": "2d3986c027824bf4b0e8017b0ce86931fea5d3be3bda77e5f69f95f1fb316df1",
+          "sizeBytes": 758
+        },
+        {
+          "fileName": "nr-02-exact-pin-health-probe.ts",
+          "sha256": "83a032dedfce4a10b5ee66293b6c9df07224f8e00ef0b3d5d917206d35063b6e",
+          "sizeBytes": 2372
+        }
+      ],
+      "summary": "The exact pinned source process served its own health endpoint and exited cleanly. No ChatGPT account, catalog request, tunnel or model prompt was used. This proves source/runtime identity only."
+    },
+    {
+      "id": "bun-1.4.0-official-binary",
+      "kind": "CONTRACT",
+      "source": "https://github.com/oven-sh/bun/releases/tag/bun-v1.4.0",
+      "status": "PASS",
+      "asset": "bun-darwin-aarch64.zip",
+      "sha256": "c669e97f6164e1c96e0701748db98dfa77492908cbd8394c7557134a735de381",
+      "sizeBytes": 25568657,
+      "summary": "The downloaded official macOS arm64 release archive matched the SHA-256 shown in the official GitHub release assets; the extracted binary printed 1.4.0."
+    },
+    {
+      "id": "pinned-dev-browser-smoke",
+      "kind": "LIVE",
+      "source": "Codex Web GPT Launcher DEV Setup UI",
+      "status": "PASS",
+      "environment": "macOS; source commit a13cd09950969f43e3b7e25c71fa43efaf5446c5; package version 6.1.1; isolated DEV profile; temporary ChatGPT conversation; 5.6 High, 3 of 3",
+      "observedAtUtc": "2026-09-27T17:53:32Z",
+      "observed": {
+        "prompt": "Reply with exactly: CODEX WEB GPT READY",
+        "response": "CODEX WEB GPT READY",
+        "selectedModelAndPower": "5.6 High, 3 of 3",
+        "setupStatus": "Smoke test passed; Response complete"
+      },
+      "summary": "The exact-pinned isolated DEV profile completed its built-in temporary browser smoke with the requested exact response and High power. This is browser UI evidence only; no /v1/responses, connector tool call, catalog request, cancellation, or isolation check was performed."
+    },
+    {
+      "id": "isolated-dev-mcp-connector",
+      "kind": "LIVE",
+      "status": "PASS",
+      "source": "Exact-pinned Codex Web GPT DEV Setup/MCP UI and ChatGPT plugin settings",
+      "environment": "macOS; source commit a13cd09950969f43e3b7e25c71fa43efaf5446c5; isolated purpose=dev-harness profile",
+      "observed": {
+        "tunnelRuntime": "healthy",
+        "connectorName": "Codex Native2 DEV",
+        "connection": "Connected",
+        "authentication": "None",
+        "permissionScope": "Allow low-risk tools",
+        "sharedConnectorChanged": false
+      },
+      "summary": "MCP tunnel/connector setup is healthy. It does not establish a Responses listener, turn owner, fixture callback, cancellation, or session isolation."
+    },
+    {
+      "id": "direct-chat-unbound-tool-probe",
+      "kind": "LIVE",
+      "status": "BLOCKED",
+      "source": "Exact-pinned DEV Temporary Chat direct prompt",
+      "environment": "macOS; isolated purpose=dev-harness profile; no Responses request was sent",
+      "observed": {
+        "assistantText": "receipt=FAILED: read_fixture недоступен напрямую в Codex Native2 DEV без предварительного turn_token; sha256=NOT_COMPUTED",
+        "readFixtureCallback": false,
+        "fixtureRead": false
+      },
+      "summary": "No turn-bound token was present, so the connector returned no actual tool receipt. This is a non-qualifying diagnostic, not a bridge acceptance test."
+    },
+    {
+      "id": "connector-identity-ui-check-current",
+      "kind": "LIVE",
+      "command": "Read installed connector names in the logged-in ChatGPT Plugins page; direct MCP tool-inventory call without turn_token",
+      "exitCode": null,
+      "environment": "Codex in-app browser, logged-in ChatGPT account; 2026-09-27T20:55Z",
+      "testedSha": null,
+      "status": "BLOCKED",
+      "observed": {
+        "installedConnectorNames": [
+          "Codex Native2",
+          "Codex Native2 DEV"
+        ],
+        "requiredNr02ConnectorVisible": false,
+        "directToolInventory": "Rejected by connector schema before tool execution because turn_token did not meet minLength 20.",
+        "readFixtureCallback": false,
+        "fixtureRead": false,
+        "tunnelOwnershipVerified": false
+      },
+      "summary": "The user reports installing a connector. The current Plugins page shows Codex Native2 and Codex Native2 DEV, not the separate Codex Native2 NR-02 identity required by Lead D3. No valid turn token was supplied, so the inventory tool did not execute. This is a non-qualifying setup observation; no fixture access occurred."
+    },
+    {
+      "id": "pinned-dev-profile-readiness-after-d4",
+      "kind": "LIVE",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<existing isolated DEV home> <pinned 6.1.1 binary> dev status --json",
+      "exitCode": 0,
+      "status": "BLOCKED",
+      "testedSha": null,
+      "environment": "macOS; pinned codex-chatgpt-web 6.1.1 isolated DEV profile; path and credentials redacted",
+      "observed": {
+        "launcherRunning": true,
+        "launcherProfile": "development",
+        "mode": "full",
+        "purpose": "dev-harness",
+        "mcpRuntimeRequired": true,
+        "mcpRuntimeReady": false,
+        "mcpRuntimeState": "starting"
+      },
+      "summary": "Two read-only status checks reported the existing DEV launcher running, but its MCP runtime was still starting and not healthy/ready. No configuration or credential changed.",
+      "artifactRef": "dev-driver-diagnostic-attempt",
+      "artifactSha256": "19959463203fd7e68e3df08ff603785582c5a161e4b84c5bb744128e15bb7823",
+      "artifactSizeBytes": 1638,
+      "observedAtUtc": "2026-09-27T21:24:14Z"
+    },
+    {
+      "id": "pinned-dev-driver-browser-verification",
+      "kind": "LIVE",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<existing isolated DEV home> <pinned 6.1.1 binary> dev chat nr02-diagnostic-20260928 'Reply with exactly: NR-02 DEV diagnostic ready.'",
+      "exitCode": 1,
+      "status": "BLOCKED",
+      "testedSha": null,
+      "environment": "macOS; pinned codex-chatgpt-web 6.1.1 isolated DEV profile; path and credentials redacted",
+      "observedError": "Launcher ChatGPT session could not be verified: Was there a typo in the url or port?",
+      "promptSent": false,
+      "chatRecordCreated": false,
+      "summary": "The bounded DEV driver attempt failed during browser-host verification before transport setup, chat creation, or prompt submission. This is non-qualifying diagnostic evidence; no retry was made.",
+      "artifactRef": "dev-driver-diagnostic-attempt",
+      "artifactSha256": "19959463203fd7e68e3df08ff603785582c5a161e4b84c5bb744128e15bb7823",
+      "artifactSizeBytes": 1638,
+      "observedAtUtc": "2026-09-27T21:24:14Z"
+    },
+    {
+      "id": "worktree-verify-after-d4",
+      "kind": "CONTRACT",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84, TypeScript 7.0.2, Biome 2.5.14",
+      "status": "PASS",
+      "testCount": 11,
+      "failedTestCount": 0,
+      "summary": "TypeScript typecheck, Biome, 11 tests (0 failed), and Bun build passed. The worktree remains uncommitted, so testedSha is null.",
+      "observedAtUtc": "2026-09-27T21:30:35Z",
+      "artifactRef": "nr-02-worktree-verify-after-d4",
+      "artifactSha256": "a54aa56bd945bdc6bf0b339f3fbe6556974e2bb875fcb56e4f4e993466a5bfab",
+      "artifactSizeBytes": 1255
+    },
+    {
+      "id": "worktree-verify-after-canary-fix",
+      "kind": "CONTRACT",
+      "command": "env PATH=./.nightreviewer/runtime/bun/bin:/usr/bin:/bin:/usr/sbin:/sbin ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84, TypeScript 7.0.2, Biome 2.5.14",
+      "status": "PASS",
+      "testCount": 11,
+      "failedTestCount": 0,
+      "summary": "TypeScript typecheck, Biome, 11 tests (0 failed), and Bun build passed after strengthening AC3 canary checks. The worktree remains uncommitted, so testedSha is null.",
+      "observedAtUtc": "2026-09-27T21:51:56Z",
+      "artifactRef": "nr-02-worktree-verify-after-canary-fix",
+      "artifactSha256": "683c8926183a29a83390dec32f5ffee2bd0d2d0cd09ebe20a3816f57acaa9b4e",
+      "artifactSizeBytes": 1255
+    },
+    {
+      "id": "runtime-cleanup-source-audit",
+      "kind": "CONTRACT",
+      "source": "pinned upstream source",
+      "status": "PASS",
+      "testedSha": null,
+      "upstream": "miuuyy/codex-chatgpt-web@a13cd09950969f43e3b7e25c71fa43efaf5446c5",
+      "observed": {
+        "cleanupEntryPoint": "normal launcher Quit",
+        "serverShutdown": "drains/zeros turns; clears session registry; closes browser workers and brokers",
+        "supervisorStop": "drains daemon, stops owned tunnel, shuts down daemon"
+      },
+      "summary": "Source review establishes a supported cleanup sequence for the isolated production profile. This is source-level evidence only; no live cleanup receipt exists.",
+      "artifactRef": "nr-02-runtime-cleanup-source-audit",
+      "artifactSha256": "8bd01edb2c8fe3be131e986d1f1b84a115b1d1ffcbe4d8cbe96cf471e74b8643",
+      "artifactSizeBytes": 2257,
+      "observedAtUtc": "2026-09-27T21:53:32Z"
+    },
+    {
+      "id": "ordinary-dev-user-authorization",
+      "kind": "AUTHORIZATION",
+      "status": "CONFIRMED",
+      "source": "Configured lead ChatGPT thread",
+      "userMessageId": "031ab6c9-34c9-4a6e-b7a0-c894f2ccbeeb",
+      "leadAcknowledgementMessageId": "f0e24d87-29bb-4e54-b9bc-a31d98bf1291",
+      "scope": "All NightReviewer development",
+      "qualificationEffect": "Does not change technical qualification rules for NR-02."
+    },
+    {
+      "id": "pinned-dev-profile-current-status-after-recovery",
+      "kind": "LIVE",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<isolated DEV home> <pinned 6.1.1 CLI> dev status --json",
+      "exitCode": 0,
+      "status": "BLOCKED",
+      "testedSha": null,
+      "environment": "macOS; isolated DEV profile; codex-chatgpt-web 6.1.1 invoked by project Bun 1.4.2",
+      "observed": {
+        "launcherRunning": true,
+        "launcherProfile": "development",
+        "mode": "full",
+        "purpose": "dev-harness",
+        "mcpRuntimeRequired": true,
+        "mcpRuntimeReady": false,
+        "mcpRuntimeState": "starting",
+        "mcpSetupComplete": true
+      },
+      "summary": "Fresh status after recovery attempts still reports the isolated profile running but its MCP runtime not ready.",
+      "artifactRef": "nr-02-dev-recovery-20260928",
+      "artifactSha256": "f8f8fa4f5e400ed6ab1ad1bb0fe8a36f23e6455d87731049faf9af1cbaecb20c",
+      "artifactSizeBytes": 5056,
+      "observedAtUtc": "2026-09-27T22:40:05Z"
+    },
+    {
+      "id": "pinned-dev-tunnel-restart-attempt",
+      "kind": "LIVE",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<isolated DEV home> <pinned 6.1.1 CLI> tunnel restart",
+      "exitCode": 1,
+      "status": "NON_QUALIFYING",
+      "testedSha": null,
+      "environment": "macOS; isolated DEV profile; no credentials passed on command line",
+      "observedError": "Tunnel service is not installed; rerun full setup",
+      "configurationOrCredentialChanges": false,
+      "summary": "The pinned DEV profile is launcher-supervised and does not install a standalone tunnel service. This command is not a supported DEV readiness/recovery check and is not used as evidence that the profile itself is broken.",
+      "artifactRef": "nr-02-dev-recovery-20260928",
+      "artifactSha256": "f8f8fa4f5e400ed6ab1ad1bb0fe8a36f23e6455d87731049faf9af1cbaecb20c",
+      "artifactSizeBytes": 5056,
+      "observedAtUtc": "2026-09-27T22:40:05Z",
+      "expectedFailure": true,
+      "classification": "NON_QUALIFYING_DIAGNOSTIC"
+    },
+    {
+      "id": "pinned-dev-full-setup-recovery-attempt",
+      "kind": "LIVE",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<isolated DEV home> <pinned 6.1.1 CLI> dev setup --full --browser-host-descriptor <isolated descriptor> --automatic-browser-interaction --refresh-account-capabilities --acknowledge-unofficial",
+      "exitCode": 1,
+      "status": "BLOCKED",
+      "testedSha": null,
+      "environment": "macOS; isolated DEV profile; pinned 6.1.1 source and browser descriptor",
+      "observedError": "Launcher ChatGPT session could not be verified: Was there a typo in the url or port?",
+      "promptSent": false,
+      "chatRecordCreated": false,
+      "configurationSaved": false,
+      "configurationOrCredentialChanges": false,
+      "failedBefore": "inspectLauncherCapabilities; pinned setupDevProfile invokes it before configureTunnel and saveConfig.",
+      "summary": "The supported full setup path stopped while verifying the launcher ChatGPT session. It did not submit a prompt, create a chat, save runtime configuration, or change credentials.",
+      "artifactRef": "nr-02-dev-recovery-20260928",
+      "artifactSha256": "f8f8fa4f5e400ed6ab1ad1bb0fe8a36f23e6455d87731049faf9af1cbaecb20c",
+      "artifactSizeBytes": 5056,
+      "observedAtUtc": "2026-09-27T22:40:05Z"
+    },
+    {
+      "id": "current-dev-connector-settings",
+      "kind": "LIVE",
+      "source": "ChatGPT Settings > Plugins in Codex in-app browser",
+      "status": "BLOCKED",
+      "environment": "Logged-in ChatGPT settings page; current plugin details observed",
+      "observed": {
+        "connectorName": "Codex Native2 DEV",
+        "authentication": "None",
+        "permissionScope": "Allow low-risk tools",
+        "accountLinked": false,
+        "nr02ConnectorVisible": false
+      },
+      "summary": "The existing DEV connector is installed with low-risk permission. The unique D3 connector Codex Native2 NR-02 is absent; no connector was created.",
+      "artifactRef": "nr-02-dev-recovery-20260928",
+      "artifactSha256": "f8f8fa4f5e400ed6ab1ad1bb0fe8a36f23e6455d87731049faf9af1cbaecb20c",
+      "artifactSizeBytes": 5056,
+      "observedAtUtc": "2026-09-27T22:40:05Z"
+    },
+    {
+      "id": "nr02-ac4-documentation-audit",
+      "kind": "CONTRACT",
+      "command": "rg -n 'Supported|Поддерживается исходным код|Не поддерживается DEV-профилем|MIT|Provisional approach|Reproducible next step|bridge:live|bridge:cancel|bridge:unavailable|only the fixed `probe` key' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md",
+      "exitCode": 0,
+      "status": "PASS",
+      "testedSha": null,
+      "files": [
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "b1b304432fb59610eef482ac748f6b90dc15b221f746119bd03f05ee50ccb741",
+          "sizeBytes": 16572
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "41ffaa0607ffc47c6d46bbe17321ae459c36ccce89a793bee24f8519b099e681",
+          "sizeBytes": 8590
+        }
+      ],
+      "summary": "Focused audit found supported/unsupported capabilities, exact pin, MIT license, selected transport approach, limitations, and the reproducible next live step.",
+      "observedAtUtc": "2026-09-27T22:40:05Z"
+    },
+    {
+      "id": "worktree-verify-after-dev-session-recovery",
+      "kind": "LIVE",
+      "command": "umask 077; set -o pipefail; PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify 2>&1 | tee .nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-worktree-verify-20260928.txt",
+      "exitCode": 0,
+      "status": "PASS",
+      "testedSha": null,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14",
+      "testCount": 11,
+      "failedTestCount": 0,
+      "expectCalls": 13,
+      "summary": "Current uncommitted NR-02 worktree passed typecheck, Biome, 11 tests (0 failed), and Bun build. HEAD remains the assigned base; testedSha is null because changes are uncommitted.",
+      "artifactRef": "nr-02-worktree-verify-20260928",
+      "artifactSha256": "99e30cae2d2fdf7855d5efde307829ea7051d504080e9697d711741d7a719d04",
+      "artifactSizeBytes": 1255,
+      "observedAtUtc": "2026-09-27T22:43:11Z"
+    },
+    {
+      "id": "config-doctor-after-resume",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run config:doctor",
+      "exitCode": 0,
+      "status": "PASS",
+      "testedSha": null,
+      "environment": "macOS worktree; uncommitted NR-02 branch",
+      "summary": "Project session config is valid; the doctor did not display private chat URLs.",
+      "observedAtUtc": "2026-09-27T22:43:11Z"
+    },
+    {
+      "id": "diff-check-after-resume",
+      "kind": "CONTRACT",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "status": "PASS",
+      "testedSha": null,
+      "environment": "macOS worktree; uncommitted NR-02 branch",
+      "summary": "No whitespace errors found in the current worktree.",
+      "observedAtUtc": "2026-09-27T22:43:11Z"
+    },
+    {
+      "id": "pinned-dev-status-recheck-20260928-turn",
+      "kind": "LIVE",
+      "status": "BLOCKED",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<existing isolated DEV home> <pinned 6.1.1 binary> dev status --json",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS isolated DEV profile; exact pinned 6.1.1 CLI",
+      "summary": "Read-only status confirms the development launcher is running with mode=full and purpose=dev-harness, while its launcher-owned MCP runtime remains healthy=false, ready=false, state=starting. No setup, prompt, or configuration change occurred.",
+      "observedAtUtc": "2026-09-27T22:56:49Z"
+    },
+    {
+      "id": "pinned-dev-chat-list-recheck-20260928-turn",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<existing isolated DEV home> <pinned 6.1.1 binary> dev list",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS isolated DEV profile; exact pinned 6.1.1 CLI",
+      "summary": "Read-only DEV chat inventory returned 'No named DEV chats yet.' No chat or prompt was created.",
+      "observedAtUtc": "2026-09-27T22:56:49Z"
+    },
+    {
+      "id": "nr02-d5-method-documentation-audit",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n 'NR-02-D5|unavailable-connector failure injection|unique, deliberately nonexistent|HTTP `424`|AC4 remains in progress|D5 probe result is `NOT_RUN`|restored config|manualAppName|connector permission' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md docs/STATUS.md",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "summary": "D5's exact bounded failure-injection procedure, no-external-permission-change limits, mandatory restoration/health receipt, current NOT_RUN status, and pending connector prerequisite are recorded in the runbook and ADR. This is documentation evidence only; no live probe or restoration was performed.",
+      "observedAtUtc": "2026-09-27T23:06:12Z"
+    },
+    {
+      "id": "worktree-verify-after-d5-continuation",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "umask 077; set -o pipefail; PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify 2>&1 | tee .nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-worktree-verify-continuation-20260928.txt",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; Bun 1.4.2; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588.",
+      "summary": "Strict TypeScript typecheck, Biome check, 11 tests (0 failed), and Bun build passed. Source remains uncommitted, so testedSha is null.",
+      "observedAtUtc": "2026-09-27T23:14:19Z",
+      "artifactRef": "nr-02-worktree-verify-continuation-20260928",
+      "artifactSha256": "0fc7a85ff29e0472a51b6de72c4eff3da4a522ac01e4356146a03e8dff357955",
+      "artifactSizeBytes": 1255,
+      "testCount": 11,
+      "failedTestCount": 0
+    },
+    {
+      "id": "pinned-dev-runtime-status-recheck-continuation-20260928",
+      "kind": "LIVE",
+      "status": "BLOCKED",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<ordinary isolated DEV profile> <pinned 6.1.1 CLI> dev status --json",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; pinned codex-chatgpt-web 6.1.1 CLI; ordinary DEV profile; path and credentials redacted.",
+      "summary": "Read-only recheck: Launcher is running in mode=full with purpose=dev-harness, but the launcher-owned MCP runtime remains healthy=false, ready=false, state=starting. No setup, prompt, chat, tunnel, connector, permission, configuration, or credential change occurred.",
+      "artifactRef": "nr-02-dev-runtime-recheck-20260928-turn.json#status",
+      "artifactSha256": "883cc5959b15502611bdbb0637833d15e64412875e905f0468c9a6977e159c65",
+      "artifactSizeBytes": 1591,
+      "observedAtUtc": "2026-09-27T23:21:17.383606Z"
+    },
+    {
+      "id": "pinned-dev-chat-list-recheck-continuation-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "CODEX_WEB_GPT_DEV_HOME=<ordinary isolated DEV profile> <pinned 6.1.1 CLI> dev list",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; pinned codex-chatgpt-web 6.1.1 CLI; ordinary DEV profile; path and credentials redacted.",
+      "summary": "Read-only inventory succeeded and returned “No named DEV chats yet.” No prompt or chat was created; this is a non-qualifying diagnostic observation.",
+      "artifactRef": "nr-02-dev-runtime-recheck-20260928-turn.json#list",
+      "artifactSha256": "883cc5959b15502611bdbb0637833d15e64412875e905f0468c9a6977e159c65",
+      "artifactSizeBytes": 1591,
+      "observedAtUtc": "2026-09-27T23:21:17.383606Z"
+    },
+    {
+      "id": "worktree-verify-without-local-bun-path-20260928",
+      "kind": "LIVE",
+      "status": "FAIL",
+      "command": "./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 127,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 worktree; project Bun 1.4.2 binary was invoked by absolute path but its bin directory was absent from child-script PATH.",
+      "summary": "Verification wrapper could not find `bun` when package scripts spawned nested Bun commands. This is a command environment failure; no source tests ran. The same verify command was rerun with the local Bun bin directory in PATH.",
+      "artifactRef": "nr-02-worktree-verify-after-dev-recheck-20260928.txt",
+      "artifactSha256": "414b6baf7d97f0f526022b79cb4ae956c4c7fa01d153d0c8870e08d454a85945",
+      "artifactSizeBytes": 147,
+      "observedAtUtc": "2026-09-27T23:29:48.537286Z"
+    },
+    {
+      "id": "worktree-verify-cancel-boundedness-preformat-20260928",
+      "kind": "LIVE",
+      "status": "FAIL",
+      "command": "PATH=<local Bun bin>:$PATH ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 1,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 worktree; Bun 1.4.2; TypeScript 7.0.2; Biome 2.5.14.",
+      "summary": "Typecheck passed; Biome requested formatting in the edited cancellation probe and stopped the aggregate verify before tests/build. The file was formatted and the complete verify was rerun successfully.",
+      "artifactRef": "nr-02-worktree-verify-after-cancel-boundedness-fix-20260928.txt",
+      "artifactSha256": "52fbd59d5098fb3b4a07ee626806225db1f3edf8be1de56086a6a7cd66b7c755",
+      "artifactSizeBytes": 5523,
+      "observedAtUtc": "2026-09-27T23:32:16.031484Z"
+    },
+    {
+      "id": "cancel-probe-biome-format-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "./node_modules/.bin/biome check --write scripts/bridge-spike.ts",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 worktree; Biome 2.5.14.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "78d6b2e61681e705dd762c493c69d402b51392668e4a55465496ccbc1714c505",
+          "sizeBytes": 25519
+        }
+      ],
+      "summary": "Biome applied only the formatter changes requested for the bounded cancellation-probe logic.",
+      "observedAtUtc": "2026-09-27T23:32:16Z"
+    },
+    {
+      "id": "worktree-verify-after-cancellation-boundedness-fix-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=<local Bun bin>:$PATH ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 11,
+      "failedTestCount": 0,
+      "expectCalls": 13,
+      "summary": "Strict TypeScript typecheck, Biome, all 11 tests (0 failed), and Bun build passed after the cancellation probe now waits for its exact active HTTP turn and aborts the local request for cleanup on observation timeout. Live cancellation was not run; acceptance semantics remain pending the lead decision.",
+      "artifactRef": "nr-02-worktree-verify-after-cancel-probe-format-20260928.txt",
+      "artifactSha256": "559a4b6500f4440ce2ab858e784108ed5a198800028dfa9bedc838de61fa08b1",
+      "artifactSizeBytes": 1255,
+      "observedAtUtc": "2026-09-27T23:32:34.205361Z"
+    },
+    {
+      "id": "nr02-cancellation-runbook-audit-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n 'active_http_turns|local fetch|10 seconds|Exact-turn cancellation|bounded' spikes/bridge/README.md",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "78d6b2e61681e705dd762c493c69d402b51392668e4a55465496ccbc1714c505",
+          "sizeBytes": 25519
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "c98dccad9a2887b22a868e28a352b24e15badd9e2fd1490b105c08ffa0c5063f",
+          "sizeBytes": 11626
+        }
+      ],
+      "summary": "The runbook records the bounded active-turn wait, control/stream deadlines, separate acknowledgement/stream observations, and that local fetch abort is cleanup only. Qualifying cancellation outcome remains under lead adjudication.",
+      "observedAtUtc": "2026-09-27T23:32:40Z"
+    },
+    {
+      "id": "worktree-verify-d6-typecheck-before-narrowing-20260928",
+      "kind": "LIVE",
+      "status": "FAIL",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 1,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 worktree based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 0,
+      "failedTestCount": 0,
+      "summary": "TypeScript identified a union-narrowing error in the newly recorded read-error disposition before tests/build ran. The stream disposition branch was narrowed explicitly and the full verification was rerun.",
+      "artifactRef": "nr-02-worktree-verify-after-d6-cancel-contract",
+      "artifactSha256": "37c14be4812b72ee157f8a7538458571532bd65a878db2de753f01a24925345c",
+      "artifactSizeBytes": 665,
+      "observedAtUtc": "2026-09-27 23:52:55 UTC"
+    },
+    {
+      "id": "worktree-verify-after-d6-readerror-disposition-fix-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 12,
+      "failedTestCount": 0,
+      "expectCalls": 14,
+      "summary": "Typecheck, Biome, all 12 tests, and build passed. The parser now retains a response.completed event after an earlier terminal so the cancellation gate cannot miss a later completion. This was contract verification only; no live cancellation probe ran.",
+      "artifactRef": "nr-02-worktree-verify-after-d6-readerror-disposition-fix",
+      "artifactSha256": "868098457c6ccb1804f78f1a8626750ee77052b6b02764811db8407b4f5595e3",
+      "artifactSizeBytes": 1455,
+      "observedAtUtc": "2026-09-27 23:52:55 UTC"
+    },
+    {
+      "id": "nr02-d6-cancellation-contract-audit-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n 'NR-02-D6|ACK_PLUS_STREAM_TERMINATION|cancelled_http_turns=1|10 секунд|10-second|response.completed' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md docs/STATUS.md scripts/bridge-spike.ts src/spikes/bridge-sse.ts tests/bridge-sse.test.ts",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "82836255e7a8a63730afb23372ea58512a7e5eb6b73d992f71bf08f287e66acc",
+          "sizeBytes": 27469
+        },
+        {
+          "path": "src/spikes/bridge-sse.ts",
+          "sha256": "f60db397711f356c5af98ef601c0776a046f38555a68a6446423bbaa7454e797",
+          "sizeBytes": 10095
+        },
+        {
+          "path": "tests/bridge-sse.test.ts",
+          "sha256": "af993ed864ee7479c52c9cb728eee4d8432e1c818b67e1e2feddb634d6d80492",
+          "sizeBytes": 6001
+        },
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "2258cbd26247691bb462c48f89c14b038f6bee12dcfd90cdb957f2e112288671",
+          "sizeBytes": 21480
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "14461857e081dd2ae6267123c3df09cbda45cbf1a5872a0d0bec85d110700912",
+          "sizeBytes": 12451
+        },
+        {
+          "path": "docs/STATUS.md",
+          "sha256": "48693c193ee077ddbe6e8bd0b01c4b30923b08ab5686bff1b52bf389a8972011",
+          "sizeBytes": 4875
+        }
+      ],
+      "summary": "ADR, runbook, status, cancellation harness, and parser now record the D6 qualification contract and guard against a response.completed event after an earlier terminal. This documents/validates the method only; the live probe remains NOT_RUN.",
+      "artifactRef": "nr-02-d6-cancellation-contract-audit-20260928",
+      "artifactSha256": "1e1b2f206759f22e3edec6d17747fdae3862f006dda095ba57d5791cf4aa1a11",
+      "artifactSizeBytes": 6503,
+      "observedAtUtc": "2026-09-27 23:52:55 UTC"
+    },
+    {
+      "id": "worktree-verify-after-d6-preterminal-race-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 13,
+      "failedTestCount": 0,
+      "expectCalls": 16,
+      "summary": "Typecheck, Biome, all 13 tests, and build passed. The parser now reports terminal SSE frames as soon as they are read, before stream close, and preserves later response.completed events; this lets the cancellation harness reject an already-terminal turn even while active_http_turns still shows 1. Contract verification only; no live cancellation ran.",
+      "artifactRef": "nr-02-worktree-verify-after-d6-preterminal-race",
+      "artifactSha256": "f14f94beb5f0b7839f460e0f8170b971ada5edbbd0119043d17c599a54a5d971",
+      "artifactSizeBytes": 1528,
+      "observedAtUtc": "2026-09-27 23:58:08 UTC"
+    },
+    {
+      "id": "nr02-d6-cancellation-contract-audit-final-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n 'NR-02-D6|ACK_PLUS_STREAM_TERMINATION|cancelled_http_turns=1|10 секунд|10-second|response.completed' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md docs/STATUS.md scripts/bridge-spike.ts src/spikes/bridge-sse.ts tests/bridge-sse.test.ts",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "eb21bc45a289aa58683dd2a43f13eb6dba2b147204e5ceeaa1e2b1650bd4523f",
+          "sizeBytes": 28056
+        },
+        {
+          "path": "src/spikes/bridge-sse.ts",
+          "sha256": "5608cbd405d5af794c34fd8d2ecfd76748a056a6e10e427f9453465ccaf73375",
+          "sizeBytes": 11092
+        },
+        {
+          "path": "tests/bridge-sse.test.ts",
+          "sha256": "5953cc662d4e362fea07bbbd0ec73447997d5e84c12d4a12462d893b95365a56",
+          "sizeBytes": 7413
+        },
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "2258cbd26247691bb462c48f89c14b038f6bee12dcfd90cdb957f2e112288671",
+          "sizeBytes": 21480
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "14461857e081dd2ae6267123c3df09cbda45cbf1a5872a0d0bec85d110700912",
+          "sizeBytes": 12451
+        },
+        {
+          "path": "docs/STATUS.md",
+          "sha256": "48693c193ee077ddbe6e8bd0b01c4b30923b08ab5686bff1b52bf389a8972011",
+          "sizeBytes": 4875
+        }
+      ],
+      "summary": "Final audit confirms the D6 control/stream contract, pre-interrupt terminal check, post-terminal completion rejection, and non-qualifying cleanup behavior are aligned across ADR, runbook, implementation, and tests. It does not record any live cancellation result.",
+      "artifactRef": "nr-02-d6-cancellation-contract-audit-final",
+      "artifactSha256": "12ffc79dc0c4678357ff5e660c6642c7d8d818b47a5f6c8c7220a4fa2876f053",
+      "artifactSizeBytes": 6629,
+      "observedAtUtc": "2026-09-27 23:58:08 UTC"
+    },
+    {
+      "id": "worktree-verify-after-d6-final-contract",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 13,
+      "failedTestCount": 0,
+      "expectCalls": 16,
+      "summary": "Typecheck, Biome, all 13 tests, and build passed. The D6 cancellation harness measures termination from ACK receipt, rejects termination before the ACK or after 10 seconds, rejects later response.completed events, preserves the actual stream disposition, and fails when a local timeout aborts the request. Contract verification only; no live cancellation ran.",
+      "artifactRef": "worktree-verify-after-d6-final-contract",
+      "artifactSha256": "e692150468cc6436f0fb1af01d0feeeb277554067973449c3fc9e89d6300dc96",
+      "artifactSizeBytes": 1414,
+      "observedAtUtc": "2026-09-28 00:13:08 UTC"
+    },
+    {
+      "id": "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n -C 2 'between acknowledgement receipt|D6 measures stream termination|observed\\.terminatedAtMs < interruptAcknowledgedAtMs|observed\\.terminatedAtMs > interruptAcknowledgedAtMs|responseTimedOut|response\\.completed|sanitizedBody' scripts/bridge-spike.ts src/spikes/bridge-sse.ts tests/bridge-sse.test.ts docs/decisions/0002-bridge-contract.md spikes/bridge/README.md docs/STATUS.md",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "7240f728fdf3d281d5dbe8cc77ed436bed161574440cb5f5396219e86048dcee",
+          "sizeBytes": 31867
+        },
+        {
+          "path": "src/spikes/bridge-sse.ts",
+          "sha256": "5608cbd405d5af794c34fd8d2ecfd76748a056a6e10e427f9453465ccaf73375",
+          "sizeBytes": 11092
+        },
+        {
+          "path": "tests/bridge-sse.test.ts",
+          "sha256": "5953cc662d4e362fea07bbbd0ec73447997d5e84c12d4a12462d893b95365a56",
+          "sizeBytes": 7413
+        },
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "2258cbd26247691bb462c48f89c14b038f6bee12dcfd90cdb957f2e112288671",
+          "sizeBytes": 21480
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "14461857e081dd2ae6267123c3df09cbda45cbf1a5872a0d0bec85d110700912",
+          "sizeBytes": 12451
+        },
+        {
+          "path": "docs/STATUS.md",
+          "sha256": "7151956022f8b801132ed439709d4367a89733a9eb5d7ca8e809ed467b558050",
+          "sizeBytes": 4972
+        }
+      ],
+      "summary": "The final source/doc audit confirms the exact D6 interval begins at acknowledgement receipt, requires termination no later than 10 seconds afterward, rejects response.completed before or after interruption, preserves parser dispositions, limits receipt data to sanitized acknowledgement fields, and rejects local timeout abort as cancellation evidence. Live probe remains NOT_RUN.",
+      "artifactRef": "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
+      "artifactSha256": "9bb810c960380609e197e35f97826a09a471f25b0941d74175ec6050f9dbd7e2",
+      "artifactSizeBytes": 13039,
+      "observedAtUtc": "2026-09-28 00:13:08 UTC"
+    },
+    {
+      "id": "worktree-verify-d6-contract-window-final-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; uncommitted NR-02 branch based on e9e7812ff4058ce9fc1184e7275be2ebdcd99588; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 16,
+      "failedTestCount": 0,
+      "expectCalls": 21,
+      "summary": "Typecheck, Biome, all 16 tests, and build passed. Three new contract tests cover termination before acknowledgement, at acknowledgement, at +10 seconds, after +10 seconds, and missing acknowledgement. This verifies the pure D6 boundary; no live cancellation ran.",
+      "artifactRef": "worktree-verify-d6-contract-window-final-20260928",
+      "artifactSha256": "44e2bb8a6de5d2f112737dcfce0d0dd678a9d393c2e08970c21b8663abc9dc67",
+      "artifactSizeBytes": 1717,
+      "observedAtUtc": "2026-09-28T00:32:53Z"
+    },
+    {
+      "id": "nr02-d6-contract-audit-with-boundary-tests-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "rg -n -C 2 'between acknowledgement receipt|isStreamTerminationWithinAcknowledgementWindow|elapsedMs <= 10_000|responseTimedOut|response\\.completed|sanitizedBody' scripts/bridge-spike.ts src/spikes/cancellation-contract.ts src/spikes/bridge-sse.ts tests/cancellation-contract.test.ts tests/bridge-sse.test.ts docs/decisions/0002-bridge-contract.md spikes/bridge/README.md docs/STATUS.md",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Current uncommitted NR-02 worktree.",
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "5a8f9793b7a6fc87feb9c58998879d86017ee54d141dc94f67f20d89afaf8991",
+          "sizeBytes": 31991
+        },
+        {
+          "path": "src/spikes/cancellation-contract.ts",
+          "sha256": "38eaded065653562ac4505f8ba969b2673410b29afd33f229266e955b5c6416c",
+          "sizeBytes": 500
+        },
+        {
+          "path": "src/spikes/bridge-sse.ts",
+          "sha256": "5608cbd405d5af794c34fd8d2ecfd76748a056a6e10e427f9453465ccaf73375",
+          "sizeBytes": 11092
+        },
+        {
+          "path": "tests/cancellation-contract.test.ts",
+          "sha256": "2be5c6f75e8c8adc938a324fd21c6a6e53bce38867ecbfe424064bc82ca9c613",
+          "sizeBytes": 864
+        },
+        {
+          "path": "tests/bridge-sse.test.ts",
+          "sha256": "5953cc662d4e362fea07bbbd0ec73447997d5e84c12d4a12462d893b95365a56",
+          "sizeBytes": 7413
+        },
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "2258cbd26247691bb462c48f89c14b038f6bee12dcfd90cdb957f2e112288671",
+          "sizeBytes": 21480
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "14461857e081dd2ae6267123c3df09cbda45cbf1a5872a0d0bec85d110700912",
+          "sizeBytes": 12451
+        },
+        {
+          "path": "docs/STATUS.md",
+          "sha256": "7151956022f8b801132ed439709d4367a89733a9eb5d7ca8e809ed467b558050",
+          "sizeBytes": 4972
+        }
+      ],
+      "summary": "The source/doc audit confirms the D6 window begins at acknowledgement receipt, allows exactly the next 10 seconds, rejects locally induced timeout as cancellation evidence, preserves sanitized ACK and actual stream disposition, and rejects later response.completed. Unit coverage exercises all time boundaries. Live probes remain NOT_RUN.",
+      "artifactRef": "nr02-d6-contract-audit-with-boundary-tests-20260928",
+      "artifactSha256": "604097d45dc0dce326a1c24e373b352bd4cbead14ea5d06387e5665b05cca183",
+      "artifactSizeBytes": 15767,
+      "observedAtUtc": "2026-09-28T00:35:21Z"
+    },
+    {
+      "id": "config-doctor-after-session-check-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run config:doctor",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; Bun 1.4.2; current NR-02 worktree.",
+      "summary": "The ignored local session configuration is valid and the doctor did not display private chat URLs.",
+      "artifactRef": "config-doctor-after-session-check-20260928",
+      "artifactSha256": "2ace94ce68d14e7213b8bd56ab6db775ea60a860cce45f79b56ce6f1f9530dcf",
+      "artifactSizeBytes": 152,
+      "observedAtUtc": "2026-09-28T00:35:14Z"
+    },
+    {
+      "id": "connector-list-ui-recheck-20260928",
+      "kind": "LIVE",
+      "status": "BLOCKED",
+      "command": "Read ChatGPT Settings → Plugins in the logged-in Codex in-app browser.",
+      "exitCode": null,
+      "testedSha": null,
+      "environment": "ChatGPT account settings; read-only browser observation.",
+      "observedAtUtc": "2026-09-28T00:30:33Z",
+      "observed": {
+        "relevantInstalledConnectorNames": [
+          "Codex Native2",
+          "Codex Native2 DEV",
+          "Codex Zero Risk"
+        ],
+        "requiredConnectorName": "Codex Native2 NR-02",
+        "requiredConnectorVisible": false,
+        "connectorToolsInvoked": false,
+        "settingsChanged": false
+      },
+      "summary": "A fresh Plugins settings read shows the reported Codex Native2 app (description test), Codex Native2 DEV, and Codex Zero Risk; the required unique Codex Native2 NR-02 connector is absent. No connector tools or settings were changed. This is setup evidence only and does not qualify AC1-AC3."
+    }
+  ],
+  "decisionReceipts": [
+    {
+      "decisionId": "NR-02-D2-BLOCK-LIVE-UNTIL-SUPPORTED-EXACT-PIN-OWNER",
+      "messageId": "88e8741f-2dc0-4e40-bc69-89d8f35a8c7e",
+      "requestMessageId": "bda5c7fb-4215-41a0-a077-689acd98accc",
+      "responseSha256": "94656570b2b677e1ca5925e4de1b8754c1b332ad9d71ff6325fc08dd5a23cc5b",
+      "correlationVerified": true,
+      "decision": "BLOCK_LIVE_PROBES",
+      "liveAcceptanceState": {
+        "NR-02-AC1": "BLOCKED",
+        "NR-02-AC2": "BLOCKED",
+        "NR-02-AC3": "BLOCKED",
+        "NR-02-AC4": "BLOCKED"
+      },
+      "taskCompletionAllowed": false,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "taskId": "NR-02",
+      "cycle": 1,
+      "inReplyTo": "bda5c7fb-4215-41a0-a077-689acd98accc",
+      "requestSha256": "eac302d1d9552227efbe8a6431ec9398afc32453e308cdd4502b76fca866f983",
+      "normalizationSha256": "1041e38301163ebf895074973ac7f4bc6c2ba2d82603f69398185ecc65d08873",
+      "source": "Configured lead ChatGPT chat",
+      "receivedAtUtc": "2026-09-27T20:30:16.692918Z",
+      "redactedArtifactRef": "lead-decision-d2"
+    },
+    {
+      "decisionId": "NR-02-D3-ALLOW-ISOLATED-6_1_1-PRODUCTION-SPIKE",
+      "messageId": "0d01c4d4-07bd-4aa5-a4c8-8cdd7696a7c3",
+      "requestMessageId": "bc3335e5-8fe4-4231-a2a9-aa5252bad552",
+      "responseSha256": "3c66c0cf9cfec33f4df6bcb84ae71f8ad625bbe3b387d619a80176f42fa07067",
+      "normalizationSha256": "ea3f91c6a44f8f944d5918adf5ed2544c0819effc10aa56a008d4a482868c353",
+      "requestSha256": "c52d890f02100ec221a63989e1008cb08223a6530d4870e1cdc09ff2ab4652a0",
+      "correlationVerified": true,
+      "decision": "ALLOW_ISOLATED_6_1_1_PRODUCTION_PROFILE",
+      "leadReadinessAfterPrerequisite": {
+        "NR-02-AC1": "READY_AFTER_EXTERNAL_RESOURCE_PREREQUISITE",
+        "NR-02-AC2": "READY_AFTER_EXTERNAL_RESOURCE_PREREQUISITE",
+        "NR-02-AC3": "READY_AFTER_EXTERNAL_RESOURCE_PREREQUISITE",
+        "NR-02-AC4": "IN_PROGRESS"
+      },
+      "scopeChange": false,
+      "taskId": "NR-02",
+      "cycle": 1,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "source": "Configured lead ChatGPT chat",
+      "redactedArtifactRef": "lead-decision-d3"
+    },
+    {
+      "decisionId": "NR-02-D4-DEV-DIAGNOSTIC-ONLY",
+      "messageId": "6fa2332d-4080-4c9e-8fb5-cd896e04ed71",
+      "requestMessageId": "3806052d-3761-45c9-9f15-ada7a9c62971",
+      "responseSha256": "554a6783701cb404a2106c697168707b23fed2e1555bb34b1fa1a76772df8303",
+      "normalizationSha256": "1559e9bd8a260f75ace380dab5270ce1c27114b8d7c2585d22e6b76e054940ab",
+      "requestSha256": "1a3eba0d36b8e6e88f9af040d912495e0151497868497c0a72c0ab94d7897a24",
+      "correlationVerified": true,
+      "decision": "DEV_DIAGNOSTIC_ONLY",
+      "userAuthorization": "CONFIRMED_FOR_BOUNDED_DEV_DIAGNOSTICS",
+      "currentAcceptanceState": {
+        "NR-02-AC1": "BLOCKED_PENDING_D3_QUALIFYING_RUNTIME",
+        "NR-02-AC2": "BLOCKED_PENDING_D3_QUALIFYING_RUNTIME",
+        "NR-02-AC3": "BLOCKED_PENDING_D3_QUALIFYING_RUNTIME",
+        "NR-02-AC4": "IN_PROGRESS"
+      },
+      "taskId": "NR-02",
+      "cycle": 1,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "source": "Configured lead ChatGPT chat through Codex in-app browser",
+      "redactedArtifactRef": "lead-decision-d4",
+      "receivedAtUtc": "2026-09-27T21:24:14Z"
+    },
+    {
+      "decisionId": "NR-02-D5-TEMPORARY-ISOLATED-MISSING-CONNECTOR-PROBE",
+      "messageId": "1d43d86f-4c70-43e5-9d45-c952a3ff0e6c",
+      "requestMessageId": "b3ca6a5d-f353-4b9d-a49a-465896e35535",
+      "requestSha256": "ad05eb38b861772b6be8a255703bdad2bba2674e8051e089bd7fb07859f8cd04",
+      "responseSha256": "5ccbec8e31b743ce9a584e43bc3fa44bc5d29c33188b3a1469071b18a5f0a591",
+      "normalizationSha256": "4058a619a422885b5cbb8311fb0eac7ee8c709e03c633f9f6ec47a7fb40679be",
+      "correlationVerified": true,
+      "decision": "TEMPORARY_ISOLATED_IDENTITY_OVERRIDE",
+      "source": "Configured lead ChatGPT chat through Codex in-app browser",
+      "observedAtUtc": "2026-09-27T23:06:12Z",
+      "taskId": "NR-02",
+      "cycle": 1,
+      "scope": "One bounded unavailable-connector LIVE probe in the isolated D3 exact-pin 6.1.1 production profile.",
+      "acceptanceEffect": {
+        "NR-02-AC2": "Unavailable-connector subcriterion is PASS-eligible only after the required typed LIVE outcome and successful config restoration; cancellation evidence remains separate.",
+        "NR-02-AC4": "ADR must document this failure-injection method and its actual result."
+      },
+      "executionStatus": "NOT_RUN; D3 profile and unique connector prerequisite are not ready."
+    },
+    {
+      "decisionId": "NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION",
+      "messageId": "a4b0f8e6-42be-4e08-a75d-1a4dd5bde69a",
+      "requestMessageId": "39a5cdea-ebac-49da-9eb3-e28f19e3a75c",
+      "inReplyTo": "39a5cdea-ebac-49da-9eb3-e28f19e3a75c",
+      "requestSha256": "7f9c07fbfe0f72b0884316e26f4c8eea1db1341ad267c97ce38586c3573c8c66",
+      "responseSha256": "440af0e7bf37accfd47cbdef24cde1c20b106bac833275b8dcfefaf8235d3174",
+      "normalizationSha256": "8cbd7d3108c7cd6bd8b63c2cd9b7c883cd85ab54d77cc7ece2f8ed2c600c726f",
+      "correlationVerified": true,
+      "decision": "ACK_PLUS_STREAM_TERMINATION",
+      "classification": {
+        "typedControlReceipt": "HTTP 200 with status=ok and cancelled_http_turns=1 is required",
+        "streamRequirement": "The correlated stream must terminate within 10 seconds without response.completed.",
+        "preservedDispositions": [
+          "response.failed",
+          "response.incomplete",
+          "clean EOF/incomplete parse",
+          "read cancellation/error"
+        ],
+        "authorization": "This decision classifies evidence only; it does not authorize a live cancellation probe."
+      },
+      "acceptanceEffect": {
+        "NR-02-AC2": "Cancellation subcriterion is PASS-eligible only after the exact acknowledgement and correlated stream termination are observed; the D5 unavailable-connector result remains separately required.",
+        "NR-02-AC1": "NO_DIRECT_CHANGE",
+        "NR-02-AC3": "NO_DIRECT_CHANGE",
+        "NR-02-AC4": "Document the cancellation contract and observed stream semantics."
+      },
+      "taskId": "NR-02",
+      "cycle": 1,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "source": "Configured lead ChatGPT conversation observed through Codex in-app browser and app history",
+      "redactedArtifactRef": "lead-decision-d6",
+      "receivedAtUtc": "2026-09-27 23:52:55 UTC",
+      "executionStatus": "RECORDED; LIVE CANCELLATION NOT RUN."
+    }
+  ],
+  "worktreeVerification": {
+    "artifactRef": "worktree-verify-d6-contract-window-final-20260928",
+    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-worktree-verify-d6-contract-window-final-20260928.txt",
+    "sha256": "44e2bb8a6de5d2f112737dcfce0d0dd678a9d393c2e08970c21b8663abc9dc67",
+    "exitCode": 0,
+    "testedSha": null,
+    "sizeBytes": 1717,
+    "testCount": 16,
+    "failedTestCount": 0,
+    "observedAtUtc": "2026-09-28T00:32:53Z"
+  },
+  "userAuthorizations": [
+    {
+      "id": "ordinary-dev-use-all-nightreviewer-development",
+      "status": "CONFIRMED",
+      "source": "Configured lead ChatGPT thread; user message followed by correlated lead acknowledgement.",
+      "userMessageId": "031ab6c9-34c9-4a6e-b7a0-c894f2ccbeeb",
+      "userMessageObservedAtUtc": "2026-09-27T21:58:32.203Z",
+      "userRaw": {
+        "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/user-dev-all-development-031ab6c9-34c9-4a6e-b7a0-c894f2ccbeeb.raw.txt",
+        "sha256": "b8ce6a663892d4bf5aa7681c866dccaa0bc75892f3bf7b263ca0e3aa24d451e8",
+        "sizeBytes": 70,
+        "visibility": "private"
+      },
+      "leadAcknowledgementMessageId": "f0e24d87-29bb-4e54-b9bc-a31d98bf1291",
+      "leadAcknowledgementObservedAtUtc": "2026-09-27T21:58:56.305Z",
+      "leadRaw": {
+        "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-dev-all-development-ack-f0e24d87-29bb-4e54-b9bc-a31d98bf1291.raw.txt",
+        "sha256": "e03ff51c33dbc03e5ec308e8e277527c8395ac2763c2fc9da28f115a99c653fd",
+        "sizeBytes": 1633,
+        "visibility": "private"
+      },
+      "scope": "Use the ordinary DEV contour for all NightReviewer development, experiments, debugging, browser/MCP checks, tests, and technically appropriate live observations.",
+      "qualificationEffect": "No change. purpose=dev-harness still has no Responses listener; simulated receipts do not qualify AC1-AC3."
+    }
+  ]
+}

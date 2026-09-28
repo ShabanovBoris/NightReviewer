@@ -1,0 +1,4 @@
+event: response.failed
+data: {"type":"response.failed","response":{"id":"resp_connector_error","status":"failed","error":{"type":"connector_error","code":"connector_not_found","status":424}}}
+
+data: [DONE]

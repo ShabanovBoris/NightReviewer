@@ -1121,6 +1121,24 @@
         "settingsChanged": false
       },
       "summary": "A fresh Plugins settings read shows the reported Codex Native2 app (description test), Codex Native2 DEV, and Codex Zero Risk; the required unique Codex Native2 NR-02 connector is absent. No connector tools or settings were changed. This is setup evidence only and does not qualify AC1-AC3."
+    },
+    {
+      "id": "worktree-verify-322740e-20260928",
+      "kind": "LIVE",
+      "status": "PASS",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": "322740e066936394539846ac607947fc5bd51ad8",
+      "environment": "macOS arm64; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 16,
+      "failedTestCount": 0,
+      "expectCalls": 21,
+      "summary": "Typecheck, Biome, all 16 tests, and Bun build passed on the exact NR-02 code commit. This verifies contract behavior only; no qualifying live Responses or connector probe ran.",
+      "artifactRef": "worktree-verify-322740e-20260928",
+      "artifactSha256": "0ebfd6569aa9d7a47e339086e8e0a80ac66f57d3d108929245816d19d956244c",
+      "artifactSizeBytes": 1670,
+      "observedAtUtc": "2026-09-28T00:40:52Z",
+      "artifactPath": "docs/evidence/NR-02-verify-322740e-20260928.txt"
     }
   ],
   "decisionReceipts": [
@@ -1254,15 +1272,15 @@
     }
   ],
   "worktreeVerification": {
-    "artifactRef": "worktree-verify-d6-contract-window-final-20260928",
-    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-worktree-verify-d6-contract-window-final-20260928.txt",
-    "sha256": "44e2bb8a6de5d2f112737dcfce0d0dd678a9d393c2e08970c21b8663abc9dc67",
+    "artifactRef": "worktree-verify-322740e-20260928",
+    "path": "docs/evidence/NR-02-verify-322740e-20260928.txt",
+    "sha256": "0ebfd6569aa9d7a47e339086e8e0a80ac66f57d3d108929245816d19d956244c",
     "exitCode": 0,
-    "testedSha": null,
-    "sizeBytes": 1717,
+    "testedSha": "322740e066936394539846ac607947fc5bd51ad8",
+    "sizeBytes": 1670,
     "testCount": 16,
     "failedTestCount": 0,
-    "observedAtUtc": "2026-09-28T00:32:53Z"
+    "observedAtUtc": "2026-09-28T00:40:52Z"
   },
   "userAuthorizations": [
     {

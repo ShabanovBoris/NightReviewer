@@ -1147,8 +1147,8 @@
       "status": "PASS",
       "command": "env PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
       "exitCode": 0,
-      "testedSha": null,
-      "environment": "macOS 26.6.2 arm64; uncommitted NR-02 worktree based on PR head e7f08ad00d387bbefe2d50e5e4db925084eb59f8; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testedSha": "4af5d09337153707c768394681628ec19b0b4481",
+      "environment": "macOS 26.6.2 arm64; committed NR-02 remediation head 4af5d09337153707c768394681628ec19b0b4481; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
       "testCount": 18,
       "failedTestCount": 0,
       "expectCalls": 30,
@@ -1181,9 +1181,9 @@
       ],
       "summary": "Typecheck, Biome, 18 tests, and build passed. Contract tests verify digest-only trace capture, output-text redaction, and the 512-frame bound. A source-link audit confirms all 16 ADR references use the selected upstream pin. This is local CONTRACT verification only; no LIVE bridge request or qualifying AC evidence was produced.",
       "artifactRef": "nr-02-review-remediation-20260928",
-      "artifactSha256": "d423bef4c62caca430dcdcef15e074acb2ccfb22747e5c6a111bddbc2c5c9361",
-      "artifactSizeBytes": 1969,
-      "observedAtUtc": "2026-09-28T06:55:21Z",
+      "artifactSha256": "d4354be30dca1df4dd80b43fcad82be8aa32f9092dbb07ed60918a0e4ebc5360",
+      "artifactSizeBytes": 1950,
+      "observedAtUtc": "2026-09-28T07:07:35Z",
       "artifactPath": "docs/evidence/NR-02-review-remediation-20260928.txt"
     }
   ],
@@ -1322,11 +1322,13 @@
     "path": "docs/evidence/NR-02-review-remediation-20260928.txt",
     "sha256": "d423bef4c62caca430dcdcef15e074acb2ccfb22747e5c6a111bddbc2c5c9361",
     "exitCode": 0,
-    "testedSha": null,
-    "sizeBytes": 1969,
+    "testedSha": "4af5d09337153707c768394681628ec19b0b4481",
+    "sizeBytes": 1950,
     "testCount": 18,
     "failedTestCount": 0,
-    "observedAtUtc": "2026-09-28T06:55:21Z"
+    "observedAtUtc": "2026-09-28T07:07:35Z",
+    "artifactSha256": "d4354be30dca1df4dd80b43fcad82be8aa32f9092dbb07ed60918a0e4ebc5360",
+    "artifactSizeBytes": 1950
   },
   "userAuthorizations": [
     {

@@ -1,12 +1,12 @@
 NR-02 review finding remediation: AC1-AC3 live evidence remains externally blocked.
-Observed at: 2026-09-28T06:55:21Z
+Observed at: 2026-09-28T07:07:35Z
 Repository branch: nr-02-chatgpt-web-spike
 Base SHA: e9e7812ff4058ce9fc1184e7275be2ebdcd99588
-Review-request head SHA: e7f08ad00d387bbefe2d50e5e4db925084eb59f8
-Tested revision: current uncommitted worktree based on that head; testedSha is intentionally null.
+Review-remediation head SHA: 4af5d09337153707c768394681628ec19b0b4481
+Tested revision: exact committed head 4af5d09337153707c768394681628ec19b0b4481.
 
 Command:
-env PATH="$PWD/.nightreviewer/runtime/bun/bin:$PATH" ./.nightreviewer/runtime/bun/bin/bun run verify
+PATH="$PWD/.nightreviewer/runtime/bun/bin:$PATH" ./.nightreviewer/runtime/bun/bin/bun run verify
 Exit code: 0
 Environment: macOS 26.6.2 arm64; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.
 Result: TypeScript typecheck passed; Biome passed; 18 tests passed, 0 failed, 30 assertions; Bun build passed.

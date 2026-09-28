@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /** Carries the call identity needed to pair the host's function_call_output with the same request. */
 export interface BridgeFunctionCall {
   readonly itemId: string;
@@ -7,7 +9,7 @@ export interface BridgeFunctionCall {
 }
 
 /** Keeps terminal outcomes mutually exclusive so partial and failed turns cannot look successful. */
-export type BridgeSseOutcome =
+export type BridgeSseOutcome = (
   | {
       readonly kind: "completed";
       readonly responseId?: string;
@@ -28,13 +30,45 @@ export type BridgeSseOutcome =
       readonly code: string;
       readonly events: readonly string[];
     }
-  | { readonly kind: "cancelled"; readonly events: readonly string[] };
+  | { readonly kind: "cancelled"; readonly events: readonly string[] }
+) & { readonly sanitizedTrace?: BridgeSseTrace };
 
 /** Restricts terminal-time notifications to the Responses events that end a turn. */
 export type BridgeSseTerminalEvent =
   | "response.completed"
   | "response.incomplete"
   | "response.failed";
+
+/** Keeps trace capture opt-in so ordinary contract/cancellation parsing retains no extra response data. */
+export interface BridgeSseOptions {
+  readonly signal?: AbortSignal;
+  readonly onTerminalEvent?: (eventName: BridgeSseTerminalEvent) => void;
+  readonly captureSanitizedTrace?: boolean;
+}
+
+/** Binds safe event identities to hashes of exact SSE data without retaining model or tool payload text. */
+export interface BridgeSseTraceFrame {
+  readonly event: string;
+  readonly eventNameSha256?: string;
+  readonly dataSha256: string;
+  readonly dataBytes: number;
+  readonly responseId?: string;
+  readonly itemId?: string;
+  readonly callId?: string;
+  readonly toolName?: "read_fixture" | "other";
+}
+
+/** Marks whether every observed frame fit within the bounded live-evidence capture budget. */
+export interface BridgeSseTrace {
+  readonly schemaVersion: "nr02-sanitized-sse/1";
+  readonly complete: boolean;
+  readonly observedFrames: number;
+  readonly frames: readonly BridgeSseTraceFrame[];
+}
+
+const maxSanitizedTraceFrames = 512;
+const maxSanitizedTraceBytes = 1_048_576;
+const maxSanitizedTraceIdentityLength = 256;
 
 /** Holds one event until its blank-line delimiter arrives, even when network chunks split fields. */
 interface SseFrame {
@@ -83,25 +117,120 @@ const observedResponseEvents = new Set([
   "response.failed",
 ]);
 
-/** Keeps the spike contract separate from production and exposes terminal timing to exact-turn probes. */
+/** Keeps the spike contract separate from production and captures bounded traces only for live evidence. */
 export async function readBridgeSse(
   response: Response,
-  signal?: AbortSignal,
-  onTerminalEvent?: (eventName: BridgeSseTerminalEvent) => void,
+  options: BridgeSseOptions = {},
 ): Promise<BridgeSseOutcome> {
+  const traceFrames: BridgeSseTraceFrame[] | undefined =
+    options.captureSanitizedTrace ? [] : undefined;
+  let traceBytes = 0;
+  let observedTraceFrames = 0;
+  let traceComplete = true;
+
+  /** Stores event order and identity digests while keeping untrusted payload text out of receipts. */
+  const captureTraceFrame = (
+    eventName: string | undefined,
+    payload: string,
+    body?: Record<string, unknown>,
+  ): void => {
+    if (!traceFrames) return;
+    observedTraceFrames += 1;
+    const dataBytes = Buffer.byteLength(payload);
+    const eventNameBytes = Buffer.byteLength(eventName ?? "");
+    if (
+      traceFrames.length >= maxSanitizedTraceFrames ||
+      traceBytes + dataBytes + eventNameBytes > maxSanitizedTraceBytes
+    ) {
+      traceComplete = false;
+      return;
+    }
+    traceBytes += dataBytes + eventNameBytes;
+
+    const responseBody = record(body?.response);
+    const item = record(body?.item);
+    const bodyType = stringField(body?.type);
+    const observedName =
+      eventName && observedResponseEvents.has(eventName)
+        ? eventName
+        : bodyType && observedResponseEvents.has(bodyType)
+          ? bodyType
+          : eventName === "data:[DONE]"
+            ? eventName
+            : undefined;
+    const safeIdentity = (value: unknown): string | undefined => {
+      const identity = stringField(value);
+      if (identity && identity.length > maxSanitizedTraceIdentityLength) {
+        traceComplete = false;
+        return undefined;
+      }
+      return identity;
+    };
+    const responseId = safeIdentity(responseBody?.id);
+    const itemId = safeIdentity(item?.id ?? body?.item_id);
+    const callId = safeIdentity(item?.call_id ?? body?.call_id);
+    const toolNameValue = stringField(item?.name ?? body?.name);
+    if (
+      toolNameValue &&
+      toolNameValue.length > maxSanitizedTraceIdentityLength
+    ) {
+      traceComplete = false;
+    }
+
+    traceFrames.push({
+      event: observedName ?? "unrecognized",
+      ...(!observedName && eventName
+        ? {
+            eventNameSha256: createHash("sha256")
+              .update(eventName)
+              .digest("hex"),
+          }
+        : {}),
+      dataSha256: createHash("sha256").update(payload).digest("hex"),
+      dataBytes,
+      ...(responseId ? { responseId } : {}),
+      ...(itemId ? { itemId } : {}),
+      ...(callId ? { callId } : {}),
+      ...(toolNameValue &&
+      toolNameValue.length <= maxSanitizedTraceIdentityLength
+        ? {
+            toolName:
+              toolNameValue === "read_fixture" ? "read_fixture" : "other",
+          }
+        : {}),
+    });
+  };
+
+  const withTrace = (outcome: BridgeSseOutcome): BridgeSseOutcome =>
+    traceFrames
+      ? {
+          ...outcome,
+          sanitizedTrace: {
+            schemaVersion: "nr02-sanitized-sse/1",
+            complete: traceComplete,
+            observedFrames: observedTraceFrames,
+            frames: traceFrames,
+          },
+        }
+      : outcome;
+
   if (!response.ok) {
     const body = await response.json().catch(() => undefined);
     const error = record(record(body)?.error);
-    return {
+    return withTrace({
       kind: "failed",
       status: response.status,
       errorType: stringField(error?.type) ?? "http_error",
       code: stringField(error?.code) ?? `http_${response.status}`,
       events: [],
-    };
+    });
   }
   if (!response.body)
-    return { kind: "incomplete", reason: "response_body_missing", events: [] };
+    return withTrace({
+      kind: "incomplete",
+      reason: "response_body_missing",
+      events: [],
+    });
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -119,13 +248,14 @@ export async function readBridgeSse(
       eventName === "response.incomplete" ||
       eventName === "response.failed"
     ) {
-      onTerminalEvent?.(eventName);
+      options.onTerminalEvent?.(eventName);
     }
   };
 
   const dispatch = (): void => {
     const eventName = frame.event;
     if (frame.data.length === 0) {
+      if (eventName) captureTraceFrame(eventName, "");
       if (eventName && observedResponseEvents.has(eventName)) {
         events.add(eventName);
         notifyTerminalEvent(eventName);
@@ -137,6 +267,7 @@ export async function readBridgeSse(
     const payload = frame.data.join("\n");
     frame = { data: [] };
     if (payload === "[DONE]") {
+      captureTraceFrame("data:[DONE]", payload);
       events.add("data:[DONE]");
       if (terminal) terminal = { ...terminal, events: [...events] };
       return;
@@ -149,6 +280,7 @@ export async function readBridgeSse(
     try {
       body = record(JSON.parse(payload));
     } catch {
+      captureTraceFrame(eventName, payload);
       if (terminal) {
         terminal = { ...terminal, events: [...events] };
         return;
@@ -163,11 +295,13 @@ export async function readBridgeSse(
       return;
     }
     if (!body) {
+      captureTraceFrame(eventName, payload);
       if (terminal) terminal = { ...terminal, events: [...events] };
       return;
     }
 
     const type = stringField(body.type) ?? eventName;
+    captureTraceFrame(eventName, payload, body);
     if (type && observedResponseEvents.has(type)) events.add(type);
     notifyTerminalEvent(type);
     if (terminal) {
@@ -322,19 +456,23 @@ export async function readBridgeSse(
     if (pending) consumeLine(pending);
     dispatch();
   } catch (error) {
-    if (signal?.aborted) return { kind: "cancelled", events: [...events] };
+    if (options.signal?.aborted)
+      return withTrace({ kind: "cancelled", events: [...events] });
     throw error;
   } finally {
     reader.releaseLock();
   }
 
-  if (signal?.aborted) return { kind: "cancelled", events: [...events] };
-  return terminal
-    ? { ...terminal, events: [...events] }
-    : {
-        kind: "incomplete",
-        ...(responseId ? { responseId } : {}),
-        reason: "stream_ended_without_terminal_event",
-        events: [...events],
-      };
+  if (options.signal?.aborted)
+    return withTrace({ kind: "cancelled", events: [...events] });
+  return withTrace(
+    terminal
+      ? { ...terminal, events: [...events] }
+      : {
+          kind: "incomplete",
+          ...(responseId ? { responseId } : {}),
+          reason: "stream_ended_without_terminal_event",
+          events: [...events],
+        },
+  );
 }

@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   type BridgeFunctionCall,
   type BridgeSseOutcome,
+  type BridgeSseTrace,
   readBridgeSse,
 } from "../src/spikes/bridge-sse";
 import { isStreamTerminationWithinAcknowledgementWindow } from "../src/spikes/cancellation-contract";
@@ -35,7 +36,7 @@ interface TurnIdentity {
   readonly turnId: string;
 }
 
-/** Contains only generated identifiers and hashes, never prompt contents or credentials. */
+/** Holds internal scan text separately from the serialized, digest-bound live receipt. */
 interface SessionReceipt {
   readonly threadId: string;
   readonly turnId: string;
@@ -47,6 +48,48 @@ interface SessionReceipt {
   readonly observedOutput: string;
   readonly initialEvents: readonly string[];
   readonly continuationEvents: readonly string[];
+  readonly liveTrace: {
+    readonly schemaVersion: "nr02-live-trace/1";
+    readonly requestIdentity: TurnIdentity;
+    readonly model: string;
+    readonly startedAt: string;
+    readonly finishedAt: string;
+    readonly elapsedMs: number;
+    readonly responseLegs: readonly {
+      readonly name: "function-call" | "tool-result-continuation";
+      readonly startedAt: string;
+      readonly finishedAt: string;
+      readonly elapsedMs: number;
+      readonly responseId: string;
+      readonly sanitizedSse: BridgeSseTrace;
+    }[];
+    readonly fixtureRead: {
+      readonly startedAt: string;
+      readonly finishedAt: string;
+      readonly elapsedMs: number;
+      readonly fixture: string;
+      readonly byteLength: number;
+      readonly fixtureSha256: string;
+      readonly toolCall: {
+        readonly name: "read_fixture";
+        readonly itemId: string;
+        readonly callId: string;
+        readonly arguments: { readonly fixture: "probe" };
+        readonly argumentsSha256: string;
+      };
+      readonly toolOutput: {
+        readonly byteLength: number;
+        readonly sha256: string;
+      };
+    };
+    readonly structuredResult: {
+      readonly responseId: string;
+      readonly canaryId: string;
+      readonly fixtureSha256: string;
+    };
+  };
+  readonly liveTraceSha256: string;
+  readonly liveTraceBytes: number;
 }
 
 /** Missing settings stop the run before any key or prompt can be printed or sent. */
@@ -317,10 +360,16 @@ function makeTurnBody(
   };
 }
 
+/** Selects trace retention at the caller boundary without changing normal probe parsing. */
+interface SendTurnOptions {
+  readonly captureSanitizedTrace?: boolean;
+}
+
 /** Sends only to the validated local endpoint and leaves SSE outcome semantics to the contract parser. */
 async function sendTurn(
   settings: BridgeSettings,
   body: Record<string, unknown>,
+  options: SendTurnOptions = {},
 ): Promise<BridgeSseOutcome> {
   const response = await fetch(endpoint(settings, "/v1/responses"), {
     method: "POST",
@@ -332,7 +381,9 @@ async function sendTurn(
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(180_000),
   });
-  return readBridgeSse(response);
+  return readBridgeSse(response, {
+    captureSanitizedTrace: options.captureSanitizedTrace ?? false,
+  });
 }
 
 /** Refuses terminal errors and partial streams before they can be treated as a successful tool cycle. */
@@ -388,6 +439,8 @@ async function runFreshContext(
   settings: BridgeSettings,
   canaryId: string,
 ): Promise<SessionReceipt> {
+  const sessionStartedAt = new Date().toISOString();
+  const sessionStartedMs = performance.now();
   const identity = { threadId: randomUUID(), turnId: randomUUID() };
   const initialBody = makeTurnBody(
     settings,
@@ -395,13 +448,23 @@ async function runFreshContext(
     [makeEnvironmentMessage(identity), makeUserMessage(identity, canaryId)],
     true,
   );
+  const firstStartedAt = new Date().toISOString();
+  const firstStartedMs = performance.now();
   const first = requireCompleted(
-    await sendTurn(settings, initialBody),
+    await sendTurn(settings, initialBody, { captureSanitizedTrace: true }),
     "function-call turn",
   );
+  const firstFinishedAt = new Date().toISOString();
+  const firstElapsedMs = Math.round(performance.now() - firstStartedMs);
   if (!first.responseId)
     throw new Error("The first response omitted its continuation identity.");
+  if (!first.sanitizedTrace?.complete)
+    throw new Error(
+      "The function-call response trace is missing or incomplete.",
+    );
   const call = requireFixtureCall(first.functionCalls);
+  const fixtureReadStartedAt = new Date().toISOString();
+  const fixtureReadStartedMs = performance.now();
   const fixtureBytes = Buffer.from(await Bun.file(FIXTURE_PATH).arrayBuffer());
   const fixtureText = fixtureBytes.toString("utf8");
   const fixtureSha256 = createHash("sha256").update(fixtureBytes).digest("hex");
@@ -410,6 +473,10 @@ async function runFreshContext(
     content: fixtureText,
     sha256: fixtureSha256,
   });
+  const fixtureReadFinishedAt = new Date().toISOString();
+  const fixtureReadElapsedMs = Math.round(
+    performance.now() - fixtureReadStartedMs,
+  );
   const followUpBody = makeTurnBody(
     settings,
     identity,
@@ -423,12 +490,22 @@ async function runFreshContext(
     false,
     first.responseId,
   );
+  const continuationStartedAt = new Date().toISOString();
+  const continuationStartedMs = performance.now();
   const final = requireCompleted(
-    await sendTurn(settings, followUpBody),
+    await sendTurn(settings, followUpBody, { captureSanitizedTrace: true }),
     "tool-result continuation",
+  );
+  const continuationFinishedAt = new Date().toISOString();
+  const continuationElapsedMs = Math.round(
+    performance.now() - continuationStartedMs,
   );
   if (!final.responseId)
     throw new Error("The completed response omitted its response identity.");
+  if (!final.sanitizedTrace?.complete)
+    throw new Error(
+      "The continuation response trace is missing or incomplete.",
+    );
   if (final.functionCalls.length !== 0)
     throw new Error(
       "The final response requested an unexpected extra tool call.",
@@ -443,7 +520,12 @@ async function runFreshContext(
     );
   }
   const output = asRecord(result);
-  if (output?.canaryId !== canaryId || output.fixtureSha256 !== fixtureSha256) {
+  if (
+    !output ||
+    Object.keys(output).sort().join(",") !== "canaryId,fixtureSha256" ||
+    output.canaryId !== canaryId ||
+    output.fixtureSha256 !== fixtureSha256
+  ) {
     throw new Error(
       "The structured result did not match this fresh session's canary and fixture digest.",
     );
@@ -454,6 +536,60 @@ async function runFreshContext(
     ...first.functionCalls.map((functionCall) => functionCall.arguments),
     final.outputText,
   ].join("\n");
+  const sessionFinishedAt = new Date().toISOString();
+  const liveTrace = {
+    schemaVersion: "nr02-live-trace/1" as const,
+    requestIdentity: identity,
+    model: settings.model,
+    startedAt: sessionStartedAt,
+    finishedAt: sessionFinishedAt,
+    elapsedMs: Math.round(performance.now() - sessionStartedMs),
+    responseLegs: [
+      {
+        name: "function-call" as const,
+        startedAt: firstStartedAt,
+        finishedAt: firstFinishedAt,
+        elapsedMs: firstElapsedMs,
+        responseId: first.responseId,
+        sanitizedSse: first.sanitizedTrace,
+      },
+      {
+        name: "tool-result-continuation" as const,
+        startedAt: continuationStartedAt,
+        finishedAt: continuationFinishedAt,
+        elapsedMs: continuationElapsedMs,
+        responseId: final.responseId,
+        sanitizedSse: final.sanitizedTrace,
+      },
+    ],
+    fixtureRead: {
+      startedAt: fixtureReadStartedAt,
+      finishedAt: fixtureReadFinishedAt,
+      elapsedMs: fixtureReadElapsedMs,
+      fixture: FIXTURE_KEY,
+      byteLength: fixtureBytes.length,
+      fixtureSha256,
+      toolCall: {
+        name: "read_fixture" as const,
+        itemId: call.itemId,
+        callId: call.callId,
+        arguments: { fixture: FIXTURE_KEY as "probe" },
+        argumentsSha256: createHash("sha256")
+          .update(call.arguments)
+          .digest("hex"),
+      },
+      toolOutput: {
+        byteLength: Buffer.byteLength(toolOutput),
+        sha256: createHash("sha256").update(toolOutput).digest("hex"),
+      },
+    },
+    structuredResult: {
+      responseId: final.responseId,
+      canaryId: output.canaryId as string,
+      fixtureSha256: output.fixtureSha256 as string,
+    },
+  };
+  const liveTraceBytes = Buffer.from(JSON.stringify(liveTrace), "utf8");
   return {
     ...identity,
     canaryId,
@@ -464,6 +600,9 @@ async function runFreshContext(
     observedOutput,
     initialEvents: first.events,
     continuationEvents: final.events,
+    liveTrace,
+    liveTraceSha256: createHash("sha256").update(liveTraceBytes).digest("hex"),
+    liveTraceBytes: liveTraceBytes.length,
   };
 }
 
@@ -474,50 +613,48 @@ async function runThreeFreshContexts(settings: BridgeSettings): Promise<void> {
   for (const canary of canaries)
     receipts.push(await runFreshContext(settings, canary));
 
-  for (const receipt of receipts) {
-    for (const otherCanary of canaries) {
-      if (
+  // ❌ Удалено сокращённое формирование three-fresh-contexts receipt: оно отбрасывало timing и trace, нужные NR-02.
+  const sessionReceipts = receipts.map((receipt) => {
+    const foreignCanaryIds = canaries.filter(
+      (otherCanary) =>
         otherCanary !== receipt.canaryId &&
-        receipt.observedOutput.includes(otherCanary)
-      ) {
-        throw new Error(
-          `A fresh response contained a canary owned by another context (${receipt.threadId}).`,
-        );
-      }
-    }
-  }
+        receipt.observedOutput.includes(otherCanary),
+    );
+    const { observedOutput: _observedOutput, ...serializedReceipt } = receipt;
+    return {
+      ...serializedReceipt,
+      isolation: {
+        ownCanaryInStructuredResult:
+          receipt.liveTrace.structuredResult.canaryId === receipt.canaryId,
+        foreignCanariesChecked: canaries.length - 1,
+        foreignCanaryIds,
+      },
+    };
+  });
+  const leakedReceipt = sessionReceipts.find(
+    (receipt) => receipt.isolation.foreignCanaryIds.length > 0,
+  );
   console.log(
     JSON.stringify({
       check: "three-fresh-contexts",
-      status: "pass",
+      status: leakedReceipt ? "fail" : "pass",
+      canaryIsolation: {
+        sessionsChecked: sessionReceipts.length,
+        foreignCanaryLeaks: sessionReceipts.reduce(
+          (sum, receipt) => sum + receipt.isolation.foreignCanaryIds.length,
+          0,
+        ),
+      },
       model: settings.model,
       effort: "high",
       fixture: FIXTURE_KEY,
-      sessions: receipts.map(
-        ({
-          threadId,
-          turnId,
-          canaryId,
-          firstResponseId,
-          finalResponseId,
-          callId,
-          fixtureSha256,
-          initialEvents,
-          continuationEvents,
-        }) => ({
-          threadId,
-          turnId,
-          canaryId,
-          firstResponseId,
-          finalResponseId,
-          callId,
-          fixtureSha256,
-          initialEvents,
-          continuationEvents,
-        }),
-      ),
+      sessions: sessionReceipts,
     }),
   );
+  if (leakedReceipt)
+    throw new Error(
+      `A fresh response contained a canary owned by another context (${leakedReceipt.threadId}).`,
+    );
 }
 
 /** Interrupts only a synthetic UUID turn created by this process, never an existing task. */
@@ -603,16 +740,14 @@ async function runCancellationProbe(settings: BridgeSettings): Promise<void> {
       body: JSON.stringify(body),
       signal: responseAbort.signal,
     });
-    const streamObservation = readBridgeSse(
-      response,
-      undefined,
-      (eventName) => {
+    const streamObservation = readBridgeSse(response, {
+      onTerminalEvent: (eventName) => {
         if (terminalObservedAtMs !== undefined) return;
         terminalObservedAtMs = Date.now();
         terminalObservedAt = new Date(terminalObservedAtMs).toISOString();
         terminalObservedName = eventName;
       },
-    ).then(
+    }).then(
       (outcome) => {
         const terminatedAtMs = Date.now();
         streamFinished = true;

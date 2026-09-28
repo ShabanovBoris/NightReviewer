@@ -147,9 +147,10 @@
         "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
         "worktree-verify-d6-contract-window-final-20260928",
         "nr02-d6-contract-audit-with-boundary-tests-20260928",
-        "config-doctor-after-session-check-20260928"
+        "config-doctor-after-session-check-20260928",
+        "nr-02-review-remediation-20260928"
       ],
-      "notes": "The original source-supported/unsupported capability, selected pin, license, and reproducible next-step requirements remain documented. Lead D5 additionally requires recording the temporary missing-identity failure-injection method and its actual result in the ADR. The method is documented; the actual LIVE result is NOT_RUN because the D3 profile/unique connector prerequisite is not ready, so AC4 remains IN_PROGRESS. D6 cancellation semantics are recorded in the ADR and runbook and the parser regression and the D6 acknowledgement-window helper are covered by contract tests. The live D5 result and cancellation result remain NOT_RUN, so AC4 stays IN_PROGRESS."
+      "notes": "The original source-supported/unsupported capability, selected pin, license, and reproducible next-step requirements remain documented. Lead D5 additionally requires recording the temporary missing-identity failure-injection method and its actual result in the ADR. The method is documented; the actual LIVE result is NOT_RUN because the D3 profile/unique connector prerequisite is not ready, so AC4 remains IN_PROGRESS. D6 cancellation semantics are recorded in the ADR and runbook and the parser regression and the D6 acknowledgement-window helper are covered by contract tests. The live D5 result and cancellation result remain NOT_RUN, so AC4 stays IN_PROGRESS. Review remediation corrects all three malformed upstream citation refs and documents the bounded digest-bound per-session trace format; local contract verification passed. The D5 LIVE result is still NOT_RUN, so AC4 remains IN_PROGRESS."
     }
   ],
   "checks": [
@@ -1139,6 +1140,51 @@
       "artifactSizeBytes": 1670,
       "observedAtUtc": "2026-09-28T00:40:52Z",
       "artifactPath": "docs/evidence/NR-02-verify-322740e-20260928.txt"
+    },
+    {
+      "id": "worktree-verify-r1-review-findings-20260928",
+      "kind": "CONTRACT",
+      "status": "PASS",
+      "command": "env PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS 26.6.2 arm64; uncommitted NR-02 worktree based on PR head e7f08ad00d387bbefe2d50e5e4db925084eb59f8; Bun 1.4.2+744846f84; TypeScript 7.0.2; Biome 2.5.14.",
+      "testCount": 18,
+      "failedTestCount": 0,
+      "expectCalls": 30,
+      "files": [
+        {
+          "path": "scripts/bridge-spike.ts",
+          "sha256": "54e6ee21422213ecb9654a94ef484c355e11dc06d2e13f2641fd095d88abd78b",
+          "sizeBytes": 37290
+        },
+        {
+          "path": "src/spikes/bridge-sse.ts",
+          "sha256": "aa15041e89f7abb846ebbc7062058efc893f3ac88d803bb10ca3594c460b18f9",
+          "sizeBytes": 15609
+        },
+        {
+          "path": "tests/bridge-sse.test.ts",
+          "sha256": "952340cf67cb05a40c5b4becd19614077097fcc097143b726f97d1c82e2620de",
+          "sizeBytes": 10000
+        },
+        {
+          "path": "docs/decisions/0002-bridge-contract.md",
+          "sha256": "f4d0c378acf10ce94f2f8635f1725dd15e692700d30f9eb51a64b772ba51c195",
+          "sizeBytes": 22279
+        },
+        {
+          "path": "spikes/bridge/README.md",
+          "sha256": "d17a9f34164a0542d03b6bbfc84b4ebbba89ddf2b9273fdaedd2dd1f61b3702e",
+          "sizeBytes": 13457
+        }
+      ],
+      "summary": "Typecheck, Biome, 18 tests, and build passed. Contract tests verify digest-only trace capture, output-text redaction, and the 512-frame bound. A source-link audit confirms all 16 ADR references use the selected upstream pin. This is local CONTRACT verification only; no LIVE bridge request or qualifying AC evidence was produced.",
+      "artifactRef": "nr-02-review-remediation-20260928",
+      "artifactSha256": "d423bef4c62caca430dcdcef15e074acb2ccfb22747e5c6a111bddbc2c5c9361",
+      "artifactSizeBytes": 1969,
+      "observedAtUtc": "2026-09-28T06:55:21Z",
+      "artifactPath": "docs/evidence/NR-02-review-remediation-20260928.txt"
     }
   ],
   "decisionReceipts": [
@@ -1272,15 +1318,15 @@
     }
   ],
   "worktreeVerification": {
-    "artifactRef": "worktree-verify-322740e-20260928",
-    "path": "docs/evidence/NR-02-verify-322740e-20260928.txt",
-    "sha256": "0ebfd6569aa9d7a47e339086e8e0a80ac66f57d3d108929245816d19d956244c",
+    "artifactRef": "nr-02-review-remediation-20260928",
+    "path": "docs/evidence/NR-02-review-remediation-20260928.txt",
+    "sha256": "d423bef4c62caca430dcdcef15e074acb2ccfb22747e5c6a111bddbc2c5c9361",
     "exitCode": 0,
-    "testedSha": "322740e066936394539846ac607947fc5bd51ad8",
-    "sizeBytes": 1670,
-    "testCount": 16,
+    "testedSha": null,
+    "sizeBytes": 1969,
+    "testCount": 18,
     "failedTestCount": 0,
-    "observedAtUtc": "2026-09-28T00:40:52Z"
+    "observedAtUtc": "2026-09-28T06:55:21Z"
   },
   "userAuthorizations": [
     {

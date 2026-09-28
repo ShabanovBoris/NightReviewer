@@ -54,6 +54,72 @@ test("reassembles chunked SSE tool calls and preserves the completed response", 
   });
 });
 
+test("captures a bounded digest-bound trace without retaining output text", async () => {
+  const privateOutput = "generated-canary-output-that-must-not-enter-the-trace";
+  const source = [
+    "event: response.created",
+    'data: {"type":"response.created","response":{"id":"resp_trace"}}',
+    "",
+    "event: response.output_item.added",
+    'data: {"type":"response.output_item.added","item":{"id":"fc_item","type":"function_call","call_id":"call_fixture","name":"read_fixture","arguments":""}}',
+    "",
+    "event: response.function_call_arguments.delta",
+    'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item","delta":"{\\"fixture\\":\\"probe\\"}"}',
+    "",
+    "event: response.output_item.done",
+    'data: {"type":"response.output_item.done","item":{"id":"fc_item","type":"function_call","call_id":"call_fixture","name":"read_fixture","arguments":"{\\"fixture\\":\\"probe\\"}"}}',
+    "",
+    "event: response.output_text.delta",
+    `data: {"type":"response.output_text.delta","delta":"${privateOutput}"}`,
+    "",
+    "event: response.completed",
+    'data: {"type":"response.completed","response":{"id":"resp_trace","status":"completed"}}',
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\n");
+  const outcome = await readBridgeSse(new Response(source), {
+    captureSanitizedTrace: true,
+  });
+  const trace = outcome.sanitizedTrace;
+
+  expect(outcome.kind).toBe("completed");
+  expect(trace?.complete).toBe(true);
+  expect(trace?.frames.map(({ event }) => event)).toContain(
+    "response.function_call_arguments.delta",
+  );
+  expect(
+    trace?.frames.find(({ event }) => event === "response.created"),
+  ).toMatchObject({ responseId: "resp_trace" });
+  expect(
+    trace?.frames.find(({ event }) => event === "response.output_item.done"),
+  ).toMatchObject({
+    itemId: "fc_item",
+    callId: "call_fixture",
+    toolName: "read_fixture",
+  });
+  expect(
+    trace?.frames.every(({ dataSha256 }) => /^[a-f0-9]{64}$/.test(dataSha256)),
+  ).toBe(true);
+  expect(JSON.stringify(trace)).not.toContain(privateOutput);
+});
+
+test("marks a sanitized trace incomplete when the frame budget is exceeded", async () => {
+  const frames = Array.from(
+    { length: 513 },
+    () => 'event: response.heartbeat\ndata: {"type":"response.heartbeat"}',
+  );
+  const outcome = await readBridgeSse(new Response(frames.join("\n\n")), {
+    captureSanitizedTrace: true,
+  });
+
+  expect(outcome.sanitizedTrace).toMatchObject({
+    complete: false,
+    observedFrames: 513,
+  });
+  expect(outcome.sanitizedTrace?.frames).toHaveLength(512);
+});
+
 test("preserves event names when CRLF is split across stream chunks", async () => {
   const source = [
     "event: response.created",
@@ -165,11 +231,9 @@ test("reports a terminal event before the response body closes", async () => {
   const terminalEvent = new Promise<string>((resolve) => {
     resolveTerminalEvent = resolve;
   });
-  const outcomePromise = readBridgeSse(
-    new Response(body),
-    undefined,
-    resolveTerminalEvent,
-  );
+  const outcomePromise = readBridgeSse(new Response(body), {
+    onTerminalEvent: resolveTerminalEvent,
+  });
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const eventName = await Promise.race([
@@ -223,7 +287,9 @@ test("classifies an aborted stream as cancellation", async () => {
     },
   });
 
-  expect(await readBridgeSse(new Response(body), controller.signal)).toEqual({
+  expect(
+    await readBridgeSse(new Response(body), { signal: controller.signal }),
+  ).toEqual({
     kind: "cancelled",
     events: [],
   });

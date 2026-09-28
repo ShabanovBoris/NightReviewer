@@ -1320,7 +1320,7 @@
   "worktreeVerification": {
     "artifactRef": "nr-02-review-remediation-20260928",
     "path": "docs/evidence/NR-02-review-remediation-20260928.txt",
-    "sha256": "d423bef4c62caca430dcdcef15e074acb2ccfb22747e5c6a111bddbc2c5c9361",
+    "sha256": "d4354be30dca1df4dd80b43fcad82be8aa32f9092dbb07ed60918a0e4ebc5360",
     "exitCode": 0,
     "testedSha": "4af5d09337153707c768394681628ec19b0b4481",
     "sizeBytes": 1950,

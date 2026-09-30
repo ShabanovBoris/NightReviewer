@@ -1,13 +1,14 @@
 NR-02 cycle 2 — D43 offline model-catalog contract correction
 Verification receipt
 
-Observed at: 2026-09-30T17:49:18Z
+Observed at: 2026-09-30T18:11:21Z
+Local Bun verification completed at 2026-09-30T18:07:07Z; final diff/JSON/documentation checks completed at 2026-09-30T18:11:21Z.
 Repository: ShabanovBoris/NightReviewer
 Branch: nr-02-chatgpt-web-spike
-Published base for this worktree: c759e0a749561adec3cd6b56038d5571dcb6139b
-Published PR head at verification time: c759e0a749561adec3cd6b56038d5571dcb6139b
-Prior exact-head CI: run 36743906186 passed on that published head; D43's uncommitted tree has no exact-head CI result yet.
-Worktree state: D43 correction is uncommitted and unpublished; testedSha is therefore null.
+Published base before D43 correction: c759e0a749561adec3cd6b56038d5571dcb6139b
+Published D43 implementation head: ae3e4e31080cbf98e5d60bf71d7965867449ccbd.
+Exact-head GitHub CI: SUCCESS, run 36755311928 on ae3e4e31080cbf98e5d60bf71d7965867449ccbd.
+Worktree state: the D43 implementation is published; follow-up evidence wording corrections are local and uncommitted, so testedSha for those corrections is null.
 Environment: macOS arm64, pinned Bun 1.4.2.
 Active Codex release: 0.159.0, read locally from the executable embedded in the active Codex desktop app bundle. No authentication files or credentials were read for this observation.
 
@@ -24,14 +25,15 @@ Deterministic checks
 - Command: jq empty docs/evidence/NR-02.json
 - Exit code: 0
 
-- Command: Python D43 documentation/evidence consistency audit (11 predicates)
+- Command: Python D43 documentation/evidence consistency audit (12 predicates)
 - Exit code: 0
-- Result: 11/11 predicates passed across status, spec, task, ADR, runbook, runner, tests, decisions, and acceptance states.
-- Predicates checked: status records consumed D42 and offline-only D43; spec preserves AC1/AC2 NOT_RUN; task requires validated client version and forbids automatic retry; ADR requires a new Lead decision before production preflight; runbook records the active local client release and current D43 prohibition; runner sets the explicit validated catalog query; tests cover no Responses request and sanitized errors; evidence records D42/D43 receipts; acceptance evidence preserves AC1/AC2 NOT_RUN; AC4 uses the ledger's allowed `PASS` status with a documentation-only note; evidence stores the locally resolved client version.
+- Result: 12/12 predicates passed across status, spec, task, ADR, runbook, runner, tests, decisions, and acceptance states.
+- Predicates checked: status records consumed D42, authorized GitHub publication/CI, and no production HTTP; spec preserves AC1/AC2 NOT_RUN and the GitHub CI allowance; task requires validated client version and forbids automatic retry; ADR requires a new Lead decision before production preflight; runbook records the active local client release and D43 prohibition; runner sets the explicit validated catalog query; tests cover no Responses request and sanitized errors; evidence records D42/D43 receipts; acceptance evidence preserves AC1/AC2 NOT_RUN; AC4 uses the ledger's allowed `PASS` status with a documentation-only note; evidence stores the local client version; evidence binds successful exact-head CI to the published D43 head.
 
 Network and mutation boundary
 
-- HTTP requests under D43: 0. The preflight tests use only an injected in-memory fetch stub.
+- Production bridge HTTP requests under D43: 0. The preflight tests use only an injected in-memory fetch stub.
+- GitHub publication and exact-head CI: authorized and completed; commit `ae3e4e31080cbf98e5d60bf71d7965867449ccbd` was pushed and CI run `36755311928` passed on that exact head.
 - Connector calls: 0.
 - Authentication refresh or modification: none; the bearer was not re-read.
 - Production runtime, tunnel, configuration, connector, or credential changes: none.
@@ -43,10 +45,10 @@ Changed tracked-file SHA-256 values at verification time
 
 - scripts/bridge-spike.ts: fbc2649313b512f613adc7f47ee837ed4bcd0df3967880d1804fcd887325f673
 - tests/bridge-runner.test.ts: 8cb9e60a3bfcfb1309b02f881f14dd1b8763221e4d33186ed71e60eb88333d4c
-- docs/STATUS.md: f6b2fafd5a8b3760c55b16c228c86c857234174c216d53283d56ff734930442f
-- docs/decisions/0002-bridge-contract.md: adec7c26779ca55efb9f47e72c5338eb6175eb282d09f560f8e0110d86b2f2d7
-- docs/specs/NR-02.md: cc8bdf841af69fd9531872f2fcd41b5f7e0fadcee42a9a104ed618803a3a9bdb
-- docs/tasks/NR-02.md: f5afa7f21bbef001fc95b6a49ea4b5968cc479ab65c913dd9f750e482976c493
-- spikes/bridge/README.md: 4c988e8895fdf41ae1e3a5182fa957f39cdb5aefe47b2d24e880a100de417574
+- docs/STATUS.md: 0985e98be2d426484d30c818985d0f4b5af4f0a2ad78206ed6cc4f538792684f
+- docs/decisions/0002-bridge-contract.md: 023835b2a5d0dd8c3d9d918bff86a8298e718f502bcb8cdb8bfe4a081a2d2bc7
+- docs/specs/NR-02.md: 3c64aefc3377a68ce41ab918f9af7aff6119a9fccb615228afd373dd63f19758
+- docs/tasks/NR-02.md: 6785909ef125d10741cabf0c47eb982c5db40bd5bb211de4fee23f30006e6b7c
+- spikes/bridge/README.md: 66bbe0921e8457731fea1d2be248e190660f6fa90d653bdaa2d2e087313a9ce4
 
 The evidence ledger and this receipt are excluded from the file list above to avoid a self-referential digest. The ledger's SHA-256 is reported after its final update.

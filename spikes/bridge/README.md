@@ -12,7 +12,7 @@ The runner requires exact bridge version `6.1.3`, an explicit live mode, and `BR
 
 D43 source review found a plausible mismatch with the upstream 6.1.3 catalog contract: the request needs explicit `client_version`, and the Bun fetch User-Agent was not established as a recognized first-party Codex User-Agent. The cause of the D42 response is not live-proven. The current active Codex executable was resolved locally as `0.159.0`; use only the active installed executable's release version, and stop if its identity is ambiguous. Bearer handling remains unchanged. Do not add cookies, originator, or other speculative headers.
 
-D43 authorizes offline source/docs edits and deterministic verification only. Do not run the commands below now: D41 and D42 preflight allowances are consumed, and a new Lead decision is required before any further preflight or LIVE action. No network, connector, setup, Verify, runtime/tunnel/config/credential change, or DEV action is authorized under D43.
+D43 authorizes offline source/docs edits, deterministic verification, publication to PR #3, and exact-head GitHub CI. Do not run the commands below now: D41 and D42 preflight allowances are consumed, and a new Lead decision is required before any further production preflight or LIVE action. No production bridge request, connector call, setup, external Verify, runtime/tunnel/config/credential change, or DEV action is authorized under D43.
 
 ## Historical cycle 1 D3/D5/D6 runbook — preserved, superseded for current acceptance
 

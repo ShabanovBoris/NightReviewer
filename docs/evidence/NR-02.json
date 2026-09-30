@@ -50,7 +50,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D42 replacement preflight failed at authenticated model discovery; no cancellation, unavailable-connector request, Responses request, or connector callback was sent. D43 authorizes offline work only.",
+      "environment": "D42 replacement preflight failed at authenticated model discovery; no cancellation, unavailable-connector request, Responses request, or connector callback was sent. D43 authorizes offline correction, PR publication, and exact-head GitHub CI only; no LIVE acceptance.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -130,7 +130,7 @@
       "status": "PASS",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "See nr-02-cycle2-d43-offline-verification-20260930 for bun run verify, git diff --check, jq parse, and the 11-predicate D43 documentation/evidence audit.",
+      "command": "See nr-02-cycle2-d43-offline-verification-20260930 for bun run verify, git diff --check, jq parse, and the 12-predicate D43 documentation/evidence audit.",
       "exitCode": 0,
       "environment": "macOS arm64, Bun 1.4.2; D43 offline source/docs correction. No HTTP, ChatGPT, connector, production runtime, tunnel, or DEV requests.",
       "startedAt": null,
@@ -1290,14 +1290,14 @@
     {
       "id": "nr-02-cycle2-d43-offline-verification-20260930",
       "kind": "CONTRACT",
-      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json; Python D43 documentation/evidence consistency audit (11 predicates)",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json; Python D43 documentation/evidence consistency audit (12 predicates)",
       "exitCode": 0,
       "testedSha": null,
       "artifactRef": "nr-02-cycle2-d43-offline-verification-20260930",
-      "summary": "Bun 1.4.2 typecheck, Biome, 25 tests (0 failed; 75 expect calls), build, diff whitespace check, JSON parse, and 11/11 D43 documentation/evidence predicates passed. No network, connector, authentication, production, tunnel, or DEV action.",
-      "artifactSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
-      "artifactSizeBytes": 3789,
-      "observedAtUtc": "2026-09-30T17:49:18Z",
+      "summary": "Bun 1.4.2 typecheck, Biome, 25 tests (0 failed; 75 expect calls), build, diff whitespace check, JSON parse, and 12/12 D43 documentation/evidence predicates passed. No production bridge HTTP/connector call, authentication, runtime, tunnel, or DEV action; GitHub publication and exact-head CI were authorized.",
+      "artifactSha256": "925c758ec30ecef19a48059a8227d3d3c3bb62418c5a03724ad928792fbadc70",
+      "artifactSizeBytes": 4268,
+      "observedAtUtc": "2026-09-30T18:11:21Z",
       "artifactPath": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt"
     }
   ],
@@ -1534,7 +1534,7 @@
         "publish to existing PR #3"
       ],
       "prohibited": [
-        "additional HTTP/preflight",
+        "additional production bridge HTTP/preflight",
         "connector calls",
         "AC1/AC2",
         "auth changes",
@@ -1588,7 +1588,7 @@
     "assignmentMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
     "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
     "decisionMessageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
-    "status": "D43_OFFLINE_CORRECTION_VERIFIED_AWAITING_PUBLICATION",
+    "status": "D43_IMPLEMENTATION_PUBLISHED_CI_PASSED_AWAITING_LEAD_REPORT",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1606,7 +1606,7 @@
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY"
     },
-    "implementationLimit": "D42 replacement preflight passed initial health, then authenticated /v1/models returned non-2xx; exact status was not retained. That attempt is consumed. D43 correction passed local deterministic verification at unpublished worktree based on c759e0a749561adec3cd6b56038d5571dcb6139b; no further network, connector, runtime, tunnel, auth, production, DEV, or merge action occurred.",
+    "implementationLimit": "D42 replacement preflight passed initial health, then authenticated /v1/models returned non-2xx; exact status was not retained. That attempt is consumed. D43 catalog correction is published on ae3e4e31080cbf98e5d60bf71d7965867449ccbd and exact-head GitHub CI passed. No further production bridge HTTP, connector, auth, runtime, tunnel, production, or DEV action occurred.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1617,12 +1617,12 @@
     "reviewerRequestNow": "AFTER_AC2_COMPLETE_OR_LEAD_GATE_REVISION",
     "mergeAuthorization": "NOT_GRANTED",
     "documentationVerificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
-    "nextRequiredAction": "Request user authorization to commit/push the verified D43 changes to the existing PR branch; then require exact-head GitHub CI and send Lead the exact head, CI, changed-file hashes, verification receipt, client version, no-network/no-mutation confirmations, and refreshed review-context hash if applicable. Do not retry preflight without a new Lead decision.",
+    "nextRequiredAction": "Update PR #3 narrative, then send Lead the correlated D43 implementation DECISION_REQUEST with exact head/CI, changed-file hashes, verification receipt, local client version 0.159.0, confirmation of zero production bridge HTTP/connector mutation, and refreshed canonical bundleHash if evidence changed. Do not retry preflight without a new Lead decision.",
     "documentationVerificationArtifact": {
       "id": "nr-02-cycle2-d43-offline-verification-20260930",
       "path": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt",
-      "sha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
-      "sizeBytes": 3789
+      "sha256": "925c758ec30ecef19a48059a8227d3d3c3bb62418c5a03724ad928792fbadc70",
+      "sizeBytes": 4268
     },
     "auxiliaryConnector": {
       "identity": "Codex Native2 NR-02",
@@ -1642,13 +1642,19 @@
         "url": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36742361543"
       },
       "d43Correction": {
-        "status": "LOCAL_VERIFIED_AWAITING_PUBLICATION",
+        "status": "PUBLISHED_EXACT_HEAD_CI_PASSED",
         "basedOnPublishedHead": "c759e0a749561adec3cd6b56038d5571dcb6139b",
-        "publishedHead": null,
+        "publishedHead": "ae3e4e31080cbf98e5d60bf71d7965867449ccbd",
         "verificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
-        "verificationSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
-        "verificationSizeBytes": 3789,
-        "activeCodexClientVersion": "0.159.0"
+        "verificationSha256": "925c758ec30ecef19a48059a8227d3d3c3bb62418c5a03724ad928792fbadc70",
+        "verificationSizeBytes": 4268,
+        "activeCodexClientVersion": "0.159.0",
+        "githubCi": {
+          "status": "SUCCESS",
+          "runId": 36755311928,
+          "headSha": "ae3e4e31080cbf98e5d60bf71d7965867449ccbd",
+          "url": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36755311928"
+        }
       }
     },
     "phaseB": {
@@ -1707,17 +1713,24 @@
     },
     "d43Correction": {
       "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
-      "status": "LOCAL_VERIFIED_AWAITING_PUBLICATION",
+      "status": "PUBLISHED_EXACT_HEAD_CI_PASSED",
       "clientVersionSource": "active Codex desktop embedded executable, resolved locally",
       "clientVersion": "0.159.0",
       "causality": "PLAUSIBLE_NOT_LIVE_PROVEN",
-      "networkRequestsUnderD43": 0,
       "productionMutationUnderD43": "NONE",
       "newPreflightAuthorizationRequired": true,
       "verificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
-      "verificationSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
-      "verificationSizeBytes": 3789,
-      "connectorCallsUnderD43": 0
+      "verificationSha256": "925c758ec30ecef19a48059a8227d3d3c3bb62418c5a03724ad928792fbadc70",
+      "verificationSizeBytes": 4268,
+      "connectorCallsUnderD43": 0,
+      "productionBridgeHttpRequestsUnderD43": 0,
+      "githubPushHead": "ae3e4e31080cbf98e5d60bf71d7965867449ccbd",
+      "githubCi": {
+        "status": "SUCCESS",
+        "runId": 36755311928,
+        "headSha": "ae3e4e31080cbf98e5d60bf71d7965867449ccbd",
+        "url": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36755311928"
+      }
     },
     "currentLeadDecisionObserved": {
       "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",

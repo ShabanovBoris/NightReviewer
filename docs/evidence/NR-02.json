@@ -12,7 +12,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D40 cycle 2: active production baseline 6.1.3 is Lead-reported PASS_READY; connector PASS_CONNECTED/Auth=None/Always ask; transport binding user-attested. No qualifying Responses request, read_fixture callback, or correlated answer was run.",
+      "environment": "D41 cycle 2: Lead-reported production 6.1.3; unchanged config.appName selects Codex Native2. No qualifying Responses request, fixture callback, or correlated answer has run.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -34,9 +34,12 @@
         "pinned-dev-chat-list-recheck-continuation-20260928",
         "connector-list-ui-recheck-20260928",
         "lead-decision-d40",
-        "lead-task-assignment-cycle2"
+        "lead-task-assignment-cycle2",
+        "lead-decision-d41",
+        "lead-assignment-d41",
+        "nr-02-cycle2-d41-runner-verification-20260930"
       ],
-      "notes": "LIVE acceptance remains NOT_RUN. The documentation-only cycle 2 assignment explicitly forbids connector calls and LIVE prompts. Readiness and user-attested binding are not a Responses/tool receipt; current runner still expects 6.1.1."
+      "notes": "LIVE remains NOT_RUN. Phase A runner/docs checks are local CONTRACT evidence only. AC1 requires the exact 6.1.3 production bridge, one fresh context/canary, one read_fixture roundtrip, and a correlated final result."
     },
     {
       "acceptanceId": "NR-02-AC2",
@@ -45,7 +48,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D40 cycle 2 baseline 6.1.3; no unavailable-connector or cancellation LIVE probe ran.",
+      "environment": "D41 cycle 2: cancellation is authorized once after Phase A, exact-head CI, one successful preflight, and AC1. The unavailable connector/tool subcheck is not authorized.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -77,9 +80,12 @@
         "nr02-d6-contract-audit-with-boundary-tests-20260928",
         "connector-list-ui-recheck-20260928",
         "lead-decision-d40",
-        "lead-task-assignment-cycle2"
+        "lead-task-assignment-cycle2",
+        "lead-decision-d41",
+        "lead-assignment-d41",
+        "nr-02-cycle2-d41-runner-verification-20260930"
       ],
-      "notes": "The typed unavailable connector/tool result and bounded cancellation acknowledgement plus correlated stream termination remain NOT_RUN. Cycle 2 assignment prohibits LIVE calls. Historical D5 configuration-injection procedure is not the current D40 route; D6 stream evidence semantics remain preserved."
+      "notes": "AC2 remains NOT_RUN. A future cancellation receipt alone cannot make AC2 PASS; unavailable-connector/tool remains NOT_RUN and --connector-unavailable-only must not run."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -88,7 +94,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D40 cycle 2 defers the former three-fresh-context matrix; AC1 still requires one fresh context and unique canary.",
+      "environment": "D41 keeps the former three-fresh-context matrix deferred; AC1 still requires one fresh context and unique canary.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -109,7 +115,9 @@
         "pinned-dev-runtime-status-recheck-continuation-20260928",
         "pinned-dev-chat-list-recheck-continuation-20260928",
         "lead-decision-d40",
-        "lead-task-assignment-cycle2"
+        "lead-task-assignment-cycle2",
+        "lead-decision-d41",
+        "lead-assignment-d41"
       ],
       "notes": "Three-context leakage/cleanup matrix is deferred hardening, not a current minimum-working gate. No such LIVE matrix was run or claimed."
     },
@@ -118,9 +126,9 @@
       "status": "PASS",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "See verified local checks in nr-02-cycle2-doc-verification-20260930",
+      "command": "See D41 documentation audit and local verification in nr-02-cycle2-d41-runner-verification-20260930",
       "exitCode": 0,
-      "environment": "macOS arm64, Bun 1.4.2; D40 cycle 2 documentation/evidence worktree; no LIVE connector/runtime actions.",
+      "environment": "macOS arm64, Bun 1.4.2; D41 cycle 2 local runner/docs worktree; no ChatGPT, connector, production runtime, tunnel, or DEV requests.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -157,9 +165,12 @@
         "nr-02-review-remediation-20260928",
         "lead-decision-d40",
         "lead-task-assignment-cycle2",
-        "nr-02-cycle2-doc-verification-20260930"
+        "nr-02-cycle2-doc-verification-20260930",
+        "docs/specs/NR-02.md",
+        "docs/tasks/NR-02.md",
+        "nr-02-cycle2-d41-runner-verification-20260930"
       ],
-      "notes": "PASS applies only to the AC4 documentation criterion: the spec/task/ADR/status/evidence/runbook now describe the Lead-reported 6.1.3 baseline, user-attested transport binding, historical 6.1.1 source pin, the runner's 6.1.1 guard, current limitations, and the reproducible next step. This does not establish AC1/AC2 or complete NR-02."
+      "notes": "PASS_DOCUMENTATION_ONLY: D40/D41 route, exact production connector Codex Native2, unused auxiliary Codex Native2 NR-02, Phase A/Phase B gates, partial AC2 authorization, and NOT_RUN states are documented and locally verified. This does not establish AC1/AC2 or complete NR-02."
     }
   ],
   "checks": [
@@ -1254,6 +1265,19 @@
       "artifactSizeBytes": 4367,
       "observedAtUtc": "2026-09-30T14:42:43Z",
       "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
+    },
+    {
+      "id": "nr-02-cycle2-d41-runner-verification-20260930",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-d41-runner-verification-20260930",
+      "summary": "Bun 1.4.2 typecheck, Biome (10 files), 21 tests (0 failed; 48 expect calls), and build passed. Separate CLI guard check rejected bare --live before loading settings. No production, connector, tunnel, or DEV request was sent.",
+      "artifactSha256": "22d1b0af761e1391d3436735af26e634e142668e56432b101b9c29c8e38de623",
+      "artifactSizeBytes": 1917,
+      "observedAtUtc": "2026-09-30T16:06:14Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-d41-runner-verification-20260930.txt"
     }
   ],
   "decisionReceipts": [
@@ -1497,30 +1521,29 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE",
-    "assignmentMessageId": "0e99af7e-62b1-4b2d-9b48-8628bc6e51b1",
-    "decisionId": "NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE",
-    "decisionMessageId": "6e6a4d6b-9069-49e6-a705-c3030bc9cab6",
-    "status": "CYCLE2_DOCUMENTATION_READY_LIVE_EVIDENCE_PENDING",
+    "assignmentId": "NR-02-C2-LIVE-613-MINIMUM-WORKING-BRIDGE",
+    "assignmentMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
+    "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
+    "decisionMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
+    "status": "D41_PHASE_A_LOCAL_VERIFIED_PUBLICATION_PENDING",
     "activeProductionBaseline": {
       "version": "6.1.3",
-      "status": "PASS_READY",
-      "tunnel": "existing production tunnel"
+      "status": "PASS_READY_LEAD_REPORTED",
+      "tunnel": "existing production tunnel, unchanged"
     },
     "connector": {
-      "identity": "Codex Native2 NR-02",
-      "status": "PASS_CONNECTED",
-      "authentication": "None",
-      "permission": "Always ask",
-      "transportBinding": "PASS_BY_USER_ATTESTATION"
+      "identity": "Codex Native2",
+      "selectedBy": "unchanged production config.appName; source-checked in D41",
+      "status": "configured selection reported by Lead; no tool callback observed",
+      "transportBinding": "not independently proven by a Responses/tool receipt"
     },
     "acceptance": {
       "NR-02-AC1": "NOT_RUN",
-      "NR-02-AC2": "NOT_RUN",
+      "NR-02-AC2": "PARTIALLY_AUTHORIZED_NOT_RUN",
       "NR-02-AC3": "DEFERRED_HARDENING",
-      "NR-02-AC4": "PASS"
+      "NR-02-AC4": "PASS_DOCUMENTATION_ONLY"
     },
-    "implementationLimit": "scripts/bridge-spike.ts still hardcodes EXPECTED_UPSTREAM_VERSION=6.1.1; it cannot qualify 6.1.3 until separately adapted under Lead authorization.",
+    "implementationLimit": "Runner and docs pass local deterministic verification, but the Phase A adaptation is not yet published and has no exact-head GitHub CI. Phase B is not eligible.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1528,15 +1551,43 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "NOT_REQUIRED_BY_ASSIGNMENT",
+    "reviewerRequestNow": "AFTER_AC2_COMPLETE_OR_LEAD_GATE_REVISION",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-cycle2-doc-verification-20260930",
-    "nextRequiredAction": "Obtain a separate Lead assignment/authorization for the smallest source-checked 6.1.3 runner adaptation and bounded AC1/AC2 LIVE acceptance.",
+    "documentationVerificationRef": "nr-02-cycle2-d41-runner-verification-20260930",
+    "nextRequiredAction": "Publish the bounded Phase A adaptation to existing PR #3 and obtain successful exact-head GitHub verify; then run at most one read-only preflight before any LIVE request.",
     "documentationVerificationArtifact": {
-      "id": "nr-02-cycle2-doc-verification-20260930",
-      "path": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt",
-      "sha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
-      "sizeBytes": 4367
-    }
+      "id": "nr-02-cycle2-d41-runner-verification-20260930",
+      "path": "docs/evidence/NR-02-cycle2-d41-runner-verification-20260930.txt",
+      "sha256": "22d1b0af761e1391d3436735af26e634e142668e56432b101b9c29c8e38de623",
+      "sizeBytes": 1917
+    },
+    "auxiliaryConnector": {
+      "identity": "Codex Native2 NR-02",
+      "status": "KEEP_UNCHANGED",
+      "useForD41LiveAcceptance": false
+    },
+    "phaseA": {
+      "status": "LOCAL_VERIFIED_NOT_PUBLISHED",
+      "verificationRef": "nr-02-cycle2-d41-runner-verification-20260930",
+      "verificationSha256": "22d1b0af761e1391d3436735af26e634e142668e56432b101b9c29c8e38de623",
+      "verificationSizeBytes": 1917,
+      "githubCi": "NOT_RUN"
+    },
+    "phaseB": {
+      "preflightRuns": 0,
+      "preflightStatus": "NOT_RUN",
+      "liveTraffic": "NOT_RUN"
+    },
+    "ac2": {
+      "cancellation": "AUTHORIZED_MAX_1_AFTER_PHASE_A_CI_PREFLIGHT_AND_AC1",
+      "unavailableConnectorOrTool": "NOT_AUTHORIZED_NOT_RUN"
+    },
+    "leadDecisionObserved": {
+      "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
+      "messageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
+      "inReplyTo": "827a7ac9-2a06-473c-b1a6-2802a31a61ac",
+      "source": "Configured Lead ChatGPT conversation observed in the built-in browser"
+    },
+    "afterLiveAction": "Send a correlated DECISION_REQUEST to Lead with AC1/cancellation receipts and the exact remaining unavailable-subcheck blocker; fresh Reviewer review waits until AC2 is complete or Lead explicitly revises the gate."
   }
 }

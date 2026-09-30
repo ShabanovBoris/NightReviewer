@@ -8,7 +8,7 @@ import {
 } from "../src/spikes/bridge-sse";
 import { isStreamTerminationWithinAcknowledgementWindow } from "../src/spikes/cancellation-contract";
 
-const EXPECTED_UPSTREAM_VERSION = "6.1.1";
+const EXPECTED_UPSTREAM_VERSION = "6.1.3";
 const FIXTURE_KEY = "probe";
 const FIXTURE_PATH = resolve("spikes/bridge/fixtures/probe.txt");
 // The model sees only the controlled fixture tree, not the surrounding project checkout.
@@ -28,6 +28,14 @@ interface BridgeSettings {
   readonly baseUrl: URL;
   readonly apiKey: string;
   readonly model: string;
+}
+
+/** Carries the observed process identity into the post-AC1 health gate. */
+interface BridgeProcessIdentity {
+  readonly service: "codex-chatgpt-web";
+  readonly pid: number;
+  readonly version: typeof EXPECTED_UPSTREAM_VERSION;
+  readonly mode: "full";
 }
 
 /** Matches the upstream identity pair whose cancellation and browser session share ownership. */
@@ -140,7 +148,9 @@ function endpoint(settings: BridgeSettings, path: string): URL {
 }
 
 /** Confirms the exact pinned service and model catalog before any model traffic starts. */
-async function verifyBridge(settings: BridgeSettings): Promise<void> {
+async function verifyBridge(
+  settings: BridgeSettings,
+): Promise<BridgeProcessIdentity> {
   const healthResponse = await fetch(endpoint(settings, "/healthz"));
   if (!healthResponse.ok)
     throw new Error(
@@ -165,6 +175,7 @@ async function verifyBridge(settings: BridgeSettings): Promise<void> {
   if (health.mode !== "full" || health.accepting_turns !== true) {
     throw new Error("The bridge must be in full mode and accepting turns.");
   }
+  requireIdleBridge(health, "before model discovery");
 
   const catalogResponse = await fetch(endpoint(settings, "/v1/models"), {
     headers: {
@@ -216,6 +227,7 @@ async function verifyBridge(settings: BridgeSettings): Promise<void> {
     confirmedHealth.service !== health.service ||
     confirmedHealth.pid !== health.pid ||
     confirmedHealth.version !== EXPECTED_UPSTREAM_VERSION ||
+    confirmedHealth.status !== "ok" ||
     confirmedHealth.mode !== "full" ||
     confirmedHealth.accepting_turns !== true
   ) {
@@ -223,6 +235,7 @@ async function verifyBridge(settings: BridgeSettings): Promise<void> {
       "The bridge identity or readiness changed during model discovery.",
     );
   }
+  requireIdleBridge(confirmedHealth, "after model discovery");
   const successfulCatalogRequests =
     confirmedHealth.successful_model_catalog_requests;
   if (
@@ -239,10 +252,68 @@ async function verifyBridge(settings: BridgeSettings): Promise<void> {
       version: health.version,
       pid: health.pid,
       mode: health.mode,
+      activeHttpTurns: health.active_http_turns,
+      activeBrowserTurns: health.active_browser_turns,
       model: settings.model,
       supportedEfforts,
       successfulModelCatalogRequests: successfulCatalogRequests,
       requestHeaders: ["authorization", "accept", "content-type"],
+    }),
+  );
+  return {
+    service: "codex-chatgpt-web",
+    pid: health.pid,
+    version: EXPECTED_UPSTREAM_VERSION,
+    mode: "full",
+  };
+}
+
+/** Keeps pre-LIVE work behind an idle gate at both health observations. */
+export function requireIdleBridge(
+  health: Record<string, unknown>,
+  observation: string,
+): void {
+  if (health.active_http_turns !== 0 || health.active_browser_turns !== 0) {
+    throw new Error(
+      `The bridge must have zero active HTTP and browser turns ${observation} (HTTP=${String(health.active_http_turns)}, browser=${String(health.active_browser_turns)}).`,
+    );
+  }
+}
+
+/** Rechecks the same process after AC1 so cancellation cannot follow an unhealthy or busy bridge. */
+async function verifyBridgeStillIdle(
+  settings: BridgeSettings,
+  identity: BridgeProcessIdentity,
+): Promise<void> {
+  const healthResponse = await fetch(endpoint(settings, "/healthz"));
+  if (!healthResponse.ok) {
+    throw new Error(
+      `Post-AC1 bridge health check returned HTTP ${healthResponse.status}.`,
+    );
+  }
+  const health = (await healthResponse.json()) as Record<string, unknown>;
+  if (
+    health.service !== identity.service ||
+    typeof health.pid !== "number" ||
+    !Number.isSafeInteger(health.pid) ||
+    health.pid !== identity.pid ||
+    health.version !== identity.version ||
+    health.status !== "ok" ||
+    health.mode !== identity.mode ||
+    health.accepting_turns !== true
+  ) {
+    throw new Error("The bridge identity or readiness changed after AC1.");
+  }
+  requireIdleBridge(health, "after AC1");
+  console.log(
+    JSON.stringify({
+      check: "bridge-after-ac1",
+      status: health.status,
+      version: health.version,
+      pid: health.pid,
+      mode: health.mode,
+      activeHttpTurns: health.active_http_turns,
+      activeBrowserTurns: health.active_browser_turns,
     }),
   );
 }
@@ -603,6 +674,42 @@ async function runFreshContext(
     liveTrace,
     liveTraceSha256: createHash("sha256").update(liveTraceBytes).digest("hex"),
     liveTraceBytes: liveTraceBytes.length,
+  };
+}
+
+/** Runs the single AC1 fresh context and projects its private scan state into a safe receipt. */
+export async function runAc1Only(
+  settings: BridgeSettings,
+  executeFreshContext = runFreshContext,
+) {
+  const canaryId = randomUUID();
+  const receipt = await executeFreshContext(settings, canaryId);
+  return {
+    check: "nr02-ac1",
+    status: "pass",
+    model: settings.model,
+    effort: "high",
+    threadId: receipt.threadId,
+    turnId: receipt.turnId,
+    canaryId: receipt.canaryId,
+    responseIds: {
+      functionCall: receipt.firstResponseId,
+      continuation: receipt.finalResponseId,
+    },
+    functionCall: {
+      name: receipt.liveTrace.fixtureRead.toolCall.name,
+      callId: receipt.callId,
+      argumentsSha256: receipt.liveTrace.fixtureRead.toolCall.argumentsSha256,
+    },
+    fixture: {
+      key: FIXTURE_KEY,
+      byteLength: receipt.liveTrace.fixtureRead.byteLength,
+      sha256: receipt.fixtureSha256,
+    },
+    structuredResult: receipt.liveTrace.structuredResult,
+    liveTrace: receipt.liveTrace,
+    liveTraceSha256: receipt.liveTraceSha256,
+    liveTraceBytes: receipt.liveTraceBytes,
   };
 }
 
@@ -1057,36 +1164,77 @@ async function runUnavailableConnectorProbe(
   );
 }
 
-/** Requires an explicit live flag so routine verification never reaches a ChatGPT account. */
-async function main(): Promise<void> {
-  if (!Bun.argv.includes("--live")) {
+// ❌ Удалён implicit three-context/combined-cancel default: D41 requires one named action per LIVE invocation.
+const LIVE_MODE_FLAGS = [
+  "--preflight-only",
+  "--ac1-only",
+  "--cancel-only",
+  "--connector-unavailable-only",
+  "--three-contexts-only",
+] as const;
+
+type LiveModeFlag = (typeof LIVE_MODE_FLAGS)[number];
+
+/** Requires exactly one named LIVE action before settings or network access are read. */
+export function resolveLiveMode(args: readonly string[]): LiveModeFlag {
+  const liveFlags = args.filter((argument) => argument === "--live");
+  if (liveFlags.length !== 1) {
     throw new Error(
-      "This command sends controlled requests to a local ChatGPT Web bridge. Pass --live to run it.",
+      "This command sends controlled requests to a local ChatGPT Web bridge. Pass --live exactly once to run it.",
     );
   }
-  const settings = loadBridgeSettings();
-  await verifyBridge(settings);
-  const modes = ["--cancel-only", "--connector-unavailable-only"].filter(
-    (mode) => Bun.argv.includes(mode),
+  const unknownArguments = args.filter(
+    (argument) =>
+      argument !== "--live" &&
+      !LIVE_MODE_FLAGS.includes(argument as LiveModeFlag),
   );
-  if (modes.length > 1) {
-    throw new Error("Choose at most one single-purpose live probe.");
+  if (unknownArguments.length > 0) {
+    throw new Error(
+      `Unknown live mode argument: ${unknownArguments.join(", ")}.`,
+    );
   }
-  if (modes[0] === "--connector-unavailable-only") {
+  const selectedModes = args.filter((argument) =>
+    LIVE_MODE_FLAGS.includes(argument as LiveModeFlag),
+  );
+  if (selectedModes.length !== 1) {
+    throw new Error(
+      `Choose exactly one explicit live mode: ${LIVE_MODE_FLAGS.join(", ")}.`,
+    );
+  }
+  return selectedModes[0] as LiveModeFlag;
+}
+
+/** Requires an explicit live mode so routine verification never reaches a ChatGPT account. */
+async function main(): Promise<void> {
+  const mode = resolveLiveMode(Bun.argv.slice(2));
+  const settings = loadBridgeSettings();
+  const bridgeIdentity = await verifyBridge(settings);
+  if (mode === "--preflight-only") return;
+  if (mode === "--ac1-only") {
+    console.log(JSON.stringify(await runAc1Only(settings)));
+    await verifyBridgeStillIdle(settings, bridgeIdentity);
+    return;
+  }
+  if (mode === "--connector-unavailable-only") {
     await runUnavailableConnectorProbe(settings);
     return;
   }
-  if (modes[0] === "--cancel-only") {
+  if (mode === "--cancel-only") {
     await runCancellationProbe(settings);
     return;
   }
-  await runThreeFreshContexts(settings);
-  if (Bun.argv.includes("--cancel")) await runCancellationProbe(settings);
+  if (mode === "--three-contexts-only") {
+    await runThreeFreshContexts(settings);
+    return;
+  }
 }
 
-main().catch((error) => {
-  console.error(
-    error instanceof Error ? error.message : "Bridge spike failed.",
-  );
-  process.exitCode = 1;
-});
+// ❌ Удалён безусловный запуск main при импорте, чтобы локальные tests могли проверять runner без bridge traffic.
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(
+      error instanceof Error ? error.message : "Bridge spike failed.",
+    );
+    process.exitCode = 1;
+  });
+}

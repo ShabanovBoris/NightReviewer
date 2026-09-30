@@ -1,18 +1,18 @@
 # NR-02 local bridge spike
 
-This diagnostic client remains outside src/index.ts: its function-call relay is not NightReviewer’s production ReviewerBackend. Its current version guard targets the historical 6.1.1 source audit pin, not the active 6.1.3 production baseline.
+This diagnostic client remains outside `src/index.ts`: its function-call relay is not NightReviewer’s production `ReviewerBackend`.
 
-## Current cycle 2 state — D40
+## Current cycle 2 route — D41
 
-Lead D40 selects the already-running Codex Web GPT 6.1.3 production baseline, its existing production tunnel, and Codex Native2 NR-02 (Authentication=None, permission=Always ask). The readiness and transport binding are recorded as Lead PASS_READY and user-attested; no Responses/tool round-trip has been observed.
+Lead D40 selects the already-running Codex Web GPT `6.1.3` production baseline and existing production tunnel. D41 source-checks that unchanged production `config.appName` selects **`Codex Native2`**. **`Codex Native2 NR-02` is auxiliary, stays unchanged, and is not used for this LIVE route.** No qualifying Responses/tool round-trip has been observed yet.
 
-The current documentation assignment does not authorize connector calls, LIVE prompts, or production/runtime/tunnel changes. AC1 and AC2 are GATING and NOT_RUN. AC3's former three-context matrix is DEFERRED_HARDENING; AC1 still needs one fresh context with a unique canary. DEV remains non-authoritative.
+AC1 is `NOT_RUN`. AC2 is `PARTIALLY_AUTHORIZED` and `NOT_RUN`: one bounded cancellation may run after the D41 gates; unavailable-connector/tool remains `NOT_RUN` and must not run. AC3's former three-context matrix is `DEFERRED_HARDENING`. DEV is not the LIVE acceptance owner.
 
-Important implementation limit: scripts/bridge-spike.ts currently hardcodes EXPECTED_UPSTREAM_VERSION=6.1.1 and fails closed when health reports 6.1.3. Do not run the historical commands below against the active production runtime. A separate Lead assignment must adapt the runner to 6.1.3 and authorize the bounded AC1/AC2 session first. No new Tunnel ID/key, downtime, or connector reconfiguration is part of D40.
+The runner now requires exact version `6.1.3` and explicit live modes. Phase A verification and exact-head GitHub CI must pass before the one read-only production preflight. Do not stop/restart/reconfigure production, tunnel, connector, credentials or DEV; do not create IDs/keys; do not run setup or external Verify. A one-shot approval prompt may be approved only for the currently authorized tool operation; a request for persistent permission or settings changes is a stop condition.
 
 ## Historical cycle 1 D3/D5/D6 runbook — preserved, superseded for current acceptance
 
-Everything in this section before deterministic fixture checks records the former exact-6.1.1 D3 route and associated requirements. It is historical context; it is not the current D40 route and must not be executed for cycle 2.
+Everything in this section before deterministic fixture checks records the former exact-6.1.1 D3 route and associated requirements. It is historical context; it is not the current D40/D41 route and must not be executed for cycle 2.
 
 
 Lead decision D3 (`NR-02-D3-ALLOW-ISOLATED-6_1_1-PRODUCTION-SPIKE`) approves a standard production-profile runtime from commit `a13cd09950969f43e3b7e25c71fa43efaf5446c5` / version `6.1.1`, isolated from DEV and shared production homes. After ordinary setup, the spike may set only `automaticAppName` and `appName` to the unique connector identity `Codex Native2 NR-02`; `manualAppName` stays pinned. The normal setup flow has no connector-name option and resets the production identity to `Codex Native2`, so the override must be revalidated through the pinned parser and runtime. This is a spike-specific config override, not an upstream-supported arbitrary-name setup flow.
@@ -23,6 +23,28 @@ The existing DEV profile is `purpose=dev-harness`; pinned source intentionally r
 The user later authorized ordinary DEV for all NightReviewer development, and lead confirmed that authorization. D4's technical limits remain: keep `purpose=dev-harness`, preserve the existing tunnel credentials, connector identity, and permissions, and label any DEV result as non-qualifying. The current local status reports the launcher running but `mcpRuntime.ready=false` / `state=starting`. DEV tunnel lifecycle is owned by the launcher supervisor; a standalone `tunnel restart` command is not applicable to this profile. The pinned `dev setup --full` attempt failed browser-host verification before setup saved the profile, created a chat, or sent a prompt. See public details in `docs/evidence/NR-02.json` and the private checkpoint. Do not treat these failures as model, bridge, cancellation, connector, or isolation results. Do not retry setup or `dev chat` until the launcher ChatGPT session can be verified.
 
 Do not remove the DEV purpose flag, copy/reinterpret its profile, attach its tunnel to an undocumented listener, or use the shared `6.1.2` Launcher. The live commands below are qualifying probes and may run only after the D3 production profile, unique connector, and external-resource ownership are verified. The existing direct Temporary Chat probe did not call `read_fixture` and is not acceptance evidence.
+
+## Current D41 minimum-working commands
+
+These commands are gated: run them only after Phase A is published and GitHub `verify` succeeds on its exact head. The preflight is read-only and may run once. It requires healthy exact `6.1.3`, full/accepting mode, zero active HTTP/browser turns both before and after authenticated model discovery, the selected model with `high` effort, stable PID/version, and production `config.appName=Codex Native2`.
+
+```sh
+bun run bridge:preflight
+```
+
+After successful preflight, `bridge:live` runs exactly one AC1 fresh context and emits a sanitized digest-bound receipt. It does not run the historical three-context matrix.
+
+```sh
+bun run bridge:live
+```
+
+Only if AC1 passes and the post-AC1 health is healthy and idle, the D41 assignment allows one synthetic cancellation through `--cancel-only`. The unavailable-connector command is not authorized and must not be run.
+
+```sh
+bun run bridge:cancel
+```
+
+The AC1 receipt includes generated turn identity, one canary, response/call IDs, argument digest, fixture key/byte length/SHA-256, sanitized SSE traces, final correlation, timestamps and `liveTrace` digest/size. It excludes fixture contents, model output and credentials. Cancellation control tokens remain process-local and never enter evidence. The runner fails closed on unexpected tool calls, malformed continuation, incomplete trace, wrong canary/digest, non-idle bridge or changed process identity.
 
 ## Contract fixture checks
 
@@ -53,9 +75,9 @@ The isolation assertion scans the first response text and function-call argument
 
 Each `three-fresh-contexts` session receipt includes wall-clock start/finish times and monotonic elapsed time for both Responses legs and the fixture read. Its `sanitizedSse` frame list preserves event order, known event names, bounded response/item/call identities, exact payload byte lengths, and SHA-256 digests of each SSE data field; it never stores delta text or function argument contents. Unknown event names are represented by a digest. The `liveTrace` object also records the fixed `read_fixture` call, fixture and tool-output digests, and the validated canary/result fields. `liveTraceSha256` binds the exact UTF-8 bytes of `JSON.stringify(liveTrace)`, and `liveTraceBytes` records their length. The per-leg trace is bounded to 512 frames and 1 MiB of raw frame/event-name bytes; an incomplete capture fails closed before a session receipt can report `pass`. Each session records how many neighboring canaries were checked and any IDs found; the aggregate receipt reports the total leak count.
 
-## Historical D5 unavailable-connector check — superseded by D40
+## Historical D5 unavailable-connector check — superseded by D40/D41
 
-Lead decision D5 authorizes one bounded production LIVE probe using a temporary missing identity in the isolated D3 profile. It does not authorize creating, disabling, renaming, or changing permissions on any ChatGPT connector, or changing a tunnel, runtime key, browser profile, or credential. The unique `Codex Native2 NR-02` connector and a healthy exact-pin D3 profile are prerequisites; the action-time confirmation for creating that connector is still pending.
+Lead D5 described one production LIVE probe using a temporary missing identity in the isolated D3 profile. It is historical and is not the D41 method. D41 does not authorize changing `appName`, stopping any runtime, or running `--connector-unavailable-only`.
 
 Follow this sequence exactly:
 
@@ -72,7 +94,7 @@ This is a configuration-only failure injection inside the isolated D3 profile. D
 
 For cleanup evidence, use only the isolated production-profile Launcher and quit it normally after all probes. Pinned source routes normal Quit through RuntimeSupervisor, which drains and stops its owned tunnel and daemon; server shutdown clears turn sessions and closes browser workers and brokers. Capture the actual stop result and confirm the isolated daemon/tunnel are stopped. This sequence is source-reviewed, not live-verified. Do not quit the shared Launcher.
 
-## Historical D6 cancellation runbook — not authorized by this assignment
+## Historical D6 exact-6.1.1 cancellation runbook — superseded route
 
 After the supported exact-pin runtime and ChatGPT session are ready, set `BRIDGE_SPIKE_CONTROL_TOKEN` from that runtime’s private settings, then run:
 
@@ -85,7 +107,7 @@ This starts one synthetic read-only turn with fresh UUIDs, calls `/admin/interru
 
 Lead decision D6 (`NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION`) defines the qualification rule. The correlated Responses stream must terminate within 10 seconds of the successful exact-turn acknowledgement and must not produce `response.completed`. The control acknowledgement and actual stream disposition are recorded separately with the synthetic identity and timestamps for Responses start, interrupt request, acknowledgement, and termination. The parser preserves explicit `response.failed`, `response.incomplete`, clean EOF/incomplete, and read cancellation/error as distinct outcomes. Clean EOF/incomplete qualifies only with the exact successful acknowledgement; never manufacture a typed SSE cancellation from EOF or a read error. An explicit `response.failed` with client-cancellation semantics is stronger evidence but is optional.
 
-The control call and post-interrupt observation are bounded. If the stream does not settle within 10 seconds, the harness aborts its local fetch only to release the client resource and reports a failed probe; local cleanup is never recorded as server-side cancellation evidence. D6 classifies the evidence only and does not authorize a live cancellation action. Run the probe only after the qualifying isolated D3 exact-pin `6.1.1` profile and its external-resource prerequisites are ready.
+The control call and post-interrupt observation are bounded. If the stream does not settle within 10 seconds, the harness aborts its local fetch only to release the client resource and reports a failed probe; local cleanup is never recorded as server-side cancellation evidence. D6 originally classified evidence only. D41 separately authorizes at most one cancellation on current `6.1.3`, after Phase A, exact-head CI, successful preflight, and a passing AC1. Use the current D41 commands above, not the old D3 profile prerequisites.
 
 ## Historical cycle 1 connector setup observations
 
@@ -96,6 +118,6 @@ OpenAI's [Secure MCP Tunnel documentation](https://developers.openai.com/api/doc
 The exact 6.1.1 DEV browser smoke passed after sign-in, but that does not prove this Responses route, MCP tool delivery, cancellation, or session isolation. The installed shared Launcher reports version `6.1.2` and is non-qualifying. The uncredentialed catalog attempt against it returned `upstream_server_error`. D3 allows a distinct isolated production-profile route, subject to separate resource and connector-identity prerequisites; D4 allows DEV diagnostics only. No credentials belong in repository files or chat messages.
 
 
-## Current next step after cycle 2 documentation
+## D41 execution sequence
 
-Request a separate Lead assignment to source-check and adapt the runner's 6.1.1 version guard for the active 6.1.3 runtime, then request bounded AC1/AC2 LIVE authorization. Keep Always ask and approve any connector prompt directly. Do not stop or reconfigure the runtime, tunnel, connector, or DEV; do not run the three-context matrix. After qualifying receipts, regenerate the canonical review context and bundleHash and request the fresh Reviewer verdict required for cycle 2.
+Complete and publish the bounded runner/docs adaptation, then require successful GitHub `verify` on that exact PR head. Run the read-only preflight once. If it passes, run AC1 once through production-selected `Codex Native2`; if AC1 passes and health remains idle, run cancellation once. Do not run unavailable-connector mode or three contexts. Record actual LIVE results, refresh evidence and canonical reviewContext/bundleHash, then send Lead a `DECISION_REQUEST` with the remaining AC2 blocker. Request a fresh Reviewer verdict after AC2 is fully satisfied or Lead explicitly revises the gate. Merge still requires later Lead authorization.

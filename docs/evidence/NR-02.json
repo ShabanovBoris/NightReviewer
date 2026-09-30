@@ -1525,7 +1525,7 @@
     "assignmentMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
     "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
     "decisionMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
-    "status": "D41_PHASE_A_LOCAL_VERIFIED_PUBLICATION_PENDING",
+    "status": "D41_PHASE_A_PUBLISHED_CI_VERIFIED_PREFLIGHT_BLOCKED",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1543,7 +1543,7 @@
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY"
     },
-    "implementationLimit": "Runner and docs pass local deterministic verification, but the Phase A adaptation is not yet published and has no exact-head GitHub CI. Phase B is not eligible.",
+    "implementationLimit": "Phase A is published at f6cf1ec6e6f4d5c443924757c486af67d1089aba and exact-head GitHub CI verify passed. The single preflight invocation stopped before network access because local BRIDGE_SPIKE_* inputs are unset; no request was sent. Phase B and LIVE traffic remain blocked.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1554,7 +1554,7 @@
     "reviewerRequestNow": "AFTER_AC2_COMPLETE_OR_LEAD_GATE_REVISION",
     "mergeAuthorization": "NOT_GRANTED",
     "documentationVerificationRef": "nr-02-cycle2-d41-runner-verification-20260930",
-    "nextRequiredAction": "Publish the bounded Phase A adaptation to existing PR #3 and obtain successful exact-head GitHub verify; then run at most one read-only preflight before any LIVE request.",
+    "nextRequiredAction": "Resolve the missing local BRIDGE_SPIKE_* inputs and obtain direction on whether the single preflight may be retried; no request was sent and AC1/AC2 remain NOT_RUN.",
     "documentationVerificationArtifact": {
       "id": "nr-02-cycle2-d41-runner-verification-20260930",
       "path": "docs/evidence/NR-02-cycle2-d41-runner-verification-20260930.txt",
@@ -1567,15 +1567,30 @@
       "useForD41LiveAcceptance": false
     },
     "phaseA": {
-      "status": "LOCAL_VERIFIED_NOT_PUBLISHED",
+      "status": "PUBLISHED_CI_VERIFIED",
       "verificationRef": "nr-02-cycle2-d41-runner-verification-20260930",
       "verificationSha256": "22d1b0af761e1391d3436735af26e634e142668e56432b101b9c29c8e38de623",
       "verificationSizeBytes": 1917,
-      "githubCi": "NOT_RUN"
+      "publishedHead": "f6cf1ec6e6f4d5c443924757c486af67d1089aba",
+      "githubCi": {
+        "status": "SUCCESS",
+        "runId": 36742361543,
+        "headSha": "f6cf1ec6e6f4d5c443924757c486af67d1089aba",
+        "url": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36742361543"
+      }
     },
     "phaseB": {
-      "preflightRuns": 0,
-      "preflightStatus": "NOT_RUN",
+      "preflightRuns": 1,
+      "preflightStatus": "STOPPED_BEFORE_REQUEST_MISSING_LOCAL_INPUTS",
+      "preflightAttempt": {
+        "exitCode": 1,
+        "missingInputs": [
+          "BRIDGE_SPIKE_BASE_URL",
+          "BRIDGE_SPIKE_API_KEY",
+          "BRIDGE_SPIKE_MODEL"
+        ],
+        "requestSent": false
+      },
       "liveTraffic": "NOT_RUN"
     },
     "ac2": {

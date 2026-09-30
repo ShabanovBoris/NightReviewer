@@ -5,7 +5,7 @@
 | Task | Status | PR / evidence |
 |---|---|---|
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
-| NR-02 | IN_PROGRESS — cycle 2 D41 runner/docs adaptation; LIVE evidence pending | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-LIVE-613-MINIMUM-WORKING-BRIDGE; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588; D41 assignment head cc9e7c5fcfb0ca50c97022cd821afe30faf0b04e |
+| NR-02 | IN_PROGRESS — Phase A published, exact-head CI passed; preflight blocked on local inputs | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-LIVE-613-MINIMUM-WORKING-BRIDGE; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588; head f6cf1ec6e6f4d5c443924757c486af67d1089aba |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |
 | NR-05 | PLANNED | — |
@@ -41,6 +41,8 @@ Current state:
 - Merge authorization: `NOT_GRANTED`.
 
 Phase A adapts the runner and documentation with local checks only. Phase B starts only after the exact adaptation is pushed and GitHub CI `verify` succeeds: one read-only preflight, then at most one AC1 and one cancellation. The runner's preflight requires exact version `6.1.3`, stable service identity, authenticated model catalog/high effort and zero active HTTP/browser turns at both health observations. A normal one-shot tool approval is limited to the currently authorized operation; any request for persistent permission or connector setting change is a stop condition.
+
+Phase A is published on head `f6cf1ec6e6f4d5c443924757c486af67d1089aba`; exact-head CI `verify` passed ([run 36742361543](https://github.com/ShabanovBoris/NightReviewer/actions/runs/36742361543)). The single preflight invocation stopped before network access because local `BRIDGE_SPIKE_*` inputs were unset; it sent no request. The preflight gate, AC1, and AC2 remain `NOT_RUN`.
 
 ## Historical decisions and evidence
 

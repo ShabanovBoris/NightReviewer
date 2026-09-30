@@ -12,7 +12,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D41 cycle 2: Lead-reported production 6.1.3; unchanged config.appName selects Codex Native2. No qualifying Responses request, fixture callback, or correlated answer has run.",
+      "environment": "D42 replacement preflight: initial health passed, authenticated /v1/models returned non-2xx; exact status was not retained. Second health, /v1/responses, and connector callback were not reached. D43 offline correction does not establish LIVE acceptance.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -37,9 +37,11 @@
         "lead-task-assignment-cycle2",
         "lead-decision-d41",
         "lead-assignment-d41",
-        "nr-02-cycle2-d41-runner-verification-20260930"
+        "nr-02-cycle2-d41-runner-verification-20260930",
+        "nr-02-d42-replacement-preflight-20260930",
+        "lead-decision-d43"
       ],
-      "notes": "LIVE remains NOT_RUN. Phase A runner/docs checks are local CONTRACT evidence only. AC1 requires the exact 6.1.3 production bridge, one fresh context/canary, one read_fixture roundtrip, and a correlated final result."
+      "notes": "NOT_RUN. D42 failed before Responses and its preflight allowance is consumed. D43 identified the missing release-only client_version contract as a plausible, not live-proven, cause."
     },
     {
       "acceptanceId": "NR-02-AC2",
@@ -48,7 +50,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D41 cycle 2: cancellation is authorized once after Phase A, exact-head CI, one successful preflight, and AC1. The unavailable connector/tool subcheck is not authorized.",
+      "environment": "D42 replacement preflight failed at authenticated model discovery; no cancellation, unavailable-connector request, Responses request, or connector callback was sent. D43 authorizes offline work only.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -83,9 +85,11 @@
         "lead-task-assignment-cycle2",
         "lead-decision-d41",
         "lead-assignment-d41",
-        "nr-02-cycle2-d41-runner-verification-20260930"
+        "nr-02-cycle2-d41-runner-verification-20260930",
+        "nr-02-d42-replacement-preflight-20260930",
+        "lead-decision-d43"
       ],
-      "notes": "AC2 remains NOT_RUN. A future cancellation receipt alone cannot make AC2 PASS; unavailable-connector/tool remains NOT_RUN and --connector-unavailable-only must not run."
+      "notes": "NOT_RUN. D41 cancellation prerequisites were not reached; another preflight requires a new Lead decision. Unavailable connector/tool remains NOT_AUTHORIZED_NOT_RUN."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -126,9 +130,9 @@
       "status": "PASS",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "See D41 documentation audit and local verification in nr-02-cycle2-d41-runner-verification-20260930",
+      "command": "See nr-02-cycle2-d43-offline-verification-20260930 for bun run verify, git diff --check, jq parse, and the 11-predicate D43 documentation/evidence audit.",
       "exitCode": 0,
-      "environment": "macOS arm64, Bun 1.4.2; D41 cycle 2 local runner/docs worktree; no ChatGPT, connector, production runtime, tunnel, or DEV requests.",
+      "environment": "macOS arm64, Bun 1.4.2; D43 offline source/docs correction. No HTTP, ChatGPT, connector, production runtime, tunnel, or DEV requests.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -168,9 +172,13 @@
         "nr-02-cycle2-doc-verification-20260930",
         "docs/specs/NR-02.md",
         "docs/tasks/NR-02.md",
-        "nr-02-cycle2-d41-runner-verification-20260930"
+        "nr-02-cycle2-d41-runner-verification-20260930",
+        "lead-decision-d42",
+        "lead-decision-d43",
+        "nr-02-d42-replacement-preflight-20260930",
+        "nr-02-cycle2-d43-offline-verification-20260930"
       ],
-      "notes": "PASS_DOCUMENTATION_ONLY: D40/D41 route, exact production connector Codex Native2, unused auxiliary Codex Native2 NR-02, Phase A/Phase B gates, partial AC2 authorization, and NOT_RUN states are documented and locally verified. This does not establish AC1/AC2 or complete NR-02."
+      "notes": "PASS_DOCUMENTATION_ONLY: D42 remains a consumed non-2xx catalog failure; D43 identifies a plausible source mismatch without proving the live cause. AC1/AC2 remain NOT_RUN."
     }
   ],
   "checks": [
@@ -1278,6 +1286,19 @@
       "artifactSizeBytes": 1917,
       "observedAtUtc": "2026-09-30T16:06:14Z",
       "artifactPath": "docs/evidence/NR-02-cycle2-d41-runner-verification-20260930.txt"
+    },
+    {
+      "id": "nr-02-cycle2-d43-offline-verification-20260930",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json; Python D43 documentation/evidence consistency audit (11 predicates)",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-d43-offline-verification-20260930",
+      "summary": "Bun 1.4.2 typecheck, Biome, 25 tests (0 failed; 75 expect calls), build, diff whitespace check, JSON parse, and 11/11 D43 documentation/evidence predicates passed. No network, connector, authentication, production, tunnel, or DEV action.",
+      "artifactSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
+      "artifactSizeBytes": 3789,
+      "observedAtUtc": "2026-09-30T17:49:18Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt"
     }
   ],
   "decisionReceipts": [
@@ -1479,6 +1500,48 @@
         "merge": "NOT_AUTHORIZED"
       },
       "source": "Configured Lead ChatGPT chat"
+    },
+    {
+      "decisionId": "NR-02-D42-ONE-REPLACEMENT-PREFLIGHT-AFTER-LOCAL-INPUT-BOOTSTRAP",
+      "messageId": "af6210c5-2957-40a1-a1b7-e194b86e0fcf",
+      "requestMessageId": "4c0fde06-9273-4dc6-ada3-c5cf84df8a62",
+      "requestSha256": "3dea7631d52e8f1401f68f92b7b757363462c9ede01eef10c5267f46330a7ef5",
+      "responseSha256": "1a6a3291132d9e17a2d25179651dd7aff7834c71ae49b6386218c22ecfcbfbdc",
+      "correlationVerified": true,
+      "decision": "AUTHORIZE_ONE_REPLACEMENT_PREFLIGHT_AFTER_LOCAL_ONLY_BOOTSTRAP",
+      "executionStatus": "CONSUMED; AUTHENTICATED MODEL CATALOG NON_2XX; EXACT STATUS NOT RETAINED; NO RESPONSES OR CONNECTOR CALL; NO PRODUCTION MUTATION.",
+      "privateEvidence": {
+        "preflightArtifactId": "nr-02-d42-replacement-preflight-20260930",
+        "preflightSha256": "f92482ce73006710e53cc031d1e3f24d2fe4d60e165275a033405b0526e94867",
+        "prHeadSha": "c759e0a749561adec3cd6b56038d5571dcb6139b"
+      },
+      "source": "Configured Lead ChatGPT conversation observed in the built-in browser"
+    },
+    {
+      "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
+      "messageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
+      "requestMessageId": "d3c6d59d-b450-443c-86aa-57b6e13828b7",
+      "requestSha256": "3f20e68401085efbfd7247162d154cdddd1bbdc96041e9ff6bd07bf832853e21",
+      "responseSha256": "0b425f3c2e7473b0c80423e265248f3ae73915a368b816414bb258bad4909974",
+      "normalizationSha256": "6a1232a5ee93449718c145b803bd16e00ae63e2a1b049078c33f4edd5bf10148",
+      "correlationVerified": true,
+      "decision": "ACCEPT_D42_FAILURE_AND_AUTHORIZE_OFFLINE_SOURCE_CORRECTION_ONLY",
+      "finding": "Missing release-only client_version is a source-contract mismatch; causality for D42 remains plausible, not live-proven.",
+      "authorized": [
+        "offline repository edits",
+        "deterministic tests",
+        "exact-head CI",
+        "publish to existing PR #3"
+      ],
+      "prohibited": [
+        "additional HTTP/preflight",
+        "connector calls",
+        "AC1/AC2",
+        "auth changes",
+        "runtime/tunnel/config/DEV mutation",
+        "merge"
+      ],
+      "source": "Configured Lead ChatGPT conversation via Codex app read_thread; correlation verified"
     }
   ],
   "worktreeVerification": {
@@ -1523,9 +1586,9 @@
     "cycle": 2,
     "assignmentId": "NR-02-C2-LIVE-613-MINIMUM-WORKING-BRIDGE",
     "assignmentMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
-    "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
-    "decisionMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
-    "status": "D41_PHASE_A_PUBLISHED_CI_VERIFIED_PREFLIGHT_BLOCKED",
+    "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
+    "decisionMessageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
+    "status": "D43_OFFLINE_CORRECTION_VERIFIED_AWAITING_PUBLICATION",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1539,11 +1602,11 @@
     },
     "acceptance": {
       "NR-02-AC1": "NOT_RUN",
-      "NR-02-AC2": "PARTIALLY_AUTHORIZED_NOT_RUN",
+      "NR-02-AC2": "NOT_RUN_D41_GATE_NOT_REACHED_D43_LIVE_BLOCKED",
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY"
     },
-    "implementationLimit": "Phase A is published at f6cf1ec6e6f4d5c443924757c486af67d1089aba and exact-head GitHub CI verify passed. The single preflight invocation stopped before network access because local BRIDGE_SPIKE_* inputs are unset; no request was sent. Phase B and LIVE traffic remain blocked.",
+    "implementationLimit": "D42 replacement preflight passed initial health, then authenticated /v1/models returned non-2xx; exact status was not retained. That attempt is consumed. D43 correction passed local deterministic verification at unpublished worktree based on c759e0a749561adec3cd6b56038d5571dcb6139b; no further network, connector, runtime, tunnel, auth, production, DEV, or merge action occurred.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1553,13 +1616,13 @@
     },
     "reviewerRequestNow": "AFTER_AC2_COMPLETE_OR_LEAD_GATE_REVISION",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-cycle2-d41-runner-verification-20260930",
-    "nextRequiredAction": "Resolve the missing local BRIDGE_SPIKE_* inputs and obtain direction on whether the single preflight may be retried; no request was sent and AC1/AC2 remain NOT_RUN.",
+    "documentationVerificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
+    "nextRequiredAction": "Request user authorization to commit/push the verified D43 changes to the existing PR branch; then require exact-head GitHub CI and send Lead the exact head, CI, changed-file hashes, verification receipt, client version, no-network/no-mutation confirmations, and refreshed review-context hash if applicable. Do not retry preflight without a new Lead decision.",
     "documentationVerificationArtifact": {
-      "id": "nr-02-cycle2-d41-runner-verification-20260930",
-      "path": "docs/evidence/NR-02-cycle2-d41-runner-verification-20260930.txt",
-      "sha256": "22d1b0af761e1391d3436735af26e634e142668e56432b101b9c29c8e38de623",
-      "sizeBytes": 1917
+      "id": "nr-02-cycle2-d43-offline-verification-20260930",
+      "path": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt",
+      "sha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
+      "sizeBytes": 3789
     },
     "auxiliaryConnector": {
       "identity": "Codex Native2 NR-02",
@@ -1577,24 +1640,49 @@
         "runId": 36742361543,
         "headSha": "f6cf1ec6e6f4d5c443924757c486af67d1089aba",
         "url": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/36742361543"
+      },
+      "d43Correction": {
+        "status": "LOCAL_VERIFIED_AWAITING_PUBLICATION",
+        "basedOnPublishedHead": "c759e0a749561adec3cd6b56038d5571dcb6139b",
+        "publishedHead": null,
+        "verificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
+        "verificationSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
+        "verificationSizeBytes": 3789,
+        "activeCodexClientVersion": "0.159.0"
       }
     },
     "phaseB": {
-      "preflightRuns": 1,
-      "preflightStatus": "STOPPED_BEFORE_REQUEST_MISSING_LOCAL_INPUTS",
+      "preflightRuns": 2,
+      "preflightStatus": "D41_STOPPED_BEFORE_REQUEST; D42_FAILED_AUTHENTICATED_CATALOG_NON_2XX_AND_CONSUMED; D43_NO_RETRY_AUTHORIZED",
       "preflightAttempt": {
-        "exitCode": 1,
-        "missingInputs": [
-          "BRIDGE_SPIKE_BASE_URL",
-          "BRIDGE_SPIKE_API_KEY",
-          "BRIDGE_SPIKE_MODEL"
-        ],
-        "requestSent": false
+        "d41": {
+          "exitCode": 1,
+          "missingInputs": [
+            "BRIDGE_SPIKE_BASE_URL",
+            "BRIDGE_SPIKE_API_KEY",
+            "BRIDGE_SPIKE_MODEL"
+          ],
+          "requestSent": false,
+          "status": "STOPPED_BEFORE_REQUEST"
+        },
+        "d42": {
+          "exitCode": 1,
+          "failureClass": "authenticated_model_catalog_http_failure",
+          "httpStatus": null,
+          "exactStatusRetained": false,
+          "initialHealth": "PASS",
+          "secondHealth": "NOT_REACHED",
+          "responsesRequestSent": false,
+          "connectorToolCallSent": false,
+          "productionMutation": "NONE",
+          "runConsumed": true,
+          "retryCountRemaining": 0
+        }
       },
-      "liveTraffic": "NOT_RUN"
+      "liveTraffic": "NOT_RUN; D43 AUTHORIZES NO LIVE TRAFFIC"
     },
     "ac2": {
-      "cancellation": "AUTHORIZED_MAX_1_AFTER_PHASE_A_CI_PREFLIGHT_AND_AC1",
+      "cancellation": "D41_CONDITIONAL_AUTHORIZATION_NOT_ACTIONABLE; D43_REQUIRES_NEW_PREFLIGHT_DECISION",
       "unavailableConnectorOrTool": "NOT_AUTHORIZED_NOT_RUN"
     },
     "leadDecisionObserved": {
@@ -1603,6 +1691,39 @@
       "inReplyTo": "827a7ac9-2a06-473c-b1a6-2802a31a61ac",
       "source": "Configured Lead ChatGPT conversation observed in the built-in browser"
     },
-    "afterLiveAction": "Send a correlated DECISION_REQUEST to Lead with AC1/cancellation receipts and the exact remaining unavailable-subcheck blocker; fresh Reviewer review waits until AC2 is complete or Lead explicitly revises the gate."
+    "afterLiveAction": "Superseded by D43. No further preflight or LIVE action is authorized; a new Lead decision is required before any network request.",
+    "d42": {
+      "decisionId": "NR-02-D42-ONE-REPLACEMENT-PREFLIGHT-AFTER-LOCAL-INPUT-BOOTSTRAP",
+      "preflightArtifactId": "nr-02-d42-replacement-preflight-20260930",
+      "preflightArtifactSha256": "f92482ce73006710e53cc031d1e3f24d2fe4d60e165275a033405b0526e94867",
+      "classification": "FAIL_BEFORE_RESPONSES_CONSUMED",
+      "authenticatedModelCatalog": "HTTP_NON_2XX_EXACT_STATUS_NOT_RETAINED",
+      "retryCountRemaining": 0,
+      "pr": {
+        "headSha": "c759e0a749561adec3cd6b56038d5571dcb6139b",
+        "exactHeadCiRunId": 36743906186,
+        "exactHeadCiStatus": "SUCCESS"
+      }
+    },
+    "d43Correction": {
+      "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
+      "status": "LOCAL_VERIFIED_AWAITING_PUBLICATION",
+      "clientVersionSource": "active Codex desktop embedded executable, resolved locally",
+      "clientVersion": "0.159.0",
+      "causality": "PLAUSIBLE_NOT_LIVE_PROVEN",
+      "networkRequestsUnderD43": 0,
+      "productionMutationUnderD43": "NONE",
+      "newPreflightAuthorizationRequired": true,
+      "verificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
+      "verificationSha256": "7548d51303411d4a663ccae0a6b368c2404ae7f800b74c24d8caf1c736c464aa",
+      "verificationSizeBytes": 3789,
+      "connectorCallsUnderD43": 0
+    },
+    "currentLeadDecisionObserved": {
+      "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
+      "messageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
+      "inReplyTo": "d3c6d59d-b450-443c-86aa-57b6e13828b7",
+      "source": "Configured Lead ChatGPT conversation observed through Codex app read_thread"
+    }
   }
 }

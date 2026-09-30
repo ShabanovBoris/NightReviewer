@@ -28,6 +28,48 @@ interface BridgeSettings {
   readonly baseUrl: URL;
   readonly apiKey: string;
   readonly model: string;
+  readonly clientVersion: string;
+}
+
+type BridgeFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>;
+
+type ModelCatalogFailureStage =
+  | "config"
+  | "transport"
+  | "request"
+  | "catalog"
+  | "upstream";
+
+/** Carries the small, source-owned health classification allowed in failure evidence. */
+interface SafeHealthCatalogResult {
+  readonly status: number;
+  readonly failureStage?: ModelCatalogFailureStage;
+  readonly failureCode?: string;
+}
+
+/** Carries only the catalog status and allowlisted health classification, never response content. */
+export class ModelCatalogHttpError extends Error {
+  constructor(
+    readonly httpStatus: number,
+    readonly healthLastModelCatalogResult?: SafeHealthCatalogResult,
+  ) {
+    super("Model discovery returned a non-success HTTP status.");
+    this.name = "ModelCatalogHttpError";
+  }
+
+  toSanitizedReceipt(): Record<string, unknown> {
+    return {
+      check: "bridge-model-catalog",
+      status: "fail",
+      httpStatus: this.httpStatus,
+      ...(this.healthLastModelCatalogResult
+        ? { healthLastModelCatalogResult: this.healthLastModelCatalogResult }
+        : {}),
+    };
+  }
 }
 
 /** Carries the observed process identity into the post-AC1 health gate. */
@@ -101,15 +143,30 @@ interface SessionReceipt {
 }
 
 /** Missing settings stop the run before any key or prompt can be printed or sent. */
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]?.trim();
+function requiredEnvironment(
+  name: string,
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
+  const value = environment[name]?.trim();
   if (!value) throw new Error(`${name} is required; no request was sent.`);
   return value;
 }
 
+/** Prevents local release metadata from becoming arbitrary URL query text. */
+export function validateReleaseClientVersion(value: string): string {
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
+    throw new Error(
+      "BRIDGE_SPIKE_CLIENT_VERSION must be release semver major.minor.patch; no request was sent.",
+    );
+  }
+  return value;
+}
+
 /** Keeps real prompts and credentials on the user's local loopback bridge. */
-function loadBridgeSettings(): BridgeSettings {
-  const rawBaseUrl = requiredEnvironment("BRIDGE_SPIKE_BASE_URL");
+export function loadBridgeSettings(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): BridgeSettings {
+  const rawBaseUrl = requiredEnvironment("BRIDGE_SPIKE_BASE_URL", environment);
   let baseUrl: URL;
   try {
     baseUrl = new URL(rawBaseUrl);
@@ -137,8 +194,11 @@ function loadBridgeSettings(): BridgeSettings {
   }
   return {
     baseUrl,
-    apiKey: requiredEnvironment("BRIDGE_SPIKE_API_KEY"),
-    model: requiredEnvironment("BRIDGE_SPIKE_MODEL"),
+    apiKey: requiredEnvironment("BRIDGE_SPIKE_API_KEY", environment),
+    model: requiredEnvironment("BRIDGE_SPIKE_MODEL", environment),
+    clientVersion: validateReleaseClientVersion(
+      requiredEnvironment("BRIDGE_SPIKE_CLIENT_VERSION", environment),
+    ),
   };
 }
 
@@ -147,11 +207,50 @@ function endpoint(settings: BridgeSettings, path: string): URL {
   return new URL(path, settings.baseUrl);
 }
 
-/** Confirms the exact pinned service and model catalog before any model traffic starts. */
-async function verifyBridge(
+/** Projects the bridge-owned catalog diagnostic into an allowlisted receipt shape. */
+function safeHealthCatalogResult(
+  value: unknown,
+): SafeHealthCatalogResult | undefined {
+  const result = asRecord(value);
+  if (
+    !result ||
+    typeof result.status !== "number" ||
+    !Number.isInteger(result.status) ||
+    result.status < 100 ||
+    result.status > 599
+  ) {
+    return undefined;
+  }
+
+  const failure = asRecord(result.failure);
+  const stage = failure?.stage;
+  const safeStage =
+    stage === "config" ||
+    stage === "transport" ||
+    stage === "request" ||
+    stage === "catalog" ||
+    stage === "upstream"
+      ? stage
+      : undefined;
+  const code = failure?.code;
+  const safeCode =
+    typeof code === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(code)
+      ? code
+      : undefined;
+
+  return {
+    status: result.status,
+    ...(safeStage ? { failureStage: safeStage } : {}),
+    ...(safeCode ? { failureCode: safeCode } : {}),
+  };
+}
+
+/** Verifies identity and catalog through an injectable fetch boundary for deterministic offline tests. */
+export async function verifyBridge(
   settings: BridgeSettings,
+  fetcher: BridgeFetch = fetch,
 ): Promise<BridgeProcessIdentity> {
-  const healthResponse = await fetch(endpoint(settings, "/healthz"));
+  const healthResponse = await fetcher(endpoint(settings, "/healthz"));
   if (!healthResponse.ok)
     throw new Error(
       `Bridge health check returned HTTP ${healthResponse.status}.`,
@@ -177,14 +276,19 @@ async function verifyBridge(
   }
   requireIdleBridge(health, "before model discovery");
 
-  const catalogResponse = await fetch(endpoint(settings, "/v1/models"), {
+  const catalogUrl = endpoint(settings, "/v1/models");
+  catalogUrl.searchParams.set("client_version", settings.clientVersion);
+  const catalogResponse = await fetcher(catalogUrl, {
     headers: {
       authorization: `Bearer ${settings.apiKey}`,
       accept: "application/json",
     },
   });
   if (!catalogResponse.ok)
-    throw new Error(`Model discovery returned HTTP ${catalogResponse.status}.`);
+    throw new ModelCatalogHttpError(
+      catalogResponse.status,
+      safeHealthCatalogResult(health.last_model_catalog_result),
+    );
   const catalog = (await catalogResponse.json()) as { models?: unknown };
   const models = Array.isArray(catalog.models) ? catalog.models : [];
   const modelSlugs = models.flatMap((value) => {
@@ -213,7 +317,7 @@ async function verifyBridge(
     );
   }
 
-  const confirmedHealthResponse = await fetch(endpoint(settings, "/healthz"));
+  const confirmedHealthResponse = await fetcher(endpoint(settings, "/healthz"));
   if (!confirmedHealthResponse.ok) {
     throw new Error(
       `Bridge confirmation returned HTTP ${confirmedHealthResponse.status}.`,
@@ -255,6 +359,7 @@ async function verifyBridge(
       activeHttpTurns: health.active_http_turns,
       activeBrowserTurns: health.active_browser_turns,
       model: settings.model,
+      clientVersion: settings.clientVersion,
       supportedEfforts,
       successfulModelCatalogRequests: successfulCatalogRequests,
       requestHeaders: ["authorization", "accept", "content-type"],
@@ -266,6 +371,14 @@ async function verifyBridge(
     version: EXPECTED_UPSTREAM_VERSION,
     mode: "full",
   };
+}
+
+/** Keeps all required local inputs fail-closed before the first preflight network request. */
+export async function runPreflight(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  fetcher: BridgeFetch = fetch,
+): Promise<BridgeProcessIdentity> {
+  return verifyBridge(loadBridgeSettings(environment), fetcher);
 }
 
 /** Keeps pre-LIVE work behind an idle gate at both health observations. */
@@ -766,7 +879,10 @@ async function runThreeFreshContexts(settings: BridgeSettings): Promise<void> {
 
 /** Interrupts only a synthetic UUID turn created by this process, never an existing task. */
 async function runCancellationProbe(settings: BridgeSettings): Promise<void> {
-  const controlToken = requiredEnvironment("BRIDGE_SPIKE_CONTROL_TOKEN");
+  const controlToken = requiredEnvironment(
+    "BRIDGE_SPIKE_CONTROL_TOKEN",
+    process.env,
+  );
   const identity = { threadId: randomUUID(), turnId: randomUUID() };
   const body = {
     model: settings.model,
@@ -1207,9 +1323,12 @@ export function resolveLiveMode(args: readonly string[]): LiveModeFlag {
 /** Requires an explicit live mode so routine verification never reaches a ChatGPT account. */
 async function main(): Promise<void> {
   const mode = resolveLiveMode(Bun.argv.slice(2));
+  if (mode === "--preflight-only") {
+    await runPreflight();
+    return;
+  }
   const settings = loadBridgeSettings();
   const bridgeIdentity = await verifyBridge(settings);
-  if (mode === "--preflight-only") return;
   if (mode === "--ac1-only") {
     console.log(JSON.stringify(await runAc1Only(settings)));
     await verifyBridgeStillIdle(settings, bridgeIdentity);
@@ -1232,9 +1351,13 @@ async function main(): Promise<void> {
 // ❌ Удалён безусловный запуск main при импорте, чтобы локальные tests могли проверять runner без bridge traffic.
 if (import.meta.main) {
   main().catch((error) => {
-    console.error(
-      error instanceof Error ? error.message : "Bridge spike failed.",
-    );
+    if (error instanceof ModelCatalogHttpError) {
+      console.error(JSON.stringify(error.toSanitizedReceipt()));
+    } else {
+      console.error(
+        error instanceof Error ? error.message : "Bridge spike failed.",
+      );
+    }
     process.exitCode = 1;
   });
 }

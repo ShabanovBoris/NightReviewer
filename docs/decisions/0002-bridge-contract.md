@@ -1,14 +1,22 @@
 # ADR-0002 — ChatGPT Web bridge contract spike
 
-Дата: 2026-09-27; актуализация: 2026-09-30 по D40 и D41. Статус: **provisional**; runner/docs adaptation проходит local verification, genuine LIVE AC1/AC2 receipts ещё не зафиксированы.
+Дата: 2026-09-27; актуализация: 2026-09-30 по D40–D43. Статус: **provisional**; D42 model-catalog preflight failed and was consumed, D43 offline correction is locally deterministic-verified but unpublished, genuine LIVE AC1/AC2 receipts ещё не зафиксированы.
 
 Lead D40 задаёт minimum-working маршрут на уже работающем Codex Web GPT `6.1.3` и существующем production tunnel. D41 уточняет выбор connector по неизменённому production `config.appName`: текущий connector — **`Codex Native2`**. Ранее созданный **`Codex Native2 NR-02`** является auxiliary connector и в этом маршруте не используется; его настройки не меняются. Lead отмечает production baseline как `PASS_READY`; эти сведения плюс source inspection не доказывают независимый tool callback или Responses round-trip.
 
 Lead D41 source-check подтверждает нужные интерфейсы upstream `6.1.3`: `/healthz`, authenticated `/v1/models`, `POST /v1/responses` и exact-turn `/admin/interrupt-turn`. Source contract сообщает HTTP 424 `connector_error/connector_not_found`, если выбранный connector отсутствует в каталоге; в текущем задании эта ветка не исполняется, потому что безопасного non-mutating injection не установлено. Это source-level сведения, не LIVE receipts.
 
+### Lead D42/D43 — consumed catalog preflight and offline correction
+
+D42's single replacement preflight passed the first `/healthz`, then authenticated `GET /v1/models` returned non-2xx. The exact HTTP status was not retained; the second health observation and `/v1/responses` were not reached. No connector call or production mutation occurred. The replacement attempt is consumed and has no retry remaining under D42/D43.
+
+D43's source review found a catalog contract mismatch: upstream 6.1.3 derives `client_version` from a recognized first-party Codex User-Agent or preserves an explicit query parameter, and the models backend requires release-only `major.minor.patch`. The runner previously sent neither an explicit `client_version` nor a proven native Codex User-Agent. This is a plausible explanation for D42, not a live-proven cause. Lead authorizes offline repository edits, deterministic tests, exact-head CI, and publication to PR #3 only; no network, connector, auth, runtime, tunnel, production, or DEV action is authorized.
+
+The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semver, and forwards that value as `GET /v1/models?client_version=...`. The local active Codex desktop executable was resolved from its installed app bundle and reports `0.159.0`. Authorization handling is unchanged. No speculative headers are added. Future non-2xx diagnostics carry numeric HTTP status plus only allowlisted `last_model_catalog_result` stage/code classification when available; response body, URL, bearer, and account data are excluded. The corrected contract must not be retried against production without a new Lead decision.
+
 `6.1.1` и source revision `a13cd09950969f43e3b7e25c71fa43efaf5446c5` остаются только историческим source-audit и MIT license pin. Runner fail-closed ожидает ровно `6.1.3`; диапазон, fallback и env override не допускаются.
 
-Текущий cycle 2: AC1 `NOT_RUN`; AC2 `PARTIALLY_AUTHORIZED` (одна cancellation разрешена; unavailable subcheck `NOT_RUN`, поэтому AC2 не PASS); AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY` после локального audit. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
+Текущий cycle 2 по D43: AC1 `NOT_RUN`; AC2 `NOT_RUN` (D41 cancellation gate не достигнут; следующий LIVE шаг требует нового решения Lead); unavailable subcheck `NOT_AUTHORIZED_NOT_RUN`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY` после локального audit. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
 
 ## Текущий D41 runner и LIVE contract
 
@@ -93,6 +101,6 @@ An acknowledgement without observed stream termination, HTTP status other than `
 - **D6 CANCELLATION CONTRACT:** Lead decision `NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION` is recorded at private message `lead-decision-a4b0f8e6-42be-4e08-a75d-1a4dd5bde69a.raw.txt` (raw SHA-256 `440af0e7bf37accfd47cbdef24cde1c20b106bac833275b8dcfefaf8235d3174`). The harness and runbook require HTTP 200/`status=ok`/`cancelled_http_turns=1` plus bounded termination of the correlated non-completed stream and preserve its actual parser/read disposition. D41 authorizes at most one cancellation after its gates. At the start of D41 no qualifying `/v1/responses` tool round-trip, unavailable outcome, or cancellation receipt had been collected.
 - **NOT VERIFIED:** No upstream process/tunnel lifecycle behavior was exercised by the spike harness. Launcher runtime ownership observations do not substitute for a request/cleanup receipt.
 
-## Следующий шаг по D41
+## Текущий следующий шаг по D43
 
-Завершить Phase A в существующем PR #3, проверить exact source/test/runbook consistency и получить успешный GitHub CI на опубликованном head. Только после этого разрешена одна read-only preflight. Если она проходит, выполнить ограниченные AC1 и cancellation процедуры выше; unavailable subcheck и AC3 matrix не запускать. Сохранить sanitized LIVE receipts, обновить evidence и PR narrative, пересчитать canonical reviewContext/bundleHash и отправить Lead `DECISION_REQUEST` с точным остаточным AC2 blocker. Свежий Reviewer verdict запрашивается после полного выполнения AC2 либо после явного решения Lead, изменившего gate. Merge требует отдельного Lead authorization.
+Завершить offline correction, deterministic tests и согласованные docs/evidence; затем опубликовать проверенный commit в существующий PR #3 и дождаться exact-head CI. Передать Lead exact head, CI, changed-file hashes, verification receipt, locally resolved client version и подтверждение отсутствия network/mutation. D41/D42 preflight allowances уже использованы; ни успешный CI, ни публикация не autorize ещё один preflight. Любая новая production preflight требует отдельного решения Lead. AC1/AC2 остаются `NOT_RUN`; reviewer cycle 2 и merge authorization отсутствуют.

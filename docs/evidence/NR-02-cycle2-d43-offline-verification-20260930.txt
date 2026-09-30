@@ -1,0 +1,52 @@
+NR-02 cycle 2 — D43 offline model-catalog contract correction
+Verification receipt
+
+Observed at: 2026-09-30T17:49:18Z
+Repository: ShabanovBoris/NightReviewer
+Branch: nr-02-chatgpt-web-spike
+Published base for this worktree: c759e0a749561adec3cd6b56038d5571dcb6139b
+Published PR head at verification time: c759e0a749561adec3cd6b56038d5571dcb6139b
+Prior exact-head CI: run 36743906186 passed on that published head; D43's uncommitted tree has no exact-head CI result yet.
+Worktree state: D43 correction is uncommitted and unpublished; testedSha is therefore null.
+Environment: macOS arm64, pinned Bun 1.4.2.
+Active Codex release: 0.159.0, read locally from the executable embedded in the active Codex desktop app bundle. No authentication files or credentials were read for this observation.
+
+Deterministic checks
+
+- Command: PATH="$PWD/.nightreviewer/runtime/bun/bin:$PATH" ./.nightreviewer/runtime/bun/bin/bun run verify
+- Exit code: 0
+- Result: TypeScript typecheck passed; Biome checked 10 files with no issues; 25 tests passed, 0 failed, 75 expect calls; production package build bundled 2 modules.
+- Coverage added for release-version validation; missing/malformed version rejection before fetch; exact client_version propagation; unchanged Bearer/Accept headers with no extra headers; no /v1/responses during preflight; and numeric, redacted catalog-failure receipts.
+
+- Command: git diff --check
+- Exit code: 0
+
+- Command: jq empty docs/evidence/NR-02.json
+- Exit code: 0
+
+- Command: Python D43 documentation/evidence consistency audit (11 predicates)
+- Exit code: 0
+- Result: 11/11 predicates passed across status, spec, task, ADR, runbook, runner, tests, decisions, and acceptance states.
+- Predicates checked: status records consumed D42 and offline-only D43; spec preserves AC1/AC2 NOT_RUN; task requires validated client version and forbids automatic retry; ADR requires a new Lead decision before production preflight; runbook records the active local client release and current D43 prohibition; runner sets the explicit validated catalog query; tests cover no Responses request and sanitized errors; evidence records D42/D43 receipts; acceptance evidence preserves AC1/AC2 NOT_RUN; AC4 uses the ledger's allowed `PASS` status with a documentation-only note; evidence stores the locally resolved client version.
+
+Network and mutation boundary
+
+- HTTP requests under D43: 0. The preflight tests use only an injected in-memory fetch stub.
+- Connector calls: 0.
+- Authentication refresh or modification: none; the bearer was not re-read.
+- Production runtime, tunnel, configuration, connector, or credential changes: none.
+- DEV actions: none.
+- Merge: none.
+- Acceptance: AC1 NOT_RUN; AC2 NOT_RUN; AC3 DEFERRED_HARDENING. D42's authenticated catalog non-2xx remains a failed, consumed preflight; its exact HTTP status was not retained. D43 source-cause classification remains PLAUSIBLE_NOT_LIVE_PROVEN.
+
+Changed tracked-file SHA-256 values at verification time
+
+- scripts/bridge-spike.ts: fbc2649313b512f613adc7f47ee837ed4bcd0df3967880d1804fcd887325f673
+- tests/bridge-runner.test.ts: 8cb9e60a3bfcfb1309b02f881f14dd1b8763221e4d33186ed71e60eb88333d4c
+- docs/STATUS.md: f6b2fafd5a8b3760c55b16c228c86c857234174c216d53283d56ff734930442f
+- docs/decisions/0002-bridge-contract.md: adec7c26779ca55efb9f47e72c5338eb6175eb282d09f560f8e0110d86b2f2d7
+- docs/specs/NR-02.md: cc8bdf841af69fd9531872f2fcd41b5f7e0fadcee42a9a104ed618803a3a9bdb
+- docs/tasks/NR-02.md: f5afa7f21bbef001fc95b6a49ea4b5968cc479ab65c913dd9f750e482976c493
+- spikes/bridge/README.md: 4c988e8895fdf41ae1e3a5182fa957f39cdb5aefe47b2d24e880a100de417574
+
+The evidence ledger and this receipt are excluded from the file list above to avoid a self-referential digest. The ledger's SHA-256 is reported after its final update.

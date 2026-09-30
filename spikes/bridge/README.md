@@ -2,13 +2,17 @@
 
 This diagnostic client remains outside `src/index.ts`: its function-call relay is not NightReviewer’s production `ReviewerBackend`.
 
-## Current cycle 2 route — D41
+## Current cycle 2 route — D43
 
 Lead D40 selects the already-running Codex Web GPT `6.1.3` production baseline and existing production tunnel. D41 source-checks that unchanged production `config.appName` selects **`Codex Native2`**. **`Codex Native2 NR-02` is auxiliary, stays unchanged, and is not used for this LIVE route.** No qualifying Responses/tool round-trip has been observed yet.
 
-AC1 is `NOT_RUN`. AC2 is `PARTIALLY_AUTHORIZED` and `NOT_RUN`: one bounded cancellation may run after the D41 gates; unavailable-connector/tool remains `NOT_RUN` and must not run. AC3's former three-context matrix is `DEFERRED_HARDENING`. DEV is not the LIVE acceptance owner.
+AC1 and AC2 are `NOT_RUN`. D41's cancellation permission was gated on successful preflight and AC1, neither occurred. D43 currently authorizes no LIVE request; unavailable-connector/tool remains `NOT_AUTHORIZED_NOT_RUN`. AC3's former three-context matrix is `DEFERRED_HARDENING`. DEV is not the LIVE acceptance owner.
 
-The runner now requires exact version `6.1.3` and explicit live modes. Phase A verification and exact-head GitHub CI must pass before the one read-only production preflight. Do not stop/restart/reconfigure production, tunnel, connector, credentials or DEV; do not create IDs/keys; do not run setup or external Verify. A one-shot approval prompt may be approved only for the currently authorized tool operation; a request for persistent permission or settings changes is a stop condition.
+The runner requires exact bridge version `6.1.3`, an explicit live mode, and `BRIDGE_SPIKE_CLIENT_VERSION` in release `major.minor.patch` form. D42's replacement preflight passed initial health then failed at authenticated model discovery with a non-2xx response; the exact status was not retained. It did not reach the second health check or `/v1/responses`, and it made no connector call or production mutation. D42 consumed the replacement attempt.
+
+D43 source review found a plausible mismatch with the upstream 6.1.3 catalog contract: the request needs explicit `client_version`, and the Bun fetch User-Agent was not established as a recognized first-party Codex User-Agent. The cause of the D42 response is not live-proven. The current active Codex executable was resolved locally as `0.159.0`; use only the active installed executable's release version, and stop if its identity is ambiguous. Bearer handling remains unchanged. Do not add cookies, originator, or other speculative headers.
+
+D43 authorizes offline source/docs edits and deterministic verification only. Do not run the commands below now: D41 and D42 preflight allowances are consumed, and a new Lead decision is required before any further preflight or LIVE action. No network, connector, setup, Verify, runtime/tunnel/config/credential change, or DEV action is authorized under D43.
 
 ## Historical cycle 1 D3/D5/D6 runbook — preserved, superseded for current acceptance
 
@@ -24,21 +28,30 @@ The user later authorized ordinary DEV for all NightReviewer development, and le
 
 Do not remove the DEV purpose flag, copy/reinterpret its profile, attach its tunnel to an undocumented listener, or use the shared `6.1.2` Launcher. The live commands below are qualifying probes and may run only after the D3 production profile, unique connector, and external-resource ownership are verified. The existing direct Temporary Chat probe did not call `read_fixture` and is not acceptance evidence.
 
-## Current D41 minimum-working commands
+## Future commands — only after a new Lead authorization
 
-These commands are gated: run them only after Phase A is published and GitHub `verify` succeeds on its exact head. The preflight is read-only and may run once. It requires healthy exact `6.1.3`, full/accepting mode, zero active HTTP/browser turns both before and after authenticated model discovery, the selected model with `high` effort, stable PID/version, and production `config.appName=Codex Native2`.
+If a later Lead decision explicitly authorizes another attempt, first resolve the release version from the active Codex app's embedded executable. The current local command reports `codex-cli 0.159.0`; submit only the version string, never any credential or token:
+
+```sh
+/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex --version
+export BRIDGE_SPIKE_CLIENT_VERSION='<active release major.minor.patch>'
+```
+
+Then configure the already-authorized loopback bridge inputs without putting credential values in shell history. The preflight must confirm healthy exact `6.1.3`, full/accepting mode, zero active HTTP/browser turns both before and after authenticated model discovery, the selected model with `high` effort, stable PID/version, and production `config.appName=Codex Native2`.
 
 ```sh
 bun run bridge:preflight
 ```
 
-After successful preflight, `bridge:live` runs exactly one AC1 fresh context and emits a sanitized digest-bound receipt. It does not run the historical three-context matrix.
+The following LIVE commands are examples of the D41 contract only. A successful preflight does not authorize these commands under D43; run an action only if a current Lead decision explicitly authorizes it.
+
+After such authorization, `bridge:live` is intended to run exactly one AC1 fresh context and emit a sanitized digest-bound receipt. It does not run the historical three-context matrix.
 
 ```sh
 bun run bridge:live
 ```
 
-Only if AC1 passes and the post-AC1 health is healthy and idle, the D41 assignment allows one synthetic cancellation through `--cancel-only`. The unavailable-connector command is not authorized and must not be run.
+Only if AC1 passes and post-AC1 health is healthy and idle, and a current Lead decision explicitly authorizes cancellation, may one synthetic cancellation use `--cancel-only`. The unavailable-connector command is not authorized and must not be run.
 
 ```sh
 bun run bridge:cancel
@@ -107,7 +120,7 @@ This starts one synthetic read-only turn with fresh UUIDs, calls `/admin/interru
 
 Lead decision D6 (`NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION`) defines the qualification rule. The correlated Responses stream must terminate within 10 seconds of the successful exact-turn acknowledgement and must not produce `response.completed`. The control acknowledgement and actual stream disposition are recorded separately with the synthetic identity and timestamps for Responses start, interrupt request, acknowledgement, and termination. The parser preserves explicit `response.failed`, `response.incomplete`, clean EOF/incomplete, and read cancellation/error as distinct outcomes. Clean EOF/incomplete qualifies only with the exact successful acknowledgement; never manufacture a typed SSE cancellation from EOF or a read error. An explicit `response.failed` with client-cancellation semantics is stronger evidence but is optional.
 
-The control call and post-interrupt observation are bounded. If the stream does not settle within 10 seconds, the harness aborts its local fetch only to release the client resource and reports a failed probe; local cleanup is never recorded as server-side cancellation evidence. D6 originally classified evidence only. D41 separately authorizes at most one cancellation on current `6.1.3`, after Phase A, exact-head CI, successful preflight, and a passing AC1. Use the current D41 commands above, not the old D3 profile prerequisites.
+The control call and post-interrupt observation are bounded. If the stream does not settle within 10 seconds, the harness aborts its local fetch only to release the client resource and reports a failed probe; local cleanup is never recorded as server-side cancellation evidence. D6 originally classified evidence only. D41 later granted one conditional cancellation on current `6.1.3`, but D43 supersedes launch timing: successful publication or CI alone does not authorize LIVE work. Use only a current Lead decision for the next action.
 
 ## Historical cycle 1 connector setup observations
 
@@ -118,6 +131,6 @@ OpenAI's [Secure MCP Tunnel documentation](https://developers.openai.com/api/doc
 The exact 6.1.1 DEV browser smoke passed after sign-in, but that does not prove this Responses route, MCP tool delivery, cancellation, or session isolation. The installed shared Launcher reports version `6.1.2` and is non-qualifying. The uncredentialed catalog attempt against it returned `upstream_server_error`. D3 allows a distinct isolated production-profile route, subject to separate resource and connector-identity prerequisites; D4 allows DEV diagnostics only. No credentials belong in repository files or chat messages.
 
 
-## D41 execution sequence
+## Historical D41 execution sequence — superseded by D42/D43
 
-Complete and publish the bounded runner/docs adaptation, then require successful GitHub `verify` on that exact PR head. Run the read-only preflight once. If it passes, run AC1 once through production-selected `Codex Native2`; if AC1 passes and health remains idle, run cancellation once. Do not run unavailable-connector mode or three contexts. Record actual LIVE results, refresh evidence and canonical reviewContext/bundleHash, then send Lead a `DECISION_REQUEST` with the remaining AC2 blocker. Request a fresh Reviewer verdict after AC2 is fully satisfied or Lead explicitly revises the gate. Merge still requires later Lead authorization.
+D41 originally required exact-head CI before one preflight, followed by gated AC1 and cancellation. D42 consumed its replacement preflight with an authenticated catalog failure; D43 supersedes that sequence and prohibits automatic retry after publication or CI. Do not use this historical sequence unless a future Lead decision explicitly authorizes the relevant next action.

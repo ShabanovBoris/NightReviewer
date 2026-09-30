@@ -9,6 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { runLiveCapture } from "../scripts/bridge-live-capture";
@@ -46,9 +47,9 @@ const SUCCESS_STAGES: readonly EvidenceStage[] = [
   "post_ac1_health_passed",
 ];
 
-/** Keeps capture fixtures under ignored owner-only repository storage, away from tracked artifacts. */
+/** Uses an owner-only OS temp root so tests do not depend on ignored repo-local setup. */
 function privateRoot(): string {
-  return mkdtempSync(resolve(".nightreviewer", "nr02-capture-test-"));
+  return mkdtempSync(resolve(tmpdir(), "nr02-capture-test-"));
 }
 
 /** Supplies only the response metadata required by the same validator used on a real child ledger. */

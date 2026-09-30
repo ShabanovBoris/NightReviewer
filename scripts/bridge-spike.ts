@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import {
+  closeSync,
+  fchmodSync,
+  constants as fsConstants,
+  fsyncSync,
+  openSync,
+  writeSync,
+} from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import {
   type BridgeFunctionCall,
   type BridgeSseOutcome,
@@ -35,6 +43,555 @@ type BridgeFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
+
+// ❌ Удалён отдельный bridge-live-evidence.ts: D52 закрепляет durable ledger за canonical bridge runner, поэтому схема и отправитель хранятся в одном модуле.
+/** One canonical allowlist drives both the writer's type and runtime validator. */
+const EVIDENCE_STAGE_NAMES = [
+  "runner_started",
+  "settings_validated",
+  "internal_health_1_attempted",
+  "internal_health_1_received",
+  "internal_health_1_passed",
+  "model_catalog_attempted",
+  "model_catalog_received",
+  "model_catalog_passed",
+  "internal_health_2_attempted",
+  "internal_health_2_received",
+  "internal_health_2_passed",
+  "ac1_context_created",
+  "initial_responses_attempted",
+  "initial_responses_received",
+  "initial_responses_stream_ended",
+  "tool_call_observed",
+  "controlled_fixture_read_attempted",
+  "controlled_fixture_result_prepared",
+  "continuation_responses_attempted",
+  "continuation_responses_received",
+  "continuation_responses_stream_ended",
+  "final_correlation_validated",
+  "post_ac1_health_attempted",
+  "post_ac1_health_received",
+  "post_ac1_health_passed",
+  "terminal_success",
+  "terminal_failure",
+] as const;
+export type EvidenceStage = (typeof EVIDENCE_STAGE_NAMES)[number];
+
+type SafeEvidenceField = string | number | boolean;
+export type RequestSentState = boolean | "UNKNOWN";
+
+/** Keeps the bridge flow dependent on a narrow synchronous durability contract. */
+export interface StageEvidenceRecorder {
+  readonly lastProvenStage: EvidenceStage | undefined;
+  readonly requestSent: RequestSentState;
+  readonly initialResponsesRequestSent: RequestSentState;
+  record(
+    stage: EvidenceStage,
+    fields?: Readonly<Record<string, SafeEvidenceField>>,
+  ): void;
+  close(): void;
+}
+
+const EVIDENCE_STAGE_SCHEMA = "nr02-stage-evidence/1" as const;
+const EVIDENCE_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const EVIDENCE_SHA256 = /^[0-9a-f]{64}$/;
+const EVIDENCE_FIELDS = new Set([
+  "endpointClass",
+  "method",
+  "httpStatus",
+  "service",
+  "status",
+  "pid",
+  "version",
+  "mode",
+  "acceptingTurns",
+  "activeHttpTurns",
+  "activeBrowserTurns",
+  "successfulModelCatalogRequests",
+  "threadId",
+  "turnId",
+  "canaryId",
+  "responseId",
+  "itemId",
+  "callId",
+  "toolName",
+  "argumentsSha256",
+  "fixtureName",
+  "fixtureByteLength",
+  "fixtureSha256",
+  "toolOutputByteLength",
+  "toolOutputSha256",
+  "sanitizedTraceBytes",
+  "sanitizedTraceSha256",
+  "streamDisposition",
+  "requestAttempted",
+  "responseReceived",
+  "requestSent",
+  "initialResponsesRequestSent",
+  "errorClass",
+  "errorCode",
+  "exitClassification",
+  "lastProvenStage",
+]);
+
+/** Replaces storage errors with a fixed message so private filesystem details cannot leak. */
+export class EvidenceWriterError extends Error {
+  constructor() {
+    super("Stage evidence could not be persisted.");
+    this.name = "EvidenceWriterError";
+  }
+}
+
+/** Enforces the evidence schema's value types, ranges and enumerated identifiers before serialization. */
+function isSafeEvidenceValue(key: string, value: SafeEvidenceField): boolean {
+  if (typeof value === "boolean")
+    return [
+      "acceptingTurns",
+      "requestAttempted",
+      "responseReceived",
+      "requestSent",
+      "initialResponsesRequestSent",
+    ].includes(key);
+  if (typeof value === "number") {
+    const isBounded =
+      key === "httpStatus"
+        ? value >= 100 && value <= 599
+        : key === "pid"
+          ? value > 0
+          : value >= 0;
+    return (
+      Number.isSafeInteger(value) &&
+      isBounded &&
+      [
+        "httpStatus",
+        "pid",
+        "activeHttpTurns",
+        "activeBrowserTurns",
+        "successfulModelCatalogRequests",
+        "fixtureByteLength",
+        "toolOutputByteLength",
+        "sanitizedTraceBytes",
+      ].includes(key)
+    );
+  }
+  if (
+    value === "UNKNOWN" &&
+    (key === "requestSent" || key === "initialResponsesRequestSent")
+  ) {
+    return true;
+  }
+  switch (key) {
+    case "endpointClass":
+      return ["health", "models", "responses"].includes(value);
+    case "method":
+      return value === "GET" || value === "POST";
+    case "service":
+      return value === "codex-chatgpt-web";
+    case "status":
+      return value === "ok";
+    case "version":
+      return /^\d+\.\d+\.\d+$/.test(value);
+    case "mode":
+      return value === "full";
+    case "threadId":
+    case "turnId":
+    case "canaryId":
+      return EVIDENCE_UUID.test(value);
+    case "responseId":
+    case "itemId":
+    case "callId":
+      return /^[A-Za-z0-9_-]{1,128}$/.test(value);
+    case "toolName":
+      return value === "read_fixture";
+    case "argumentsSha256":
+    case "fixtureSha256":
+    case "toolOutputSha256":
+    case "sanitizedTraceSha256":
+      return EVIDENCE_SHA256.test(value);
+    case "fixtureName":
+      return value === FIXTURE_KEY;
+    case "streamDisposition":
+      return ["completed", "failed", "incomplete", "cancelled"].includes(value);
+    case "errorClass":
+      return [
+        "Error",
+        "TypeError",
+        "TimeoutError",
+        "AbortError",
+        "ModelCatalogHttpError",
+        "EvidenceWriterError",
+        "UnknownError",
+      ].includes(value);
+    case "errorCode":
+      return [
+        "RUNNER_ERROR",
+        "TRANSPORT_ERROR",
+        "TIMEOUT",
+        "MODEL_CATALOG_HTTP",
+        "EVIDENCE_PERSISTENCE_FAILED",
+        "INVALID_BRIDGE_RESPONSE",
+      ].includes(value);
+    case "exitClassification":
+      return [
+        "SUCCESS",
+        "RUNNER_FAILURE",
+        "EVIDENCE_PERSISTENCE_FAILURE",
+      ].includes(value);
+    case "lastProvenStage":
+      return value === "none" || EVIDENCE_STAGES.has(value as EvidenceStage);
+    default:
+      return false;
+  }
+}
+
+const EVIDENCE_STAGES = new Set<EvidenceStage>(EVIDENCE_STAGE_NAMES);
+
+/** Persists only allowlisted stage facts; each flush precedes the next side-effect boundary. */
+export class FileStageEvidenceRecorder implements StageEvidenceRecorder {
+  readonly #fd: number;
+  #sequence = 0;
+  #closed = false;
+  #lastProvenStage: EvidenceStage | undefined;
+  #networkAttempts = 0;
+  #responseReceipts = 0;
+  #initialResponsesAttempted = false;
+  #initialResponsesReceived = false;
+
+  constructor(
+    evidencePath: string,
+    readonly evidenceRunId: string,
+    readonly prHeadSha: string,
+  ) {
+    if (!EVIDENCE_UUID.test(evidenceRunId) || !/^[0-9a-f]{40}$/.test(prHeadSha))
+      throw new EvidenceWriterError();
+    const resolvedRoot = resolve(".nightreviewer");
+    const resolvedEvidencePath = resolve(evidencePath);
+    const relativeEvidencePath = relative(resolvedRoot, resolvedEvidencePath);
+    if (
+      relativeEvidencePath.length === 0 ||
+      relativeEvidencePath.startsWith("..") ||
+      isAbsolute(relativeEvidencePath)
+    ) {
+      throw new EvidenceWriterError();
+    }
+    try {
+      this.#fd = openSync(
+        resolvedEvidencePath,
+        fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_NOFOLLOW,
+        0o600,
+      );
+      fchmodSync(this.#fd, 0o600);
+      fsyncSync(this.#fd);
+    } catch {
+      throw new EvidenceWriterError();
+    }
+  }
+
+  get lastProvenStage(): EvidenceStage | undefined {
+    return this.#lastProvenStage;
+  }
+
+  get requestSent(): RequestSentState {
+    if (this.#responseReceipts > 0) return true;
+    return this.#networkAttempts > 0 ? "UNKNOWN" : false;
+  }
+
+  get initialResponsesRequestSent(): RequestSentState {
+    if (this.#initialResponsesReceived) return true;
+    return this.#initialResponsesAttempted ? "UNKNOWN" : false;
+  }
+
+  record(
+    stage: EvidenceStage,
+    fields: Readonly<Record<string, SafeEvidenceField>> = {},
+  ): void {
+    if (this.#closed || !EVIDENCE_STAGES.has(stage))
+      throw new EvidenceWriterError();
+    for (const [key, value] of Object.entries(fields)) {
+      if (!EVIDENCE_FIELDS.has(key) || !isSafeEvidenceValue(key, value))
+        throw new EvidenceWriterError();
+    }
+    const event = {
+      schemaVersion: EVIDENCE_STAGE_SCHEMA,
+      evidenceRunId: this.evidenceRunId,
+      prHeadSha: this.prHeadSha,
+      sequence: this.#sequence + 1,
+      timestampUtc: new Date().toISOString(),
+      stage,
+      ...fields,
+    };
+    const bytes = Buffer.from(`${JSON.stringify(event)}\n`, "utf8");
+    try {
+      let offset = 0;
+      while (offset < bytes.length) {
+        offset += writeSync(this.#fd, bytes, offset, bytes.length - offset);
+      }
+      fsyncSync(this.#fd);
+    } catch {
+      throw new EvidenceWriterError();
+    }
+    this.#sequence += 1;
+    this.#lastProvenStage = stage;
+    if (NETWORK_ATTEMPT_STAGES.has(stage)) this.#networkAttempts += 1;
+    if (stage.endsWith("_received")) this.#responseReceipts += 1;
+    if (stage === "initial_responses_attempted")
+      this.#initialResponsesAttempted = true;
+    if (stage === "initial_responses_received")
+      this.#initialResponsesReceived = true;
+  }
+
+  close(): void {
+    if (this.#closed) return;
+    try {
+      fsyncSync(this.#fd);
+      closeSync(this.#fd);
+      this.#closed = true;
+    } catch {
+      throw new EvidenceWriterError();
+    }
+  }
+}
+
+export interface StageLedgerSummary {
+  readonly eventCount: number;
+  readonly lastProvenStage: EvidenceStage | "none";
+  readonly terminalStage: "terminal_success" | "terminal_failure";
+  readonly exitClassification:
+    | "SUCCESS"
+    | "RUNNER_FAILURE"
+    | "EVIDENCE_PERSISTENCE_FAILURE";
+  readonly requestSent: RequestSentState;
+  readonly initialResponsesRequestSent: RequestSentState;
+}
+
+const RUN_STAGE_SEQUENCE: readonly EvidenceStage[] = [
+  "runner_started",
+  "settings_validated",
+  "internal_health_1_attempted",
+  "internal_health_1_received",
+  "internal_health_1_passed",
+  "model_catalog_attempted",
+  "model_catalog_received",
+  "model_catalog_passed",
+  "internal_health_2_attempted",
+  "internal_health_2_received",
+  "internal_health_2_passed",
+  "ac1_context_created",
+  "initial_responses_attempted",
+  "initial_responses_received",
+  "initial_responses_stream_ended",
+  "tool_call_observed",
+  "controlled_fixture_read_attempted",
+  "controlled_fixture_result_prepared",
+  "continuation_responses_attempted",
+  "continuation_responses_received",
+  "continuation_responses_stream_ended",
+  "final_correlation_validated",
+  "post_ac1_health_attempted",
+  "post_ac1_health_received",
+  "post_ac1_health_passed",
+];
+
+const NETWORK_ATTEMPT_STAGES = new Set<EvidenceStage>([
+  "internal_health_1_attempted",
+  "model_catalog_attempted",
+  "internal_health_2_attempted",
+  "initial_responses_attempted",
+  "continuation_responses_attempted",
+  "post_ac1_health_attempted",
+]);
+
+/** Opens a precreated private ledger whose identity was fixed by the host wrapper before spawn. */
+export function createStageEvidenceRecorderFromEnvironment(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): FileStageEvidenceRecorder {
+  return new FileStageEvidenceRecorder(
+    requiredEnvironment("BRIDGE_SPIKE_EVIDENCE_PATH", environment),
+    requiredEnvironment("BRIDGE_SPIKE_EVIDENCE_RUN_ID", environment),
+    requiredEnvironment("BRIDGE_SPIKE_PR_HEAD_SHA", environment),
+  );
+}
+
+/** Rejects malformed, reordered, unsafe, or terminally incomplete records before a host receipt is issued. */
+export function validateStageLedger(
+  contents: string,
+  expectedEvidenceRunId: string,
+  expectedPrHeadSha: string,
+): StageLedgerSummary {
+  if (!contents.endsWith("\n")) throw new EvidenceWriterError();
+  const lines = contents.slice(0, -1).split("\n");
+  const events: Array<Record<string, unknown>> = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) throw new EvidenceWriterError();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      throw new EvidenceWriterError();
+    }
+    const event =
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    if (
+      !event ||
+      event.schemaVersion !== EVIDENCE_STAGE_SCHEMA ||
+      event.evidenceRunId !== expectedEvidenceRunId ||
+      event.prHeadSha !== expectedPrHeadSha ||
+      event.sequence !== index + 1 ||
+      typeof event.timestampUtc !== "string" ||
+      !isCanonicalUtc(event.timestampUtc) ||
+      typeof event.stage !== "string" ||
+      !EVIDENCE_STAGES.has(event.stage as EvidenceStage)
+    ) {
+      throw new EvidenceWriterError();
+    }
+    for (const key of Object.keys(event)) {
+      if (
+        [
+          "schemaVersion",
+          "evidenceRunId",
+          "prHeadSha",
+          "sequence",
+          "timestampUtc",
+          "stage",
+        ].includes(key)
+      )
+        continue;
+      const value = event[key];
+      if (
+        !EVIDENCE_FIELDS.has(key) ||
+        (typeof value !== "string" &&
+          typeof value !== "number" &&
+          typeof value !== "boolean") ||
+        !isSafeEvidenceValue(key, value)
+      ) {
+        throw new EvidenceWriterError();
+      }
+    }
+    const stage = event.stage as EvidenceStage;
+    if (NETWORK_ATTEMPT_STAGES.has(stage)) {
+      const endpointClass = stage.includes("health")
+        ? "health"
+        : stage === "model_catalog_attempted"
+          ? "models"
+          : "responses";
+      const method = endpointClass === "responses" ? "POST" : "GET";
+      if (
+        event.endpointClass !== endpointClass ||
+        event.method !== method ||
+        event.requestAttempted !== true
+      ) {
+        throw new EvidenceWriterError();
+      }
+    }
+    if (stage.endsWith("_received")) {
+      const endpointClass = stage.includes("health")
+        ? "health"
+        : stage === "model_catalog_received"
+          ? "models"
+          : "responses";
+      if (
+        event.endpointClass !== endpointClass ||
+        typeof event.httpStatus !== "number" ||
+        event.responseReceived !== true
+      ) {
+        throw new EvidenceWriterError();
+      }
+    }
+    events.push(event);
+  }
+  const terminalIndexes = events.flatMap((event, index) =>
+    event.stage === "terminal_success" || event.stage === "terminal_failure"
+      ? [index]
+      : [],
+  );
+  if (
+    terminalIndexes.length !== 1 ||
+    terminalIndexes[0] !== events.length - 1
+  ) {
+    throw new EvidenceWriterError();
+  }
+  const terminal = events.at(-1);
+  const terminalStage = terminal?.stage as
+    | StageLedgerSummary["terminalStage"]
+    | undefined;
+  const preceding = events.slice(0, -1);
+  const precedingStages = preceding.map(
+    (event) => event.stage as EvidenceStage,
+  );
+  if (
+    precedingStages.some((stage, index) => RUN_STAGE_SEQUENCE[index] !== stage)
+  ) {
+    throw new EvidenceWriterError();
+  }
+  if (
+    terminalStage === "terminal_success" &&
+    precedingStages.length !== RUN_STAGE_SEQUENCE.length
+  ) {
+    throw new EvidenceWriterError();
+  }
+  const lastProvenStage = precedingStages.at(-1) ?? "none";
+  if (terminal?.lastProvenStage !== lastProvenStage)
+    throw new EvidenceWriterError();
+  const exitClassification = terminal?.exitClassification;
+  if (
+    exitClassification !== "SUCCESS" &&
+    exitClassification !== "RUNNER_FAILURE" &&
+    exitClassification !== "EVIDENCE_PERSISTENCE_FAILURE"
+  ) {
+    throw new EvidenceWriterError();
+  }
+  if (
+    (terminalStage === "terminal_success") !==
+    (exitClassification === "SUCCESS")
+  ) {
+    throw new EvidenceWriterError();
+  }
+  const attempts = precedingStages.filter((stage) =>
+    NETWORK_ATTEMPT_STAGES.has(stage),
+  ).length;
+  const responses = precedingStages.filter((stage) =>
+    stage.endsWith("_received"),
+  ).length;
+  const requestSent: RequestSentState =
+    responses > 0 ? true : attempts > 0 ? "UNKNOWN" : false;
+  const initialAttempted = precedingStages.includes(
+    "initial_responses_attempted",
+  );
+  const initialReceived = precedingStages.includes(
+    "initial_responses_received",
+  );
+  const initialResponsesRequestSent: RequestSentState = initialReceived
+    ? true
+    : initialAttempted
+      ? "UNKNOWN"
+      : false;
+  if (
+    terminal?.requestSent !== requestSent ||
+    terminal?.initialResponsesRequestSent !== initialResponsesRequestSent
+  ) {
+    throw new EvidenceWriterError();
+  }
+  return {
+    eventCount: events.length,
+    lastProvenStage,
+    terminalStage: terminalStage as StageLedgerSummary["terminalStage"],
+    exitClassification,
+    requestSent,
+    initialResponsesRequestSent,
+  };
+}
+
+/** Accepts only canonical millisecond UTC timestamps written by the durable recorder. */
+function isCanonicalUtc(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))
+    return false;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
 
 type ModelCatalogFailureStage =
   | "config"
@@ -140,6 +697,24 @@ interface SessionReceipt {
   };
   readonly liveTraceSha256: string;
   readonly liveTraceBytes: number;
+}
+
+/** Separates the runner's two external boundaries so offline tests never use global fetch or paths. */
+export interface FreshContextDependencies {
+  readonly evidence?: StageEvidenceRecorder;
+  readonly fetcher?: BridgeFetch;
+  readonly readFixture?: () => Promise<Uint8Array>;
+}
+
+type FreshContextExecutor = (
+  settings: BridgeSettings,
+  canaryId: string,
+  dependencies: FreshContextDependencies,
+) => Promise<SessionReceipt>;
+
+/** Reads only the one allowlisted local fixture; tests inject this boundary to fail at that stage. */
+async function readControlledFixture(): Promise<Uint8Array> {
+  return new Uint8Array(await Bun.file(FIXTURE_PATH).arrayBuffer());
 }
 
 /** Missing settings stop the run before any key or prompt can be printed or sent. */
@@ -249,8 +824,19 @@ function safeHealthCatalogResult(
 export async function verifyBridge(
   settings: BridgeSettings,
   fetcher: BridgeFetch = fetch,
+  evidence?: StageEvidenceRecorder,
 ): Promise<BridgeProcessIdentity> {
+  evidence?.record("internal_health_1_attempted", {
+    endpointClass: "health",
+    method: "GET",
+    requestAttempted: true,
+  });
   const healthResponse = await fetcher(endpoint(settings, "/healthz"));
+  evidence?.record("internal_health_1_received", {
+    endpointClass: "health",
+    httpStatus: healthResponse.status,
+    responseReceived: true,
+  });
   if (!healthResponse.ok)
     throw new Error(
       `Bridge health check returned HTTP ${healthResponse.status}.`,
@@ -275,14 +861,34 @@ export async function verifyBridge(
     throw new Error("The bridge must be in full mode and accepting turns.");
   }
   requireIdleBridge(health, "before model discovery");
+  evidence?.record("internal_health_1_passed", {
+    service: "codex-chatgpt-web",
+    status: "ok",
+    pid: health.pid,
+    version: EXPECTED_UPSTREAM_VERSION,
+    mode: "full",
+    acceptingTurns: true,
+    activeHttpTurns: 0,
+    activeBrowserTurns: 0,
+  });
 
   const catalogUrl = endpoint(settings, "/v1/models");
   catalogUrl.searchParams.set("client_version", settings.clientVersion);
+  evidence?.record("model_catalog_attempted", {
+    endpointClass: "models",
+    method: "GET",
+    requestAttempted: true,
+  });
   const catalogResponse = await fetcher(catalogUrl, {
     headers: {
       authorization: `Bearer ${settings.apiKey}`,
       accept: "application/json",
     },
+  });
+  evidence?.record("model_catalog_received", {
+    endpointClass: "models",
+    httpStatus: catalogResponse.status,
+    responseReceived: true,
   });
   if (!catalogResponse.ok)
     throw new ModelCatalogHttpError(
@@ -317,7 +923,18 @@ export async function verifyBridge(
     );
   }
 
+  evidence?.record("model_catalog_passed");
+  evidence?.record("internal_health_2_attempted", {
+    endpointClass: "health",
+    method: "GET",
+    requestAttempted: true,
+  });
   const confirmedHealthResponse = await fetcher(endpoint(settings, "/healthz"));
+  evidence?.record("internal_health_2_received", {
+    endpointClass: "health",
+    httpStatus: confirmedHealthResponse.status,
+    responseReceived: true,
+  });
   if (!confirmedHealthResponse.ok) {
     throw new Error(
       `Bridge confirmation returned HTTP ${confirmedHealthResponse.status}.`,
@@ -350,6 +967,17 @@ export async function verifyBridge(
       "The bridge did not record a successful model-catalog request.",
     );
   }
+  evidence?.record("internal_health_2_passed", {
+    service: "codex-chatgpt-web",
+    status: "ok",
+    pid: confirmedHealth.pid,
+    version: EXPECTED_UPSTREAM_VERSION,
+    mode: "full",
+    acceptingTurns: true,
+    activeHttpTurns: 0,
+    activeBrowserTurns: 0,
+    successfulModelCatalogRequests: successfulCatalogRequests,
+  });
   console.log(
     JSON.stringify({
       check: "bridge-ready",
@@ -397,8 +1025,20 @@ export function requireIdleBridge(
 async function verifyBridgeStillIdle(
   settings: BridgeSettings,
   identity: BridgeProcessIdentity,
+  fetcher: BridgeFetch = fetch,
+  evidence?: StageEvidenceRecorder,
 ): Promise<void> {
-  const healthResponse = await fetch(endpoint(settings, "/healthz"));
+  evidence?.record("post_ac1_health_attempted", {
+    endpointClass: "health",
+    method: "GET",
+    requestAttempted: true,
+  });
+  const healthResponse = await fetcher(endpoint(settings, "/healthz"));
+  evidence?.record("post_ac1_health_received", {
+    endpointClass: "health",
+    httpStatus: healthResponse.status,
+    responseReceived: true,
+  });
   if (!healthResponse.ok) {
     throw new Error(
       `Post-AC1 bridge health check returned HTTP ${healthResponse.status}.`,
@@ -418,6 +1058,16 @@ async function verifyBridgeStillIdle(
     throw new Error("The bridge identity or readiness changed after AC1.");
   }
   requireIdleBridge(health, "after AC1");
+  evidence?.record("post_ac1_health_passed", {
+    service: "codex-chatgpt-web",
+    status: "ok",
+    pid: health.pid,
+    version: identity.version,
+    mode: identity.mode,
+    acceptingTurns: true,
+    activeHttpTurns: 0,
+    activeBrowserTurns: 0,
+  });
   console.log(
     JSON.stringify({
       check: "bridge-after-ac1",
@@ -547,6 +1197,10 @@ function makeTurnBody(
 /** Selects trace retention at the caller boundary without changing normal probe parsing. */
 interface SendTurnOptions {
   readonly captureSanitizedTrace?: boolean;
+  readonly evidence?: StageEvidenceRecorder;
+  readonly responseLeg?: "initial" | "continuation";
+  readonly requestIdentity?: TurnIdentity & { readonly canaryId: string };
+  readonly fetcher?: BridgeFetch;
 }
 
 /** Sends only to the validated local endpoint and leaves SSE outcome semantics to the contract parser. */
@@ -555,19 +1209,67 @@ async function sendTurn(
   body: Record<string, unknown>,
   options: SendTurnOptions = {},
 ): Promise<BridgeSseOutcome> {
-  const response = await fetch(endpoint(settings, "/v1/responses"), {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${settings.apiKey}`,
-      accept: "text/event-stream",
-      "content-type": "application/json",
+  const attemptedStage =
+    options.responseLeg === "initial"
+      ? "initial_responses_attempted"
+      : "continuation_responses_attempted";
+  const receivedStage =
+    options.responseLeg === "initial"
+      ? "initial_responses_received"
+      : "continuation_responses_received";
+  const endedStage =
+    options.responseLeg === "initial"
+      ? "initial_responses_stream_ended"
+      : "continuation_responses_stream_ended";
+  if (options.evidence && options.responseLeg) {
+    options.evidence.record(attemptedStage, {
+      endpointClass: "responses",
+      method: "POST",
+      requestAttempted: true,
+      ...(options.requestIdentity ?? {}),
+    });
+  }
+  const response = await (options.fetcher ?? fetch)(
+    endpoint(settings, "/v1/responses"),
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${settings.apiKey}`,
+        accept: "text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000),
     },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
+  );
+  options.evidence?.record(receivedStage, {
+    endpointClass: "responses",
+    httpStatus: response.status,
+    responseReceived: true,
+    ...(options.requestIdentity ?? {}),
   });
-  return readBridgeSse(response, {
+  const outcome = await readBridgeSse(response, {
     captureSanitizedTrace: options.captureSanitizedTrace ?? false,
   });
+  const traceBytes = outcome.sanitizedTrace
+    ? Buffer.from(JSON.stringify(outcome.sanitizedTrace), "utf8")
+    : undefined;
+  options.evidence?.record(endedStage, {
+    streamDisposition: outcome.kind,
+    ...("responseId" in outcome && outcome.responseId
+      ? { responseId: outcome.responseId }
+      : {}),
+    ...(traceBytes
+      ? {
+          sanitizedTraceBytes: traceBytes.byteLength,
+          sanitizedTraceSha256: createHash("sha256")
+            .update(traceBytes)
+            .digest("hex"),
+        }
+      : {}),
+    ...(options.requestIdentity ?? {}),
+  });
+  return outcome;
 }
 
 /** Refuses terminal errors and partial streams before they can be treated as a successful tool cycle. */
@@ -619,13 +1321,18 @@ function requireFixtureCall(
 }
 
 /** Executes the caller-owned half of one Responses function-call cycle against a fixed file. */
-async function runFreshContext(
+export async function runFreshContext(
   settings: BridgeSettings,
   canaryId: string,
+  dependencies: FreshContextDependencies = {},
 ): Promise<SessionReceipt> {
   const sessionStartedAt = new Date().toISOString();
   const sessionStartedMs = performance.now();
   const identity = { threadId: randomUUID(), turnId: randomUUID() };
+  dependencies.evidence?.record("ac1_context_created", {
+    ...identity,
+    canaryId,
+  });
   const initialBody = makeTurnBody(
     settings,
     identity,
@@ -635,7 +1342,13 @@ async function runFreshContext(
   const firstStartedAt = new Date().toISOString();
   const firstStartedMs = performance.now();
   const first = requireCompleted(
-    await sendTurn(settings, initialBody, { captureSanitizedTrace: true }),
+    await sendTurn(settings, initialBody, {
+      captureSanitizedTrace: true,
+      responseLeg: "initial",
+      requestIdentity: { ...identity, canaryId },
+      ...(dependencies.evidence ? { evidence: dependencies.evidence } : {}),
+      ...(dependencies.fetcher ? { fetcher: dependencies.fetcher } : {}),
+    }),
     "function-call turn",
   );
   const firstFinishedAt = new Date().toISOString();
@@ -647,9 +1360,24 @@ async function runFreshContext(
       "The function-call response trace is missing or incomplete.",
     );
   const call = requireFixtureCall(first.functionCalls);
+  dependencies.evidence?.record("tool_call_observed", {
+    toolName: "read_fixture",
+    itemId: call.itemId,
+    callId: call.callId,
+    argumentsSha256: createHash("sha256").update(call.arguments).digest("hex"),
+    ...identity,
+    canaryId,
+  });
   const fixtureReadStartedAt = new Date().toISOString();
   const fixtureReadStartedMs = performance.now();
-  const fixtureBytes = Buffer.from(await Bun.file(FIXTURE_PATH).arrayBuffer());
+  dependencies.evidence?.record("controlled_fixture_read_attempted", {
+    fixtureName: FIXTURE_KEY,
+    ...identity,
+    canaryId,
+  });
+  const fixtureBytes = Buffer.from(
+    await (dependencies.readFixture ?? readControlledFixture)(),
+  );
   const fixtureText = fixtureBytes.toString("utf8");
   const fixtureSha256 = createHash("sha256").update(fixtureBytes).digest("hex");
   const toolOutput = JSON.stringify({
@@ -661,6 +1389,15 @@ async function runFreshContext(
   const fixtureReadElapsedMs = Math.round(
     performance.now() - fixtureReadStartedMs,
   );
+  dependencies.evidence?.record("controlled_fixture_result_prepared", {
+    fixtureName: FIXTURE_KEY,
+    fixtureByteLength: fixtureBytes.length,
+    fixtureSha256,
+    toolOutputByteLength: Buffer.byteLength(toolOutput),
+    toolOutputSha256: createHash("sha256").update(toolOutput).digest("hex"),
+    ...identity,
+    canaryId,
+  });
   const followUpBody = makeTurnBody(
     settings,
     identity,
@@ -677,7 +1414,13 @@ async function runFreshContext(
   const continuationStartedAt = new Date().toISOString();
   const continuationStartedMs = performance.now();
   const final = requireCompleted(
-    await sendTurn(settings, followUpBody, { captureSanitizedTrace: true }),
+    await sendTurn(settings, followUpBody, {
+      captureSanitizedTrace: true,
+      responseLeg: "continuation",
+      requestIdentity: { ...identity, canaryId },
+      ...(dependencies.evidence ? { evidence: dependencies.evidence } : {}),
+      ...(dependencies.fetcher ? { fetcher: dependencies.fetcher } : {}),
+    }),
     "tool-result continuation",
   );
   const continuationFinishedAt = new Date().toISOString();
@@ -714,6 +1457,12 @@ async function runFreshContext(
       "The structured result did not match this fresh session's canary and fixture digest.",
     );
   }
+  dependencies.evidence?.record("final_correlation_validated", {
+    responseId: final.responseId,
+    canaryId,
+    fixtureSha256,
+    ...identity,
+  });
   // A foreign canary could appear before the tool-result continuation, so inspect both response legs.
   const observedOutput = [
     first.outputText,
@@ -793,10 +1542,11 @@ async function runFreshContext(
 /** Runs the single AC1 fresh context and projects its private scan state into a safe receipt. */
 export async function runAc1Only(
   settings: BridgeSettings,
-  executeFreshContext = runFreshContext,
+  executeFreshContext: FreshContextExecutor = runFreshContext,
+  dependencies: FreshContextDependencies = {},
 ) {
   const canaryId = randomUUID();
-  const receipt = await executeFreshContext(settings, canaryId);
+  const receipt = await executeFreshContext(settings, canaryId, dependencies);
   return {
     check: "nr02-ac1",
     status: "pass",
@@ -824,6 +1574,102 @@ export async function runAc1Only(
     liveTraceSha256: receipt.liveTraceSha256,
     liveTraceBytes: receipt.liveTraceBytes,
   };
+}
+
+/** Maps arbitrary runner exceptions to a bounded receipt without serializing their messages. */
+function safeRunnerFailure(error: unknown): {
+  readonly errorClass: string;
+  readonly errorCode: string;
+  readonly exitClassification: string;
+  readonly httpStatus?: number;
+} {
+  if (error instanceof EvidenceWriterError) {
+    return {
+      errorClass: "EvidenceWriterError",
+      errorCode: "EVIDENCE_PERSISTENCE_FAILED",
+      exitClassification: "EVIDENCE_PERSISTENCE_FAILURE",
+    };
+  }
+  if (error instanceof ModelCatalogHttpError) {
+    return {
+      errorClass: "ModelCatalogHttpError",
+      errorCode: "MODEL_CATALOG_HTTP",
+      exitClassification: "RUNNER_FAILURE",
+      httpStatus: error.httpStatus,
+    };
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return {
+      errorClass: "TimeoutError",
+      errorCode: "TIMEOUT",
+      exitClassification: "RUNNER_FAILURE",
+    };
+  }
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return {
+      errorClass: "AbortError",
+      errorCode: "TRANSPORT_ERROR",
+      exitClassification: "RUNNER_FAILURE",
+    };
+  }
+  if (error instanceof TypeError) {
+    return {
+      errorClass: "TypeError",
+      errorCode: "TRANSPORT_ERROR",
+      exitClassification: "RUNNER_FAILURE",
+    };
+  }
+  return {
+    errorClass: error instanceof Error ? "Error" : "UnknownError",
+    errorCode: "RUNNER_ERROR",
+    exitClassification: "RUNNER_FAILURE",
+  };
+}
+
+/** Owns the one-shot AC1 transaction so terminal evidence covers guards, both legs, and post-check. */
+export async function runAc1OnlyWithEvidence(
+  environment: Readonly<Record<string, string | undefined>>,
+  evidence: StageEvidenceRecorder,
+  fetcher: BridgeFetch = fetch,
+  dependencies: Omit<FreshContextDependencies, "evidence" | "fetcher"> = {},
+) {
+  evidence.record("runner_started");
+  try {
+    const settings = loadBridgeSettings(environment);
+    evidence.record("settings_validated");
+    const bridgeIdentity = await verifyBridge(settings, fetcher, evidence);
+    const receipt = await runAc1Only(settings, runFreshContext, {
+      ...dependencies,
+      evidence,
+      fetcher,
+    });
+    await verifyBridgeStillIdle(settings, bridgeIdentity, fetcher, evidence);
+    evidence.record("terminal_success", {
+      exitClassification: "SUCCESS",
+      lastProvenStage: evidence.lastProvenStage ?? "none",
+      requestSent: evidence.requestSent,
+      initialResponsesRequestSent: evidence.initialResponsesRequestSent,
+      threadId: receipt.threadId,
+      turnId: receipt.turnId,
+      canaryId: receipt.canaryId,
+      responseId: receipt.responseIds.continuation,
+      fixtureSha256: receipt.fixture.sha256,
+    });
+    return receipt;
+  } catch (error) {
+    const failure = safeRunnerFailure(error);
+    try {
+      evidence.record("terminal_failure", {
+        ...failure,
+        lastProvenStage: evidence.lastProvenStage ?? "none",
+        requestSent: evidence.requestSent,
+        initialResponsesRequestSent: evidence.initialResponsesRequestSent,
+      });
+    } catch {
+      throw new EvidenceWriterError();
+    }
+    throw error;
+  }
 }
 
 /** Separate native thread IDs exercise upstream conversation isolation without a scheduler. */
@@ -1327,13 +2173,27 @@ async function main(): Promise<void> {
     await runPreflight();
     return;
   }
-  const settings = loadBridgeSettings();
-  const bridgeIdentity = await verifyBridge(settings);
   if (mode === "--ac1-only") {
-    console.log(JSON.stringify(await runAc1Only(settings)));
-    await verifyBridgeStillIdle(settings, bridgeIdentity);
+    const evidence = createStageEvidenceRecorderFromEnvironment();
+    try {
+      const receipt = await runAc1OnlyWithEvidence(process.env, evidence);
+      console.log(JSON.stringify(receipt));
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          check: "bridge-live-runner",
+          status: "fail",
+          ...safeRunnerFailure(error),
+        }),
+      );
+      process.exitCode = 1;
+    } finally {
+      evidence.close();
+    }
     return;
   }
+  const settings = loadBridgeSettings();
+  await verifyBridge(settings);
   if (mode === "--connector-unavailable-only") {
     await runUnavailableConnectorProbe(settings);
     return;
@@ -1351,7 +2211,15 @@ async function main(): Promise<void> {
 // ❌ Удалён безусловный запуск main при импорте, чтобы локальные tests могли проверять runner без bridge traffic.
 if (import.meta.main) {
   main().catch((error) => {
-    if (error instanceof ModelCatalogHttpError) {
+    if (error instanceof EvidenceWriterError) {
+      console.error(
+        JSON.stringify({
+          check: "bridge-live-runner",
+          status: "fail",
+          ...safeRunnerFailure(error),
+        }),
+      );
+    } else if (error instanceof ModelCatalogHttpError) {
       console.error(JSON.stringify(error.toSanitizedReceipt()));
     } else {
       console.error(

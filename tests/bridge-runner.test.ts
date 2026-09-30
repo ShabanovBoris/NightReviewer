@@ -1,12 +1,19 @@
 import { expect, test } from "bun:test";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
+  EvidenceWriterError,
+  FileStageEvidenceRecorder,
   loadBridgeSettings,
   ModelCatalogHttpError,
   requireIdleBridge,
   resolveLiveMode,
   runAc1Only,
+  runAc1OnlyWithEvidence,
   runPreflight,
   validateReleaseClientVersion,
+  validateStageLedger,
   verifyBridge,
 } from "../scripts/bridge-spike";
 
@@ -33,6 +40,88 @@ function healthyBridge(successfulCatalogRequests = 0) {
     active_http_turns: 0,
     active_browser_turns: 0,
     successful_model_catalog_requests: successfulCatalogRequests,
+  };
+}
+
+/** Serializes deterministic upstream frames so runner tests exercise the production SSE parser offline. */
+function sseResponse(
+  events: readonly {
+    readonly name: string;
+    readonly body: Record<string, unknown>;
+  }[],
+): Response {
+  const payload = events
+    .map(
+      ({ name, body }) => `event: ${name}\ndata: ${JSON.stringify(body)}\n\n`,
+    )
+    .join("");
+  return new Response(payload, {
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+/** Produces a completed, optionally invalid tool-call turn for host-side callback validation tests. */
+function functionCallResponse(toolName = "read_fixture"): Response {
+  const item = {
+    id: "item_nr02_call",
+    type: "function_call",
+    call_id: "call_nr02_fixture",
+    name: toolName,
+    arguments: JSON.stringify({ fixture: "probe" }),
+  };
+  return sseResponse([
+    {
+      name: "response.output_item.added",
+      body: { type: "response.output_item.added", item },
+    },
+    {
+      name: "response.output_item.done",
+      body: { type: "response.output_item.done", item },
+    },
+    {
+      name: "response.completed",
+      body: {
+        type: "response.completed",
+        response: { id: "resp_nr02_initial" },
+      },
+    },
+  ]);
+}
+
+/** Extracts only the generated test canary so a fake continuation can model exact correlation. */
+function canaryFromRequest(init?: RequestInit): string {
+  const requestBody = JSON.parse(String(init?.body)) as {
+    input?: Array<{ content?: Array<{ text?: string }> }>;
+  };
+  const prompt = requestBody.input
+    ?.flatMap((message) => message.content ?? [])
+    .map((part) => part.text ?? "")
+    .find((text) => text.includes("this canaryId: "));
+  const canary = prompt?.match(/this canaryId: ([0-9a-f-]{36})/)?.[1];
+  if (!canary) throw new Error("Mocked initial request omitted the canary.");
+  return canary;
+}
+
+/** Creates a private temporary JSONL file and run identity for one fully injected runner scenario. */
+function createEvidenceStore(headSha: string): {
+  readonly root: string;
+  readonly evidencePath: string;
+  readonly evidenceRunId: string;
+  readonly recorder: FileStageEvidenceRecorder;
+} {
+  const root = mkdtempSync(resolve(".nightreviewer", "nr02-runner-flow-test-"));
+  const evidencePath = resolve(root, "stages.jsonl");
+  const evidenceRunId = randomUUID();
+  writeFileSync(evidencePath, "", { mode: 0o600 });
+  return {
+    root,
+    evidencePath,
+    evidenceRunId,
+    recorder: new FileStageEvidenceRecorder(
+      evidencePath,
+      evidenceRunId,
+      headSha,
+    ),
   };
 }
 
@@ -303,4 +392,373 @@ test("catalog failure receipt retains numeric status and only safe health classi
   }
   expect(caught.message).not.toContain(PREFLIGHT_ENV.BRIDGE_SPIKE_API_KEY);
   expect(caught.message).not.toContain(bodyMarker);
+});
+
+test("stage writer rejects an unallowlisted secret field before it reaches durable evidence", () => {
+  const root = mkdtempSync(resolve(".nightreviewer", "nr02-redaction-test-"));
+  const evidencePath = resolve(root, "stages.jsonl");
+  writeFileSync(evidencePath, "", { mode: 0o600 });
+  const secretSentinel = "NR02_DO_NOT_PERSIST_1e87";
+  const recorder = new FileStageEvidenceRecorder(
+    evidencePath,
+    randomUUID(),
+    "d".repeat(40),
+  );
+  try {
+    recorder.record("runner_started");
+    expect(() =>
+      recorder.record("settings_validated", {
+        apiKey: secretSentinel,
+      } as never),
+    ).toThrow(EvidenceWriterError);
+  } finally {
+    recorder.close();
+  }
+  const contents = readFileSync(evidencePath, "utf8");
+  expect(contents).not.toContain(secretSentinel);
+  expect(contents).toContain('"stage":"runner_started"');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("pre-request settings failure persists a terminal receipt with requestSent=false", async () => {
+  const root = mkdtempSync(resolve(".nightreviewer", "nr02-pre-request-test-"));
+  const evidencePath = resolve(root, "stages.jsonl");
+  writeFileSync(evidencePath, "", { mode: 0o600 });
+  const evidenceRunId = randomUUID();
+  const recorder = new FileStageEvidenceRecorder(
+    evidencePath,
+    evidenceRunId,
+    "a".repeat(40),
+  );
+  const environment = { ...PREFLIGHT_ENV };
+  delete (environment as Partial<typeof environment>).BRIDGE_SPIKE_API_KEY;
+  let fetchCalls = 0;
+  try {
+    await expect(
+      runAc1OnlyWithEvidence(environment, recorder, async () => {
+        fetchCalls += 1;
+        return Response.json({});
+      }),
+    ).rejects.toThrow("BRIDGE_SPIKE_API_KEY is required; no request was sent.");
+  } finally {
+    recorder.close();
+  }
+  expect(fetchCalls).toBe(0);
+  expect(
+    validateStageLedger(
+      readFileSync(evidencePath, "utf8"),
+      evidenceRunId,
+      "a".repeat(40),
+    ),
+  ).toMatchObject({
+    terminalStage: "terminal_failure",
+    lastProvenStage: "runner_started",
+    requestSent: false,
+    initialResponsesRequestSent: false,
+  });
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("initial Responses transport failure records attempt before fetch and no false response or fixture result", async () => {
+  const root = mkdtempSync(
+    resolve(".nightreviewer", "nr02-response-attempt-test-"),
+  );
+  const evidencePath = resolve(root, "stages.jsonl");
+  writeFileSync(evidencePath, "", { mode: 0o600 });
+  const evidenceRunId = randomUUID();
+  const headSha = "b".repeat(40);
+  const recorder = new FileStageEvidenceRecorder(
+    evidencePath,
+    evidenceRunId,
+    headSha,
+  );
+  let healthReads = 0;
+  let responseFetchCount = 0;
+  const networkErrorSentinel = "PRIVATE_TRANSPORT_ERROR_SENTINEL";
+  const fetcher: TestFetch = async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.pathname === "/healthz") {
+      healthReads += 1;
+      return Response.json(healthyBridge(healthReads === 1 ? 0 : 1));
+    }
+    if (url.pathname === "/v1/models") {
+      return Response.json({
+        models: [
+          {
+            slug: PREFLIGHT_ENV.BRIDGE_SPIKE_MODEL,
+            supported_reasoning_levels: [{ effort: "high" }],
+          },
+        ],
+      });
+    }
+    if (url.pathname === "/v1/responses") {
+      responseFetchCount += 1;
+      const beforeFetch = readFileSync(evidencePath, "utf8");
+      expect(beforeFetch).toContain('"stage":"initial_responses_attempted"');
+      expect(beforeFetch).not.toContain('"stage":"initial_responses_received"');
+      throw new TypeError(networkErrorSentinel);
+    }
+    throw new Error("Unexpected mocked bridge route.");
+  };
+  const originalLog = console.log;
+  console.log = () => undefined;
+  try {
+    await expect(
+      runAc1OnlyWithEvidence(PREFLIGHT_ENV, recorder, fetcher),
+    ).rejects.toThrow(TypeError);
+  } finally {
+    console.log = originalLog;
+    recorder.close();
+  }
+  expect(responseFetchCount).toBe(1);
+  const ledger = readFileSync(evidencePath, "utf8");
+  expect(ledger).not.toContain(networkErrorSentinel);
+  expect(ledger).not.toContain('"stage":"initial_responses_received"');
+  expect(ledger).not.toContain('"stage":"tool_call_observed"');
+  expect(ledger).not.toContain('"stage":"controlled_fixture_result_prepared"');
+  expect(validateStageLedger(ledger, evidenceRunId, headSha)).toMatchObject({
+    terminalStage: "terminal_failure",
+    lastProvenStage: "initial_responses_attempted",
+    requestSent: true,
+    initialResponsesRequestSent: "UNKNOWN",
+  });
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("tool-call, fixture, continuation, and final-correlation failures keep the furthest proven stage", async () => {
+  const fixtureBytes = Buffer.from(
+    "controlled synthetic fixture bytes",
+    "utf8",
+  );
+  const failureCases = [
+    {
+      name: "tool call validation",
+      expectedLastStage: "initial_responses_stream_ended",
+      readFixture: async (): Promise<Uint8Array> => fixtureBytes,
+      continuationFailure: false,
+      wrongCanary: false,
+      invalidToolCall: true,
+    },
+    {
+      name: "fixture read",
+      expectedLastStage: "controlled_fixture_read_attempted",
+      readFixture: async (): Promise<Uint8Array> => {
+        throw new Error("PRIVATE_FIXTURE_FAILURE_SENTINEL");
+      },
+      continuationFailure: false,
+      wrongCanary: false,
+      invalidToolCall: false,
+    },
+    {
+      name: "continuation request",
+      expectedLastStage: "continuation_responses_attempted",
+      readFixture: async (): Promise<Uint8Array> => fixtureBytes,
+      continuationFailure: true,
+      wrongCanary: false,
+      invalidToolCall: false,
+    },
+    {
+      name: "final correlation",
+      expectedLastStage: "continuation_responses_stream_ended",
+      readFixture: async (): Promise<Uint8Array> => fixtureBytes,
+      continuationFailure: false,
+      wrongCanary: true,
+      invalidToolCall: false,
+    },
+  ] as const;
+
+  for (const failureCase of failureCases) {
+    const store = createEvidenceStore("e".repeat(40));
+    let healthReads = 0;
+    let responseCalls = 0;
+    let canaryId: string | undefined;
+    const fetcher: TestFetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/healthz") {
+        healthReads += 1;
+        return Response.json(healthyBridge(healthReads === 1 ? 0 : 1));
+      }
+      if (url.pathname === "/v1/models") {
+        return Response.json({
+          models: [
+            {
+              slug: PREFLIGHT_ENV.BRIDGE_SPIKE_MODEL,
+              supported_reasoning_levels: [{ effort: "high" }],
+            },
+          ],
+        });
+      }
+      if (url.pathname === "/v1/responses") {
+        responseCalls += 1;
+        if (responseCalls === 1) {
+          canaryId = canaryFromRequest(init);
+          return functionCallResponse(
+            failureCase.invalidToolCall ? "unapproved_tool" : "read_fixture",
+          );
+        }
+        if (failureCase.continuationFailure) {
+          throw new TypeError("PRIVATE_CONTINUATION_FAILURE_SENTINEL");
+        }
+        const fixtureSha256 = createHash("sha256")
+          .update(fixtureBytes)
+          .digest("hex");
+        const result = {
+          canaryId: failureCase.wrongCanary ? randomUUID() : canaryId,
+          fixtureSha256,
+        };
+        return sseResponse([
+          {
+            name: "response.output_text.delta",
+            body: {
+              type: "response.output_text.delta",
+              delta: JSON.stringify(result),
+            },
+          },
+          {
+            name: "response.completed",
+            body: {
+              type: "response.completed",
+              response: { id: "resp_nr02_final" },
+            },
+          },
+        ]);
+      }
+      throw new Error("Unexpected mocked route.");
+    };
+    const originalLog = console.log;
+    console.log = () => undefined;
+    let caught: unknown;
+    try {
+      await runAc1OnlyWithEvidence(PREFLIGHT_ENV, store.recorder, fetcher, {
+        readFixture: failureCase.readFixture,
+      });
+    } catch (error) {
+      caught = error;
+    } finally {
+      console.log = originalLog;
+      store.recorder.close();
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const ledgerContents = readFileSync(store.evidencePath, "utf8");
+    expect(ledgerContents).not.toContain("PRIVATE_FIXTURE_FAILURE_SENTINEL");
+    expect(ledgerContents).not.toContain(
+      "PRIVATE_CONTINUATION_FAILURE_SENTINEL",
+    );
+    const summary = validateStageLedger(
+      ledgerContents,
+      store.evidenceRunId,
+      "e".repeat(40),
+    );
+    expect(summary).toMatchObject({
+      terminalStage: "terminal_failure",
+      lastProvenStage: failureCase.expectedLastStage,
+      requestSent: true,
+      initialResponsesRequestSent: true,
+    });
+    expect(ledgerContents).toContain(
+      `"stage":"${failureCase.expectedLastStage}"`,
+    );
+    expect(ledgerContents).not.toContain('"stage":"terminal_success"');
+    store.recorder.close();
+    rmSync(store.root, { recursive: true, force: true });
+  }
+});
+
+test("fully simulated AC1 persists ordered stages and never reaches global fetch", async () => {
+  const store = createEvidenceStore("f".repeat(40));
+  const fixtureBytes = Buffer.from(
+    "controlled synthetic fixture bytes",
+    "utf8",
+  );
+  const fixtureSha256 = createHash("sha256").update(fixtureBytes).digest("hex");
+  const routes: string[] = [];
+  let healthReads = 0;
+  let responseCalls = 0;
+  let canaryId: string | undefined;
+  const fetcher: TestFetch = async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    routes.push(url.pathname);
+    if (url.pathname === "/healthz") {
+      healthReads += 1;
+      return Response.json(healthyBridge(healthReads === 1 ? 0 : 1));
+    }
+    if (url.pathname === "/v1/models") {
+      return Response.json({
+        models: [
+          {
+            slug: PREFLIGHT_ENV.BRIDGE_SPIKE_MODEL,
+            supported_reasoning_levels: [{ effort: "high" }],
+          },
+        ],
+      });
+    }
+    if (url.pathname === "/v1/responses") {
+      responseCalls += 1;
+      if (responseCalls === 1) {
+        canaryId = canaryFromRequest(init);
+        return functionCallResponse();
+      }
+      const output = JSON.stringify({ canaryId, fixtureSha256 });
+      return sseResponse([
+        {
+          name: "response.output_text.delta",
+          body: { type: "response.output_text.delta", delta: output },
+        },
+        {
+          name: "response.completed",
+          body: {
+            type: "response.completed",
+            response: { id: "resp_nr02_final" },
+          },
+        },
+      ]);
+    }
+    throw new Error("Unexpected mocked route.");
+  };
+  const originalLog = console.log;
+  const originalFetch = globalThis.fetch;
+  let globalFetchCalls = 0;
+  console.log = () => undefined;
+  globalThis.fetch = (async () => {
+    globalFetchCalls += 1;
+    throw new Error("The injected runner must not use global fetch.");
+  }) as unknown as typeof fetch;
+  let receipt: Awaited<ReturnType<typeof runAc1OnlyWithEvidence>> | undefined;
+  try {
+    receipt = await runAc1OnlyWithEvidence(
+      PREFLIGHT_ENV,
+      store.recorder,
+      fetcher,
+      { readFixture: async () => fixtureBytes },
+    );
+  } finally {
+    console.log = originalLog;
+    globalThis.fetch = originalFetch;
+    store.recorder.close();
+  }
+  expect(receipt?.check).toBe("nr02-ac1");
+  expect(receipt?.status).toBe("pass");
+  expect(receipt?.fixture.sha256).toBe(fixtureSha256);
+  expect(globalFetchCalls).toBe(0);
+  expect(routes).toEqual([
+    "/healthz",
+    "/v1/models",
+    "/healthz",
+    "/v1/responses",
+    "/v1/responses",
+    "/healthz",
+  ]);
+  expect(
+    validateStageLedger(
+      readFileSync(store.evidencePath, "utf8"),
+      store.evidenceRunId,
+      "f".repeat(40),
+    ),
+  ).toMatchObject({
+    terminalStage: "terminal_success",
+    lastProvenStage: "post_ac1_health_passed",
+    requestSent: true,
+    initialResponsesRequestSent: true,
+  });
+  rmSync(store.root, { recursive: true, force: true });
 });

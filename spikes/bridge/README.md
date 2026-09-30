@@ -2,17 +2,19 @@
 
 This diagnostic client remains outside `src/index.ts`: its function-call relay is not NightReviewer’s production `ReviewerBackend`.
 
-## Current cycle 2 route — D43
+## Current cycle 2 — D52 offline evidence remediation
 
-Lead D40 selects the already-running Codex Web GPT `6.1.3` production baseline and existing production tunnel. D41 source-checks that unchanged production `config.appName` selects **`Codex Native2`**. **`Codex Native2 NR-02` is auxiliary, stays unchanged, and is not used for this LIVE route.** No qualifying Responses/tool round-trip has been observed yet.
+The target remains the existing production Codex Web GPT `6.1.3` and unchanged `Codex Native2` connector selected by production `config.appName`. D49 consumed one AC1 attempt; an internal guard passed but terminal evidence was discarded. D50 retained no relevant logs or exact interval, so AC1 is `UNVERIFIED`. D51 holds LIVE work; D52 authorizes offline implementation, deterministic tests, docs, push to the existing PR #3 branch, and exact-head CI only. No LIVE request, connector call, AC1/AC2/AC3, runtime/tunnel/config/credential/permission/DEV mutation, reviewer request or merge is authorized.
 
-AC1 and AC2 are `NOT_RUN`. D41's cancellation permission was gated on successful preflight and AC1, neither occurred. D43 currently authorizes no LIVE request; unavailable-connector/tool remains `NOT_AUTHORIZED_NOT_RUN`. AC3's former three-context matrix is `DEFERRED_HARDENING`. DEV is not the LIVE acceptance owner.
+D52's `bridge:live` entry now routes through `scripts/bridge-live-capture.ts`. Before it spawns the fixed Bun 1.4.2 AC1 child, the wrapper checks the clean `nr-02-chatgpt-web-spike` branch and an exact match with `BRIDGE_SPIKE_EXPECTED_PR_HEAD_SHA`, then creates and flushes private `0700/0600` run storage. It captures every stdout/stderr byte privately under ignored `.nightreviewer/`, validates the ordered stage ledger and terminal outcome, and emits only exact UTC start/finish, head, exit code/signal, classification, safe stage metadata, byte counts and hashes. Missing or malformed ledger data fails closed. A storage error prevents child spawn.
 
-The runner requires exact bridge version `6.1.3`, an explicit live mode, and `BRIDGE_SPIKE_CLIENT_VERSION` in release `major.minor.patch` form. D42's replacement preflight passed initial health then failed at authenticated model discovery with a non-2xx response; the exact status was not retained. It did not reach the second health check or `/v1/responses`, and it made no connector call or production mutation. D42 consumed the replacement attempt.
+The runner records each `_attempted` event synchronously before a network side effect, then separately records response receipt, stream end, tool observation, fixture preparation, final correlation and post-run health. Request attempt is not treated as a response receipt. Unknown transport outcomes remain `UNKNOWN`; no prompt, key, cookie, model free text, fixture contents or raw tool output enters the sanitized receipt.
 
-D43 source review found a plausible mismatch with the upstream 6.1.3 catalog contract: the request needs explicit `client_version`, and the Bun fetch User-Agent was not established as a recognized first-party Codex User-Agent. The cause of the D42 response is not live-proven. The current active Codex executable was resolved locally as `0.159.0`; use only the active installed executable's release version, and stop if its identity is ambiguous. Bearer handling remains unchanged. Do not add cookies, originator, or other speculative headers.
+D52 verification uses fake spawn/fetch and temporary files only. It covers pre-request failure, failed initial Responses attempt, tool-call/fixture/continuation/final-correlation failures, simulated success, byte-preserving stdout/stderr capture, exact process status, ordering and redaction. These checks are offline contract evidence and do not satisfy AC1. After exact-head CI, send the Lead a correlated `DECISION_REQUEST` for a separate bounded host-native LIVE authorization. CI does not trigger a LIVE attempt or reviewer request.
 
-D43 authorizes offline source/docs edits, deterministic verification, publication to PR #3, and exact-head GitHub CI. Do not run the commands below now: D41 and D42 preflight allowances are consumed, and a new Lead decision is required before any further production preflight or LIVE action. No production bridge request, connector call, setup, external Verify, runtime/tunnel/config/credential change, or DEV action is authorized under D43.
+### Historical D42/D43 route correction
+
+D42's one replacement preflight passed initial `/healthz`, then authenticated `/v1/models` returned non-2xx with no retained exact status; the second health and `/v1/responses` were not reached. D43 found the missing explicit release-only `client_version` as a plausible source mismatch, not a live-proven cause, and authorized offline correction, publication and exact-head CI. That D43 authorization and CI do not verify the later D52 head or override the D49–D52 hold.
 
 ## Historical cycle 1 D3/D5/D6 runbook — preserved, superseded for current acceptance
 
@@ -28,7 +30,7 @@ The user later authorized ordinary DEV for all NightReviewer development, and le
 
 Do not remove the DEV purpose flag, copy/reinterpret its profile, attach its tunnel to an undocumented listener, or use the shared `6.1.2` Launcher. The live commands below are qualifying probes and may run only after the D3 production profile, unique connector, and external-resource ownership are verified. The existing direct Temporary Chat probe did not call `read_fixture` and is not acceptance evidence.
 
-## Future commands — only after a new Lead authorization
+## Commands — not authorized by D52; require a separate Lead authorization
 
 If a later Lead decision explicitly authorizes another attempt, first resolve the release version from the active Codex app's embedded executable. The current local command reports `codex-cli 0.159.0`; submit only the version string, never any credential or token:
 
@@ -43,9 +45,9 @@ Then configure the already-authorized loopback bridge inputs without putting cre
 bun run bridge:preflight
 ```
 
-The following LIVE commands are examples of the D41 contract only. A successful preflight does not authorize these commands under D43; run an action only if a current Lead decision explicitly authorizes it.
+The following LIVE commands are examples of the D41 contract only. A successful preflight or CI does not authorize these commands under D52; run an action only if a current Lead decision explicitly authorizes it.
 
-After such authorization, `bridge:live` is intended to run exactly one AC1 fresh context and emit a sanitized digest-bound receipt. It does not run the historical three-context matrix.
+Only after a later Lead decision explicitly authorizes a bounded LIVE attempt, set `BRIDGE_SPIKE_EXPECTED_PR_HEAD_SHA` to the exact reviewed PR head. `bridge:live` starts the host capture wrapper, which enforces the clean branch/head/runtime guard before creating the AC1 child and never echoes its raw output. It does not run the historical three-context matrix.
 
 ```sh
 bun run bridge:live

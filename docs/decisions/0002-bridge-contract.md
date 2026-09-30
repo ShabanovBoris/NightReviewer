@@ -1,10 +1,18 @@
 # ADR-0002 — ChatGPT Web bridge contract spike
 
-Дата: 2026-09-27; актуализация: 2026-09-30 по D40–D43. Статус: **provisional**; D42 model-catalog preflight failed and was consumed, D43 offline correction is locally deterministic-verified but unpublished, genuine LIVE AC1/AC2 receipts ещё не зафиксированы.
+Дата: 2026-09-27; актуализация: 2026-10-01 по D49–D52. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC1 `UNVERIFIED`, AC2 `NOT_RUN`, reviewer approval и merge authorization отсутствуют.
 
-Lead D40 задаёт minimum-working маршрут на уже работающем Codex Web GPT `6.1.3` и существующем production tunnel. D41 уточняет выбор connector по неизменённому production `config.appName`: текущий connector — **`Codex Native2`**. Ранее созданный **`Codex Native2 NR-02`** является auxiliary connector и в этом маршруте не используется; его настройки не меняются. Lead отмечает production baseline как `PASS_READY`; эти сведения плюс source inspection не доказывают независимый tool callback или Responses round-trip.
+## Текущее решение Lead D49–D52
 
-Lead D41 source-check подтверждает нужные интерфейсы upstream `6.1.3`: `/healthz`, authenticated `/v1/models`, `POST /v1/responses` и exact-turn `/admin/interrupt-turn`. Source contract сообщает HTTP 424 `connector_error/connector_not_found`, если выбранный connector отсутствует в каталоге; в текущем задании эта ветка не исполняется, потому что безопасного non-mutating injection не установлено. Это source-level сведения, не LIVE receipts.
+D49 израсходовала один LIVE AC1 запуск: внутренний guard прошёл, но terminal evidence была отброшена. D50 не нашла относящихся к запуску логов и не сохранила точный интервал; причина результата и сам tool outcome не устанавливаются. AC1 остаётся `UNVERIFIED`. D51 сохранила hold на production/connector/LIVE действия.
+
+D52 (`NR-02-D52-DURABLE-EVIDENCE-CAPTURE-OFFLINE`, message `0c07907a-dcea-4c3a-bd05-6defe03d5576`) назначила только offline remediation: durable ordered stage evidence, host-native child stdout/stderr capture, deterministic injected-failure tests и обновление документов. Разрешены commit/push только в существующую PR #3 ветку и exact-head CI. D52 не меняет acceptance, не разрешает новый LIVE/connector вызов, reviewer request или merge.
+
+Требуемый протокол создаёт стабильный run ID и точный PR head до сетевого child; persist+fsync-ит `_attempted` до каждого side effect; записывает отдельные response/stream/tool/fixture/correlation stages; хранит terminal classification, furthest proven stage и request-sent states; precreates private `0700/0600` capture storage; сохраняет raw stdout/stderr только локально и выдаёт наружу hashes/byte counts/allowlisted metadata. Невалидное или отсутствующее terminal evidence закрывает run как capture failure. Deterministic tests остаются offline и не изменяют AC1.
+
+Lead D40/D41 target — существующий production Codex Web GPT `6.1.3` и неизменённый connector `Codex Native2`, который выбирается неизменённым production `config.appName`. Auxiliary connector и DEV настройки не меняются. В рамках D52 production bridge HTTP requests, connector calls и production/DEV mutations равны нулю.
+
+D52 ответ виден в configured Lead ChatGPT conversation через встроенный browser, но accessibility extraction обрезала response после `verification.liveTraffic="PROHIBITED"`; оставшиеся follow-up поля прочитаны визуально. Полный raw response не сохранён, поэтому response SHA-256 не заявляется. Private evidence должна сохранять эту capture limitation, а не выдавать нормализованное summary за raw receipt.
 
 ### Lead D42/D43 — consumed catalog preflight and offline correction
 
@@ -16,9 +24,9 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 
 `6.1.1` и source revision `a13cd09950969f43e3b7e25c71fa43efaf5446c5` остаются только историческим source-audit и MIT license pin. Runner fail-closed ожидает ровно `6.1.3`; диапазон, fallback и env override не допускаются.
 
-Текущий cycle 2 по D43: AC1 `NOT_RUN`; AC2 `NOT_RUN` (D41 cancellation gate не достигнут; следующий LIVE шаг требует нового решения Lead); unavailable subcheck `NOT_AUTHORIZED_NOT_RUN`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY` после локального audit. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
+Историческое состояние на момент D43 (superseded by D49–D52): AC1 `NOT_RUN`; AC2 `NOT_RUN`; unavailable subcheck `NOT_AUTHORIZED_NOT_RUN`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY`. D49/D50 later classify the consumed AC1 attempt as `UNVERIFIED`. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
 
-## Текущий D41 runner и LIVE contract
+## D41 acceptance runner contract — AC unchanged; authorization governed by D52
 
 - **Preflight:** до model discovery и повторно после неё exact `/healthz` должен подтверждать `active_http_turns=0` и `active_browser_turns=0`; отсутствующие/ненулевые значения закрывают gate. Остальные identity, readiness, authenticated catalog, выбранная модель, `high` effort и catalog accounting проверки сохранены.
 - **AC1:** один generated fresh `threadId`/`turnId`, один unique canary, ровно один `read_fixture({"fixture":"probe"})` function call через выбранный production `Codex Native2`, controlled fixture result через `function_call_output`, correlated final response с тем же canary и exact fixture SHA-256. Санitized trace не содержит fixture contents, model output или credentials.
@@ -26,11 +34,11 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 - **AC2 unavailable:** не исполнять `--connector-unavailable-only`, не симулировать произвольный 4xx, не менять connector/config. Оставить subcheck `NOT_RUN`.
 - **AC3:** сохранить исторический трёхконтекстный код только для deferred hardening; в этом задании его не запускать.
 
-Phase A — локальная адаптация и deterministic checks без production traffic. Phase B начинается только после публикации exact Phase A head и успешного GitHub `verify`: максимум одна read-only preflight, затем до одной AC1 и одной cancellation. Пользователь может подтвердить обычный one-shot tool approval только для разрешённого действия; запрос постоянного permission или изменения connector settings означает STOP. Downtime, runtime/tunnel/config/connector/credential/DEV mutation, setup и external Verify запрещены.
+Эти Phase A/B строки сохраняют историческую последовательность D41, позднее уточнённую D42/D43 и заменённую D49–D52. Текущий D52 разрешает только offline remediation, deterministic checks, push в существующий PR и exact-head CI; любой LIVE step требует отдельной будущей Lead authorization.
 
 ## Исторический source audit и route decisions цикла 1
 
-Разделы ниже сохраняют source-level сведения, D1–D39 route decisions и наблюдения цикла 1. Они не заменяют текущий D40/D41 контракт выше. Старые D3/D5 инструкции по 6.1.1 и трёхконтекстная matrix не являются текущими gating requirements.
+Разделы ниже сохраняют source-level сведения, D1–D39 route decisions и наблюдения цикла 1. Они не заменяют текущий D49–D52 статус в начале ADR. Старые D3/D5 инструкции по 6.1.1 и трёхконтекстная matrix не являются текущими gating requirements.
 
 ### Historical upstream source audit — pin 6.1.1
 
@@ -101,6 +109,6 @@ An acknowledgement without observed stream termination, HTTP status other than `
 - **D6 CANCELLATION CONTRACT:** Lead decision `NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION` is recorded at private message `lead-decision-a4b0f8e6-42be-4e08-a75d-1a4dd5bde69a.raw.txt` (raw SHA-256 `440af0e7bf37accfd47cbdef24cde1c20b106bac833275b8dcfefaf8235d3174`). The harness and runbook require HTTP 200/`status=ok`/`cancelled_http_turns=1` plus bounded termination of the correlated non-completed stream and preserve its actual parser/read disposition. D41 authorizes at most one cancellation after its gates. At the start of D41 no qualifying `/v1/responses` tool round-trip, unavailable outcome, or cancellation receipt had been collected.
 - **NOT VERIFIED:** No upstream process/tunnel lifecycle behavior was exercised by the spike harness. Launcher runtime ownership observations do not substitute for a request/cleanup receipt.
 
-## Текущий следующий шаг по D43
+## Текущий следующий шаг по D52
 
-После публикации correction и успешного exact-head CI обновить PR narrative и отправить Lead связанный D43 implementation report с точными head/CI, hashes, verification receipt и локально resolved client version. Отдельно указать, что production bridge запросов и мутаций не было. D41/D42 preflight allowances уже использованы; ни успешный CI, ни публикация не разрешают ещё один preflight. Любая новая production preflight требует отдельного решения Lead. AC1/AC2 остаются `NOT_RUN`; reviewer cycle 2 и merge authorization отсутствуют.
+После публикации offline remediation обновить PR #3 narrative, получить CI для точного head, сохранить локальный verification receipt и hashes changed files, затем отправить Lead коррелированный `DECISION_REQUEST` с просьбой выдать отдельную bounded host-native LIVE authorization. D52 запрещает запускать LIVE автоматически после CI и не разрешает reviewer request. AC1 остаётся `UNVERIFIED`, AC2 `NOT_RUN`, AC3 `DEFERRED_HARDENING`; merge authorization не выдана.

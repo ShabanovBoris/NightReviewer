@@ -7,12 +7,12 @@
   "acceptance": [
     {
       "acceptanceId": "NR-02-AC1",
-      "status": "NOT_RUN",
+      "status": "UNVERIFIED",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D42 replacement preflight: initial health passed, authenticated /v1/models returned non-2xx; exact status was not retained. Second health, /v1/responses, and connector callback were not reached. D43 offline correction does not establish LIVE acceptance.",
+      "environment": "D49 consumed one AC1 attempt: internal guard passed but terminal evidence was discarded. D50 found no relevant logs and did not retain the exact D49 interval. D51 keeps the LIVE hold; D52 authorizes offline durability remediation only. No new LIVE outcome is established.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -39,9 +39,13 @@
         "lead-assignment-d41",
         "nr-02-cycle2-d41-runner-verification-20260930",
         "nr-02-d42-replacement-preflight-20260930",
-        "lead-decision-d43"
+        "lead-decision-d43",
+        "lead-decision-d49",
+        "lead-decision-d50",
+        "lead-decision-d51",
+        "lead-decision-d52"
       ],
-      "notes": "NOT_RUN. D42 failed before Responses and its preflight allowance is consumed. D43 identified the missing release-only client_version contract as a plausible, not live-proven, cause."
+      "notes": "UNVERIFIED. Do not infer PASS, FAIL, or NOT_RUN from the missing terminal evidence. D52 offline tests do not alter LIVE acceptance."
     },
     {
       "acceptanceId": "NR-02-AC2",
@@ -50,7 +54,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D42 replacement preflight failed at authenticated model discovery; no cancellation, unavailable-connector request, Responses request, or connector callback was sent. D43 authorizes offline correction, PR publication, and exact-head GitHub CI only; no LIVE acceptance.",
+      "environment": "D51 hold continues. D52 authorizes no cancellation, unavailable-connector/tool request, connector call, production bridge HTTP, or runtime/DEV mutation.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -87,9 +91,10 @@
         "lead-assignment-d41",
         "nr-02-cycle2-d41-runner-verification-20260930",
         "nr-02-d42-replacement-preflight-20260930",
-        "lead-decision-d43"
+        "lead-decision-d43",
+        "lead-decision-d52"
       ],
-      "notes": "NOT_RUN. D41 cancellation prerequisites were not reached; another preflight requires a new Lead decision. Unavailable connector/tool remains NOT_AUTHORIZED_NOT_RUN."
+      "notes": "NOT_RUN. D52 is offline evidence remediation only; unavailable connector/tool remains NOT_AUTHORIZED_NOT_RUN."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -98,7 +103,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D41 keeps the former three-fresh-context matrix deferred; AC1 still requires one fresh context and unique canary.",
+      "environment": "D52 leaves the three-context matrix deferred and authorizes no LIVE run.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -121,7 +126,8 @@
         "lead-decision-d40",
         "lead-task-assignment-cycle2",
         "lead-decision-d41",
-        "lead-assignment-d41"
+        "lead-assignment-d41",
+        "lead-decision-d52"
       ],
       "notes": "Three-context leakage/cleanup matrix is deferred hardening, not a current minimum-working gate. No such LIVE matrix was run or claimed."
     },
@@ -178,7 +184,7 @@
         "nr-02-d42-replacement-preflight-20260930",
         "nr-02-cycle2-d43-offline-verification-20260930"
       ],
-      "notes": "PASS_DOCUMENTATION_ONLY: D42 remains a consumed non-2xx catalog failure; D43 identifies a plausible source mismatch without proving the live cause. AC1/AC2 remain NOT_RUN."
+      "notes": "PASS_DOCUMENTATION_ONLY. D52 docs/evidence consistency audit (8 predicates), git diff --check, jq parse, full Bun 1.4.2 verify (35 tests, 0 failures) all passed. No LIVE traffic or connector call occurred; AC1 remains UNVERIFIED."
     }
   ],
   "checks": [
@@ -1299,6 +1305,22 @@
       "artifactSizeBytes": 4268,
       "observedAtUtc": "2026-09-30T18:11:21Z",
       "artifactPath": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt"
+    },
+    {
+      "id": "nr-02-d52-offline-verification-20261001",
+      "kind": "CONTRACT",
+      "command": "env PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json; Python D52 documentation/evidence consistency audit",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Local developer host; Bun 1.4.2 (744846f84); dirty worktree, no source SHA claimed.",
+      "testCount": 35,
+      "failedTestCount": 0,
+      "expectCalls": 149,
+      "summary": "Full typecheck/lint/test/build passed; 35 tests passed, 0 failed. D52 consistency audit passed. Injected tests used fake fetch/spawn and private temp files only; production bridge HTTP, connector calls, and production/DEV mutations were 0.",
+      "artifactRef": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d52-offline-verification-20261001.json",
+      "artifactSha256": "bb8e6792b72a42aaeb87d0f929c62940a4f55787d8408032d23b460ad90c647e",
+      "artifactSizeBytes": 3323,
+      "observedAtUtc": "2026-09-30T22:13:30.000Z"
     }
   ],
   "decisionReceipts": [
@@ -1542,6 +1564,35 @@
         "merge"
       ],
       "source": "Configured Lead ChatGPT conversation via Codex app read_thread; correlation verified"
+    },
+    {
+      "decisionId": "NR-02-D52-DURABLE-EVIDENCE-CAPTURE-OFFLINE",
+      "messageId": "0c07907a-dcea-4c3a-bd05-6defe03d5576",
+      "requestMessageId": "2efdd8e6-4dad-4140-8c2d-3b4a89c2c33b",
+      "correlationVerified": true,
+      "rawResponseSha256": null,
+      "rawResponseCaptured": false,
+      "captureLimitation": "Built-in browser accessibility extraction truncated the response; the visible tail was checked visually. No complete raw response hash is claimed.",
+      "decision": "AUTHORIZE_OFFLINE_DURABLE_LIVE_EVIDENCE_REMEDIATION_ONLY",
+      "authorized": [
+        "repository implementation within bounded files",
+        "deterministic injected tests",
+        "documentation update",
+        "commit and push to existing PR #3 branch",
+        "exact-head CI"
+      ],
+      "prohibited": [
+        "production bridge HTTP/LIVE",
+        "connector calls",
+        "AC1/AC2/AC3",
+        "production or DEV runtime/tunnel/config/credential/permission mutation",
+        "reviewer request after offline assignment",
+        "merge"
+      ],
+      "source": "Configured Lead ChatGPT conversation observed in built-in browser; partial AX extraction with visual confirmation of response tail",
+      "normalizedReceiptRef": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-decision-0c07907a-dcea-4c3a-bd05-6defe03d5576.normalized.json",
+      "normalizedReceiptSha256": "8785a7090d8bd3c7ef85c65d97b76e10ab292a6545ce029b6b1a7a77500a278c",
+      "normalizedReceiptSizeBytes": 2217
     }
   ],
   "worktreeVerification": {
@@ -1584,11 +1635,11 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-LIVE-613-MINIMUM-WORKING-BRIDGE",
-    "assignmentMessageId": "2454d85e-b4df-45ad-93ac-11bfa2842bb5",
-    "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
-    "decisionMessageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
-    "status": "D43_IMPLEMENTATION_PUBLISHED_CI_PASSED_AWAITING_LEAD_REPORT",
+    "assignmentId": "NR-02-C2-DURABLE-LIVE-EVIDENCE-CAPTURE",
+    "assignmentMessageId": "0c07907a-dcea-4c3a-bd05-6defe03d5576",
+    "decisionId": "NR-02-D52-DURABLE-EVIDENCE-CAPTURE-OFFLINE",
+    "decisionMessageId": "0c07907a-dcea-4c3a-bd05-6defe03d5576",
+    "status": "D52_OFFLINE_IMPLEMENTATION_LOCALLY_VERIFIED_PENDING_COMMIT_PUSH_AND_EXACT_HEAD_CI",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1601,8 +1652,8 @@
       "transportBinding": "not independently proven by a Responses/tool receipt"
     },
     "acceptance": {
-      "NR-02-AC1": "NOT_RUN",
-      "NR-02-AC2": "NOT_RUN_D41_GATE_NOT_REACHED_D43_LIVE_BLOCKED",
+      "NR-02-AC1": "UNVERIFIED_D49_ATTEMPT_CONSUMED_TERMINAL_EVIDENCE_DISCARDED_D50_LOGS_AND_EXACT_INTERVAL_UNAVAILABLE",
+      "NR-02-AC2": "NOT_RUN_D52_OFFLINE_ONLY_UNAVAILABLE_SUBCHECK_NOT_AUTHORIZED",
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY"
     },
@@ -1614,15 +1665,14 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "AFTER_AC2_COMPLETE_OR_LEAD_GATE_REVISION",
+    "reviewerRequestNow": "NOT_AUTHORIZED_AFTER_OFFLINE_ASSIGNMENT",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-cycle2-d43-offline-verification-20260930",
-    "nextRequiredAction": "Update PR #3 narrative, then send Lead the correlated D43 implementation DECISION_REQUEST with exact head/CI, changed-file hashes, verification receipt, local client version 0.159.0, confirmation of zero production bridge HTTP/connector mutation, and refreshed canonical bundleHash if evidence changed. Do not retry preflight without a new Lead decision.",
+    "documentationVerificationRef": "nr-02-d52-offline-verification-20261001",
+    "nextRequiredAction": "Publish implementation to existing PR #3 branch, verify exact-head GitHub CI, update PR narrative, then send Lead a correlated DECISION_REQUEST for a separate bounded host-native LIVE authorization. Do not start LIVE after CI automatically.",
     "documentationVerificationArtifact": {
-      "id": "nr-02-cycle2-d43-offline-verification-20260930",
-      "path": "docs/evidence/NR-02-cycle2-d43-offline-verification-20260930.txt",
-      "sha256": "925c758ec30ecef19a48059a8227d3d3c3bb62418c5a03724ad928792fbadc70",
-      "sizeBytes": 4268
+      "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d52-offline-verification-20261001.json",
+      "sha256": "bb8e6792b72a42aaeb87d0f929c62940a4f55787d8408032d23b460ad90c647e",
+      "sizeBytes": 3323
     },
     "auxiliaryConnector": {
       "identity": "Codex Native2 NR-02",
@@ -1737,6 +1787,68 @@
       "messageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
       "inReplyTo": "d3c6d59d-b450-443c-86aa-57b6e13828b7",
       "source": "Configured Lead ChatGPT conversation observed through Codex app read_thread"
+    },
+    "d49D50D51": {
+      "d49": "Single AC1 attempt consumed; internal guard passed; terminal evidence discarded; tool outcome cannot be established.",
+      "d50": "No relevant logs and no exact D49 interval retained; cause remains unknown.",
+      "d51": "LIVE hold; no further production/connector/AC1/AC2/AC3 action."
+    },
+    "d52EvidenceCapture": {
+      "status": "LOCAL_VERIFY_PASSED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+      "requiredRunBinding": [
+        "stable evidenceRunId",
+        "exact PR head SHA",
+        "exact UTC start and finish",
+        "terminal exit classification"
+      ],
+      "privateCapture": [
+        "stdout bytes",
+        "stderr bytes",
+        "structured ordered stages",
+        "mode 0700 directories",
+        "mode 0600 files"
+      ],
+      "sanitizedReceipt": [
+        "stage and stream hashes",
+        "byte counts",
+        "allowlisted metadata",
+        "last proven stage",
+        "request sent states",
+        "exit code and signal"
+      ],
+      "failClosed": [
+        "storage must be precreated and fsynced before child spawn",
+        "attempt event persisted before side effect",
+        "missing/malformed/reordered/unsafe/no-terminal ledger is not success"
+      ],
+      "offlineCoverage": [
+        "pre-request failure",
+        "initial Responses attempt with no false receipt/tool/fixture result",
+        "tool-call validation failure",
+        "fixture failure",
+        "continuation failure",
+        "final-correlation failure",
+        "simulated AC1 success",
+        "private stdout/stderr byte capture and exact exit code/signal",
+        "redaction sentinel and missing-terminal fail-closed behavior",
+        "simulated AC1 test traps global fetch and asserts zero global calls"
+      ],
+      "productionBridgeHttpRequests": 0,
+      "connectorCalls": 0,
+      "productionOrDevMutations": 0
+    },
+    "rawLeadResponseCapture": {
+      "completeRawSaved": false,
+      "responseMessageId": "0c07907a-dcea-4c3a-bd05-6defe03d5576",
+      "limitation": "Accessibility extraction returned a truncated response; tail was verified visually; no raw response hash is claimed."
+    },
+    "localVerification": {
+      "status": "PASS",
+      "testCount": 35,
+      "failedTestCount": 0,
+      "expectCalls": 149,
+      "testedSha": null,
+      "reason": "Implementation is not yet committed; exact-head CI remains pending."
     }
   }
 }

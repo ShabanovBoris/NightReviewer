@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import {
   EvidenceWriterError,
@@ -28,6 +34,14 @@ type TestFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
+
+/** Initializes ignored private storage so CI fixtures satisfy the evidence writer's path boundary. */
+function privateTestRoot(prefix: string): string {
+  const evidenceRoot = resolve(".nightreviewer");
+  mkdirSync(evidenceRoot, { recursive: true, mode: 0o700 });
+  chmodSync(evidenceRoot, 0o700);
+  return mkdtempSync(resolve(evidenceRoot, prefix));
+}
 
 /** Supplies stable process identity and idle counts for offline bridge-contract tests. */
 function healthyBridge(successfulCatalogRequests = 0) {
@@ -110,7 +124,7 @@ function createEvidenceStore(headSha: string): {
   readonly evidenceRunId: string;
   readonly recorder: FileStageEvidenceRecorder;
 } {
-  const root = mkdtempSync(resolve(tmpdir(), "nr02-runner-flow-test-"));
+  const root = privateTestRoot("nr02-runner-flow-test-");
   const evidencePath = resolve(root, "stages.jsonl");
   const evidenceRunId = randomUUID();
   writeFileSync(evidencePath, "", { mode: 0o600 });
@@ -396,7 +410,7 @@ test("catalog failure receipt retains numeric status and only safe health classi
 });
 
 test("stage writer rejects an unallowlisted secret field before it reaches durable evidence", () => {
-  const root = mkdtempSync(resolve(tmpdir(), "nr02-redaction-test-"));
+  const root = privateTestRoot("nr02-redaction-test-");
   const evidencePath = resolve(root, "stages.jsonl");
   writeFileSync(evidencePath, "", { mode: 0o600 });
   const secretSentinel = "NR02_DO_NOT_PERSIST_1e87";
@@ -422,7 +436,7 @@ test("stage writer rejects an unallowlisted secret field before it reaches durab
 });
 
 test("pre-request settings failure persists a terminal receipt with requestSent=false", async () => {
-  const root = mkdtempSync(resolve(tmpdir(), "nr02-pre-request-test-"));
+  const root = privateTestRoot("nr02-pre-request-test-");
   const evidencePath = resolve(root, "stages.jsonl");
   writeFileSync(evidencePath, "", { mode: 0o600 });
   const evidenceRunId = randomUUID();
@@ -461,7 +475,7 @@ test("pre-request settings failure persists a terminal receipt with requestSent=
 });
 
 test("initial Responses transport failure records attempt before fetch and no false response or fixture result", async () => {
-  const root = mkdtempSync(resolve(tmpdir(), "nr02-response-attempt-test-"));
+  const root = privateTestRoot("nr02-response-attempt-test-");
   const evidencePath = resolve(root, "stages.jsonl");
   writeFileSync(evidencePath, "", { mode: 0o600 });
   const evidenceRunId = randomUUID();

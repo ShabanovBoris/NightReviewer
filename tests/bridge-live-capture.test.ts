@@ -3,13 +3,14 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
+  chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { runLiveCapture } from "../scripts/bridge-live-capture";
@@ -47,9 +48,12 @@ const SUCCESS_STAGES: readonly EvidenceStage[] = [
   "post_ac1_health_passed",
 ];
 
-/** Uses an owner-only OS temp root so tests do not depend on ignored repo-local setup. */
+/** Initializes the recorder's ignored private root before creating an isolated host-capture cwd. */
 function privateRoot(): string {
-  return mkdtempSync(resolve(tmpdir(), "nr02-capture-test-"));
+  const evidenceRoot = resolve(".nightreviewer");
+  mkdirSync(evidenceRoot, { recursive: true, mode: 0o700 });
+  chmodSync(evidenceRoot, 0o700);
+  return mkdtempSync(resolve(evidenceRoot, "nr02-capture-test-"));
 }
 
 /** Supplies only the response metadata required by the same validator used on a real child ledger. */

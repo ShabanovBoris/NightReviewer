@@ -1,8 +1,19 @@
 # NR-02 local bridge spike
 
-This is a diagnostic client for the pinned upstream Responses route. It is deliberately outside `src/index.ts`: a function-call relay is being measured here, not added to NightReviewer’s production `ReviewerBackend` contract.
+This diagnostic client remains outside src/index.ts: its function-call relay is not NightReviewer’s production ReviewerBackend. Its current version guard targets the historical 6.1.1 source audit pin, not the active 6.1.3 production baseline.
 
-## Current live gate
+## Current cycle 2 state — D40
+
+Lead D40 selects the already-running Codex Web GPT 6.1.3 production baseline, its existing production tunnel, and Codex Native2 NR-02 (Authentication=None, permission=Always ask). The readiness and transport binding are recorded as Lead PASS_READY and user-attested; no Responses/tool round-trip has been observed.
+
+The current documentation assignment does not authorize connector calls, LIVE prompts, or production/runtime/tunnel changes. AC1 and AC2 are GATING and NOT_RUN. AC3's former three-context matrix is DEFERRED_HARDENING; AC1 still needs one fresh context with a unique canary. DEV remains non-authoritative.
+
+Important implementation limit: scripts/bridge-spike.ts currently hardcodes EXPECTED_UPSTREAM_VERSION=6.1.1 and fails closed when health reports 6.1.3. Do not run the historical commands below against the active production runtime. A separate Lead assignment must adapt the runner to 6.1.3 and authorize the bounded AC1/AC2 session first. No new Tunnel ID/key, downtime, or connector reconfiguration is part of D40.
+
+## Historical cycle 1 D3/D5/D6 runbook — preserved, superseded for current acceptance
+
+Everything in this section before deterministic fixture checks records the former exact-6.1.1 D3 route and associated requirements. It is historical context; it is not the current D40 route and must not be executed for cycle 2.
+
 
 Lead decision D3 (`NR-02-D3-ALLOW-ISOLATED-6_1_1-PRODUCTION-SPIKE`) approves a standard production-profile runtime from commit `a13cd09950969f43e3b7e25c71fa43efaf5446c5` / version `6.1.1`, isolated from DEV and shared production homes. After ordinary setup, the spike may set only `automaticAppName` and `appName` to the unique connector identity `Codex Native2 NR-02`; `manualAppName` stays pinned. The normal setup flow has no connector-name option and resets the production identity to `Codex Native2`, so the override must be revalidated through the pinned parser and runtime. This is a spike-specific config override, not an upstream-supported arbitrary-name setup flow.
 
@@ -15,9 +26,9 @@ Do not remove the DEV purpose flag, copy/reinterpret its profile, attach its tun
 
 ## Contract fixture checks
 
-`bun run verify` includes deterministic SSE fixtures for completed function calls, connector errors, incomplete responses, a truncated stream, and client cancellation. These are `CONTRACT` checks. They do not establish that a live connector works.
+bun run verify includes deterministic SSE fixtures for completed function calls, connector errors, incomplete responses, a truncated stream, and client cancellation. These are CONTRACT checks only; they do not establish that the 6.1.3 live connector, tool callback, cancellation path, or model catalog works.
 
-## Live three-context check
+## Historical cycle 1 three-context runbook — deferred by D40
 
 The script requires a local loopback server that reports upstream version `6.1.1`, a catalog model slug that advertises `high` reasoning, a local API key, and the ChatGPT tunnel/browser setup. It fails closed before model traffic if the endpoint is not loopback, the version differs, the bridge is draining, or the model/effort is absent.
 
@@ -42,7 +53,7 @@ The isolation assertion scans the first response text and function-call argument
 
 Each `three-fresh-contexts` session receipt includes wall-clock start/finish times and monotonic elapsed time for both Responses legs and the fixture read. Its `sanitizedSse` frame list preserves event order, known event names, bounded response/item/call identities, exact payload byte lengths, and SHA-256 digests of each SSE data field; it never stores delta text or function argument contents. Unknown event names are represented by a digest. The `liveTrace` object also records the fixed `read_fixture` call, fixture and tool-output digests, and the validated canary/result fields. `liveTraceSha256` binds the exact UTF-8 bytes of `JSON.stringify(liveTrace)`, and `liveTraceBytes` records their length. The per-leg trace is bounded to 512 frames and 1 MiB of raw frame/event-name bytes; an incomplete capture fails closed before a session receipt can report `pass`. Each session records how many neighboring canaries were checked and any IDs found; the aggregate receipt reports the total leak count.
 
-## Live unavailable-connector check
+## Historical D5 unavailable-connector check — superseded by D40
 
 Lead decision D5 authorizes one bounded production LIVE probe using a temporary missing identity in the isolated D3 profile. It does not authorize creating, disabling, renaming, or changing permissions on any ChatGPT connector, or changing a tunnel, runtime key, browser profile, or credential. The unique `Codex Native2 NR-02` connector and a healthy exact-pin D3 profile are prerequisites; the action-time confirmation for creating that connector is still pending.
 
@@ -61,7 +72,7 @@ This is a configuration-only failure injection inside the isolated D3 profile. D
 
 For cleanup evidence, use only the isolated production-profile Launcher and quit it normally after all probes. Pinned source routes normal Quit through RuntimeSupervisor, which drains and stops its owned tunnel and daemon; server shutdown clears turn sessions and closes browser workers and brokers. Capture the actual stop result and confirm the isolated daemon/tunnel are stopped. This sequence is source-reviewed, not live-verified. Do not quit the shared Launcher.
 
-## Live cancellation check
+## Historical D6 cancellation runbook — not authorized by this assignment
 
 After the supported exact-pin runtime and ChatGPT session are ready, set `BRIDGE_SPIKE_CONTROL_TOKEN` from that runtime’s private settings, then run:
 
@@ -76,10 +87,15 @@ Lead decision D6 (`NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION`) defines the
 
 The control call and post-interrupt observation are bounded. If the stream does not settle within 10 seconds, the harness aborts its local fetch only to release the client resource and reports a failed probe; local cleanup is never recorded as server-side cancellation evidence. D6 classifies the evidence only and does not authorize a live cancellation action. Run the probe only after the qualifying isolated D3 exact-pin `6.1.1` profile and its external-resource prerequisites are ready.
 
-## Connector availability and permission scope
+## Historical cycle 1 connector setup observations
 
 The isolated DEV tunnel is Healthy and `Codex Native2 DEV` is Connected with `Authentication=None` and `Allow low-risk tools`. This is MCP setup evidence only: it is not a Responses turn owner. A direct Temporary Chat probe reported that `read_fixture` lacked a turn-bound token; no actual callback or fixture read occurred. A direct inventory call through the currently connected `Codex Native2` tools also cannot run without a valid turn token; an empty-token request was rejected by schema validation before reaching the connector. Do not invent/reuse a token, broaden permissions, or reuse the DEV tunnel through an undocumented listener to make the spike pass.
 
 OpenAI's [Secure MCP Tunnel documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) says the tunnel client connects outbound, the private MCP server has no public ingress, and tunnel access follows Platform organization and ChatGPT workspace context. This describes the product security boundary; it is not a live anonymous-request test of the configured DEV tunnel or evidence that it owns a Responses turn.
 
 The exact 6.1.1 DEV browser smoke passed after sign-in, but that does not prove this Responses route, MCP tool delivery, cancellation, or session isolation. The installed shared Launcher reports version `6.1.2` and is non-qualifying. The uncredentialed catalog attempt against it returned `upstream_server_error`. D3 allows a distinct isolated production-profile route, subject to separate resource and connector-identity prerequisites; D4 allows DEV diagnostics only. No credentials belong in repository files or chat messages.
+
+
+## Current next step after cycle 2 documentation
+
+Request a separate Lead assignment to source-check and adapt the runner's 6.1.1 version guard for the active 6.1.3 runtime, then request bounded AC1/AC2 LIVE authorization. Keep Always ask and approve any connector prompt directly. Do not stop or reconfigure the runtime, tunnel, connector, or DEV; do not run the three-context matrix. After qualifying receipts, regenerate the canonical review context and bundleHash and request the fresh Reviewer verdict required for cycle 2.

@@ -1,13 +1,11 @@
 # Реестр реализации
 
-Исходный статус: подготовлены только план и задания; продукт не реализован и не принят.
-
-Источник истины выполнения — GitHub merged state + development receipt ledger, не галочка автора. В task PR обновлять planned/in-progress/evidence refs до финального review. Факт merge отражать в следующем reviewable обновлении либо external ledger, чтобы не менять одобренный SHA ради self-referential отчёта.
+Источник истины выполнения — merged state GitHub и receipt ledger. NR-01…NR-20 остаются отдельными bounded PR; документация сама по себе не означает реализацию или приёмку.
 
 | Task | Status | PR / evidence |
 |---|---|---|
-| NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`; lead receipt `c842056b-9571-4f04-8f42-f3b96863f54d`; resulting-main CI run `36325969092` |
-| NR-02 | IN_PROGRESS | lead assignment `b5650e8d-d2bc-4d22-a4e6-27ed57dcd2ac` (valid reissue; supersedes the malformed raw receipt); branch `nr-02-chatgpt-web-spike`; D3 keeps the isolated production-profile 6.1.1 route for qualifying live tests. The user and lead allow ordinary DEV for NightReviewer development, but `purpose=dev-harness` still cannot own `/v1/responses`. Current DEV status is `mcpRuntime.ready=false`; the launcher-owned tunnel has no standalone system service. Supported `dev setup --full` stopped before prompt/config save because the launcher ChatGPT session could not be verified. The unique `Codex Native2 NR-02` connector is absent. Lead D5 authorizes one isolated temporary `appName`/`automaticAppName` override to probe a deliberately nonexistent connector, followed by mandatory restoration and health verification; the probe has not run. AC1–AC3 remain blocked, and AC4 is in progress until its ADR records the actual D5 result. |
+| NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
+| NR-02 | IN_PROGRESS — cycle 2 documentation update; LIVE evidence pending | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588; head at assignment e2f28cc067baee7c6408b051bf4a20ca2ee70a9f |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |
 | NR-05 | PLANNED | — |
@@ -27,12 +25,24 @@
 | NR-19 | PLANNED | — |
 | NR-20 | PLANNED | — |
 
-Session prerequisites: lead and reviewer returned READY for `main@e9e7812ff4058ce9fc1184e7275be2ebdcd99588`; ignored local config contains two different chat URLs; project Bun 1.4.2 and `config:doctor` are verified on macOS arm64; qualifying live bridge/model capabilities remain NOT_VERIFIED.
+## NR-02 current cycle 2 — D40
 
-Lead decision `NR-02-D3-ALLOW-ISOLATED-6_1_1-PRODUCTION-SPIKE` remains the qualifying live route. The user later authorized the ordinary DEV contour for all NightReviewer development, and lead acknowledged that persistent permission. This broadens where DEV may be used for development and diagnostics; it does not change qualification rules. The exact-pin `purpose=dev-harness` profile still cannot start a Responses listener, and simulated receipts do not satisfy NR-02 AC1–AC3. Current local `dev status` reports `mcpRuntime.ready=false` / `state=starting`. DEV tunnel lifecycle is owned by the launcher supervisor, so a standalone `tunnel restart` command is not applicable. The supported `dev setup --full` attempt stopped before configuration was saved because the launcher ChatGPT session could not be verified. The `Codex Native2 NR-02` connector is still absent from ChatGPT settings. AC1–AC3 remain blocked; AC4's documentation criteria pass; the task remains in progress.
+Lead decision NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE replaces the previous 6.1.1 runtime gate with the current Codex Web GPT 6.1.3 production baseline and existing production tunnel. No downtime, new Tunnel ID, or runtime key is required for this route. DEV remains non-authoritative for LIVE acceptance.
 
-Lead decision `NR-02-D5-TEMPORARY-ISOLATED-MISSING-CONNECTOR-PROBE` permits one unavailable-connector LIVE probe only after the isolated D3 6.1.1 profile is healthy with its normal unique connector identity. The probe may temporarily change only the isolated config's `appName` and `automaticAppName` to a unique nonexistent identity, then must restore both values and verify parser, identity, and health. It does not authorize external permission, tunnel, or credential changes. The unique connector is not installed; its action-time Create confirmation remains pending. No D5 probe has run, so AC2 is still blocked and AC4 remains in progress pending the ADR result.
+Current baseline as recorded by Lead D40:
+- Shared 6.1.3 runtime: PASS_READY.
+- Codex Native2 NR-02: PASS_CONNECTED; Authentication=None; permission=Always ask.
+- Connector-to-transport binding: PASS_BY_USER_ATTESTATION; no independent tool callback is implied.
+- NR-02-AC1: NOT_RUN; NR-02-AC2: NOT_RUN.
+- NR-02-AC3: DEFERRED_HARDENING.
+- NR-02-AC4: PASS for the documentation criterion after local audit; this does not satisfy AC1/AC2 or complete NR-02.
+- Reviewer cycle 1: BLOCKED, finding NR-02-R1-F1 NOT_FIXED; this verdict cannot approve cycle 2.
+- Merge authorization: NOT_GRANTED.
 
-Lead decision `NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION` defines cancellation qualification as the exact control acknowledgement (`HTTP 200`, `status=ok`, `cancelled_http_turns=1`) plus termination of the correlated non-completed stream between acknowledgement receipt and 10 seconds later. The harness preserves the actual SSE/read disposition, rejects a prior or later `response.completed`, and never counts its own timeout abort as cancellation evidence; D6 does not authorize a live probe. No D3 profile or cancellation receipt exists, so AC2 remains blocked and AC4 remains in progress.
+The cycle 2 assignment is documentation/evidence only. The current spike runner still hardcodes 6.1.1 and cannot be treated as a 6.1.3 harness. Connector calls and production actions are excluded from this assignment. The next executable step requires a separate Lead assignment/authorization to adapt the harness to 6.1.3 and run the limited AC1/AC2 probes; AC3 remains deferred hardening.
 
-Final acceptance: NOT_REQUESTED. Main release SHA: отсутствует. PROJECT_ACCEPTED: отсутствует.
+## Historical decisions and evidence
+
+Lead decisions D1–D39, cycle 1 source-audit material, DEV diagnostics, D3/D5/D6 procedures, and the prior reviewer receipts remain preserved in the private session journal and existing evidence history. Their 6.1.1, shared-runtime handoff, and three-context acceptance assumptions are historical where they conflict with D40. No earlier LIVE request, tool round-trip, cancellation receipt, or three-context result is promoted to the new acceptance state.
+
+Финальная приёмка: NOT_REQUESTED. Release main SHA: отсутствует. PROJECT_ACCEPTED: отсутствует.

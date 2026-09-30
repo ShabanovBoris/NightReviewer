@@ -1,0 +1,84 @@
+# NR-02 cycle 2 documentation verification
+
+Assignment: NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE
+Lead decision: NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE
+Repository base: e9e7812ff4058ce9fc1184e7275be2ebdcd99588
+Working tree base/head before this update: e2f28cc067baee7c6408b051bf4a20ca2ee70a9f
+Environment: macOS arm64, bundled Bun 1.4.2. Only local repository verification ran. No connector calls, LIVE prompts, setup, runtime, tunnel, or production actions occurred.
+
+## Verification results
+
+1. Initial command without the bundled Bun directory in PATH:
+
+    ./.nightreviewer/runtime/bun/bin/bun run verify
+
+   Exit code: 127. The package script invokes bun recursively, and this shell did not have the bundled Bun directory on PATH.
+
+2. Corrected deterministic repository verification:
+
+    PATH="$PWD/.nightreviewer/runtime/bun/bin:$PATH" ./.nightreviewer/runtime/bun/bin/bun run verify
+
+   Exit code: 0. TypeScript typecheck passed; Biome checked 9 files; 18 tests passed, 0 failed, 30 expect assertions; Bun build bundled 2 modules and produced dist/index.js (3.39 KB). This verifies local contract/code behavior only. It does not qualify AC1 or AC2.
+
+3. Final whitespace check:
+
+    git diff --check
+
+   Exit code: 0.
+
+4. Final evidence JSON parse:
+
+    jq empty docs/evidence/NR-02.json
+
+   Exit code: 0.
+
+5. Final D40 documentation consistency audit:
+
+    python3 - <<'PY'
+    from pathlib import Path
+    import json
+    spec=Path('docs/specs/NR-02.md').read_text()
+    task=Path('docs/tasks/NR-02.md').read_text()
+    adr=Path('docs/decisions/0002-bridge-contract.md').read_text()
+    status=Path('docs/STATUS.md').read_text()
+    runbook=Path('spikes/bridge/README.md').read_text()
+    source=Path('scripts/bridge-spike.ts').read_text()
+    evidence=json.loads(Path('docs/evidence/NR-02.json').read_text())
+    ac={x['acceptanceId']:x['status'] for x in evidence['acceptance']}
+    checks={
+      'current_spec_uses_D40':'D40' in spec and '6.1.3' in spec,
+      'revised_AC1_and_AC2_are_gating':'NR-02-AC1 — GATING' in spec and 'NR-02-AC2 — GATING' in spec,
+      'AC3_is_deferred':'NR-02-AC3 — DEFERRED_HARDENING' in spec,
+      'AC4_pass_is_docs_only':'AC4 PASS только для документационного критерия' in spec,
+      'task_correlates_assignment':'0e99af7e-62b1-4b2d-9b48-8628bc6e51b1' in task,
+      'ADR_preserves_historical_pin':'исторический upstream source-audit pin' in adr and '6.1.1' in adr,
+      'ADR_documents_current_harness_limit':'fail-closed ожидает версию 6.1.1' in adr and '6.1.3' in adr,
+      'status_tracks_D40':'NR-02 current cycle 2' in status and 'PASS_READY' in status,
+      'runbook_marks_D3_as_historical':'Historical cycle 1 D3/D5/D6 runbook' in runbook,
+      'runbook_blocks_current_use':'Do not run the historical commands below against the active production runtime' in runbook,
+      'runner_guard_matches_documented_limit':'const EXPECTED_UPSTREAM_VERSION = "6.1.1";' in source,
+      'AC1_not_run':ac['NR-02-AC1']=='NOT_RUN',
+      'AC2_not_run':ac['NR-02-AC2']=='NOT_RUN',
+      'AC3_deferred':ac['NR-02-AC3']=='DEFERRED_HARDENING',
+      'AC4_doc_pass':ac['NR-02-AC4']=='PASS',
+      'cycle2_receipts_present':any(x.get('assignmentId')=='NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE' for x in evidence['decisionReceipts']) and any(x.get('decisionId')=='NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE' for x in evidence['decisionReceipts']),
+      'reviewer_F1_not_fixed':evidence['currentCycle']['priorReviewer']['status']=='NOT_FIXED',
+      'merge_not_authorized':evidence['currentCycle']['mergeAuthorization']=='NOT_GRANTED'
+    }
+    for key,value in checks.items():
+      print(f'{key}={"PASS" if value else "FAIL"}')
+    if not all(checks.values()): raise SystemExit(1)
+    PY
+
+   Exit code: 0. All 18 consistency predicates passed.
+
+An earlier draft of predicate 6 expected an English phrase not used by the Russian ADR and exited 1; the audit assertion was corrected to check the actual Russian wording. No repository source fix was required for that audit-script mismatch.
+
+## Acceptance state
+
+AC1: NOT_RUN.
+AC2: NOT_RUN.
+AC3: DEFERRED_HARDENING.
+AC4: PASS for the documentation criterion only.
+Prior reviewer finding NR-02-R1-F1: NOT_FIXED for cycle 1; no cycle 2 verdict exists.
+Merge authorization: NOT_GRANTED.

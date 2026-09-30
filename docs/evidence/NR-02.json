@@ -7,12 +7,12 @@
   "acceptance": [
     {
       "acceptanceId": "NR-02-AC1",
-      "status": "BLOCKED",
+      "status": "NOT_RUN",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Pinned 6.1.1 source; D3 qualifying production-profile route is authorized, but its distinct connector/profile is not ready. Ordinary DEV is now authorized for all development but remains non-qualifying.",
+      "environment": "D40 cycle 2: active production baseline 6.1.3 is Lead-reported PASS_READY; connector PASS_CONNECTED/Auth=None/Always ask; transport binding user-attested. No qualifying Responses request, read_fixture callback, or correlated answer was run.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -32,18 +32,20 @@
         "worktree-verify-after-d5-continuation",
         "pinned-dev-runtime-status-recheck-continuation-20260928",
         "pinned-dev-chat-list-recheck-continuation-20260928",
-        "connector-list-ui-recheck-20260928"
+        "connector-list-ui-recheck-20260928",
+        "lead-decision-d40",
+        "lead-task-assignment-cycle2"
       ],
-      "notes": "The user and lead confirmed ordinary DEV may be used for all NightReviewer development. Current exact-pin DEV status is still mcpRuntime.ready=false/state=starting; tunnel restart reports that the local service is not installed, and supported dev setup fails before config save because the launcher ChatGPT session cannot be verified. No Responses request, real answer, tool callback, fixture read, or digest was produced. AC1 remains BLOCKED pending the D3 production-profile owner path and a real fixture read."
+      "notes": "LIVE acceptance remains NOT_RUN. The documentation-only cycle 2 assignment explicitly forbids connector calls and LIVE prompts. Readiness and user-attested binding are not a Responses/tool receipt; current runner still expects 6.1.1."
     },
     {
       "acceptanceId": "NR-02-AC2",
-      "status": "BLOCKED",
+      "status": "NOT_RUN",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": null,
+      "environment": "D40 cycle 2 baseline 6.1.3; no unavailable-connector or cancellation LIVE probe ran.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -73,18 +75,20 @@
         "nr02-d6-cancellation-contract-audit-after-ack-window-20260928",
         "worktree-verify-d6-contract-window-final-20260928",
         "nr02-d6-contract-audit-with-boundary-tests-20260928",
-        "connector-list-ui-recheck-20260928"
+        "connector-list-ui-recheck-20260928",
+        "lead-decision-d40",
+        "lead-task-assignment-cycle2"
       ],
-      "notes": "Lead D5 authorizes one bounded D3 production-profile unavailable-connector probe by temporarily changing only isolated AppConfig appName and automaticAppName to a unique nonexistent identity, then restoring Codex Native2 NR-02 and verifying post-restore health. No external connector permission, tunnel or credential may change. The unique connector is absent and action-time Create confirmation is pending; no qualifying 424 or cancellation outcome has been observed, so AC2 remains BLOCKED. Lead D6 now defines cancellation as the exact typed acknowledgement plus correlated non-completed stream termination within 10 seconds. The decision does not authorize a live run; D5 unavailable-connector and D6 cancellation outcomes are both still NOT_RUN/BLOCKED."
+      "notes": "The typed unavailable connector/tool result and bounded cancellation acknowledgement plus correlated stream termination remain NOT_RUN. Cycle 2 assignment prohibits LIVE calls. Historical D5 configuration-injection procedure is not the current D40 route; D6 stream evidence semantics remain preserved."
     },
     {
       "acceptanceId": "NR-02-AC3",
-      "status": "BLOCKED",
+      "status": "DEFERRED_HARDENING",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": null,
+      "environment": "D40 cycle 2 defers the former three-fresh-context matrix; AC1 still requires one fresh context and unique canary.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -103,18 +107,20 @@
         "nr-02-dev-readiness-recheck-20260928",
         "worktree-verify-after-d5-continuation",
         "pinned-dev-runtime-status-recheck-continuation-20260928",
-        "pinned-dev-chat-list-recheck-continuation-20260928"
+        "pinned-dev-chat-list-recheck-continuation-20260928",
+        "lead-decision-d40",
+        "lead-task-assignment-cycle2"
       ],
-      "notes": "The harness scans first-response text, function-call arguments, and final structured output for neighboring canaries. No three-session LIVE receipts or cleanup receipts exist. Ordinary DEV remains non-qualifying; its launcher session could not be verified and no new chat was created. AC3 remains BLOCKED pending D3 runtime setup and live evidence."
+      "notes": "Three-context leakage/cleanup matrix is deferred hardening, not a current minimum-working gate. No such LIVE matrix was run or claimed."
     },
     {
       "acceptanceId": "NR-02-AC4",
-      "status": "IN_PROGRESS",
+      "status": "PASS",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "rg -n 'Supported|Поддерживается исходным код|Не поддерживается DEV-профилем|MIT|Provisional approach|Reproducible next step|bridge:live|bridge:cancel|bridge:unavailable|only the fixed `probe` key' docs/decisions/0002-bridge-contract.md spikes/bridge/README.md",
+      "command": "See verified local checks in nr-02-cycle2-doc-verification-20260930",
       "exitCode": 0,
-      "environment": "Pinned upstream 6.1.1 source audit; uncommitted NR-02 worktree; docs reviewed at current worktree contents.",
+      "environment": "macOS arm64, Bun 1.4.2; D40 cycle 2 documentation/evidence worktree; no LIVE connector/runtime actions.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -148,9 +154,12 @@
         "worktree-verify-d6-contract-window-final-20260928",
         "nr02-d6-contract-audit-with-boundary-tests-20260928",
         "config-doctor-after-session-check-20260928",
-        "nr-02-review-remediation-20260928"
+        "nr-02-review-remediation-20260928",
+        "lead-decision-d40",
+        "lead-task-assignment-cycle2",
+        "nr-02-cycle2-doc-verification-20260930"
       ],
-      "notes": "The original source-supported/unsupported capability, selected pin, license, and reproducible next-step requirements remain documented. Lead D5 additionally requires recording the temporary missing-identity failure-injection method and its actual result in the ADR. The method is documented; the actual LIVE result is NOT_RUN because the D3 profile/unique connector prerequisite is not ready, so AC4 remains IN_PROGRESS. D6 cancellation semantics are recorded in the ADR and runbook and the parser regression and the D6 acknowledgement-window helper are covered by contract tests. The live D5 result and cancellation result remain NOT_RUN, so AC4 stays IN_PROGRESS. Review remediation corrects all three malformed upstream citation refs and documents the bounded digest-bound per-session trace format; local contract verification passed. The D5 LIVE result is still NOT_RUN, so AC4 remains IN_PROGRESS."
+      "notes": "PASS applies only to the AC4 documentation criterion: the spec/task/ADR/status/evidence/runbook now describe the Lead-reported 6.1.3 baseline, user-attested transport binding, historical 6.1.1 source pin, the runner's 6.1.1 guard, current limitations, and the reproducible next step. This does not establish AC1/AC2 or complete NR-02."
     }
   ],
   "checks": [
@@ -1185,6 +1194,66 @@
       "artifactSizeBytes": 1950,
       "observedAtUtc": "2026-09-28T07:07:35Z",
       "artifactPath": "docs/evidence/NR-02-review-remediation-20260928.txt"
+    },
+    {
+      "kind": "CONTRACT",
+      "command": "./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 127,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-doc-verification-20260930",
+      "summary": "Initial invocation failed because the bundled Bun directory was not on PATH for nested package-script bun commands; corrected invocation is recorded below.",
+      "artifactSha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "artifactSizeBytes": 4367,
+      "observedAtUtc": "2026-09-30T14:42:43Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
+    },
+    {
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-doc-verification-20260930",
+      "summary": "Bun 1.4.2 typecheck and build passed; Biome checked 9 files; 18 tests passed, 0 failed, 30 expect assertions. Code source is unchanged from e2f28cc; this is local CONTRACT verification only and does not qualify LIVE acceptance.",
+      "artifactSha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "artifactSizeBytes": 4367,
+      "observedAtUtc": "2026-09-30T14:42:43Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
+    },
+    {
+      "kind": "CONTRACT",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-doc-verification-20260930",
+      "summary": "Final local diff whitespace check passed for the cycle 2 documentation/evidence update.",
+      "artifactSha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "artifactSizeBytes": 4367,
+      "observedAtUtc": "2026-09-30T14:42:43Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
+    },
+    {
+      "kind": "CONTRACT",
+      "command": "jq empty docs/evidence/NR-02.json",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-doc-verification-20260930",
+      "summary": "Evidence JSON parsed successfully during final D40 consistency review.",
+      "artifactSha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "artifactSizeBytes": 4367,
+      "observedAtUtc": "2026-09-30T14:42:43Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
+    },
+    {
+      "kind": "CONTRACT",
+      "command": "python3 inline D40 documentation consistency audit (18 predicates; source and output in artifact)",
+      "exitCode": 0,
+      "testedSha": null,
+      "artifactRef": "nr-02-cycle2-doc-verification-20260930",
+      "summary": "All 18 predicates passed: D40 scope, revised AC mapping, historical 6.1.1 pin, 6.1.3 runner limitation, accurate statuses, preserved reviewer blocker, and no merge authorization.",
+      "artifactSha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "artifactSizeBytes": 4367,
+      "observedAtUtc": "2026-09-30T14:42:43Z",
+      "artifactPath": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt"
     }
   ],
   "decisionReceipts": [
@@ -1315,6 +1384,77 @@
       "redactedArtifactRef": "lead-decision-d6",
       "receivedAtUtc": "2026-09-27 23:52:55 UTC",
       "executionStatus": "RECORDED; LIVE CANCELLATION NOT RUN."
+    },
+    {
+      "decisionId": "NR-02-D39-HOLD-SHARED-613-NONDISRUPTIVE-ISOLATED-ROUTE-REQUIRES-NEW-AUTHORIZATION",
+      "messageId": "3a742a67-b5b2-47c1-b8b3-f43c3ed15661",
+      "requestMessageId": "99ad7f64-01f1-4daf-b67f-9713e1d927bb",
+      "requestSha256": "2bb63b6b8e82079ae8a9590022c968df3302fb23728b1b346287be5c31865fc2",
+      "responseSha256": "4059192e3f40c60868f6a3dd5a3507dfc2c5009c4dcd8c09e77a967148ab8e9f",
+      "correlationVerified": true,
+      "decision": "KEEP_SHARED_6_1_3_RUNNING_AND_HOLD_NR02_LIVE_ACCEPTANCE",
+      "supersededForCurrentRouteBy": "NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE",
+      "currentStateAtDecision": {
+        "sharedProductionVersion": "6.1.3",
+        "sharedRuntime": "PASS_READY",
+        "connector": "Codex Native2 NR-02",
+        "permission": "Always ask",
+        "AC1": "NOT_RUN",
+        "AC2": "NOT_RUN",
+        "AC3": "NOT_RUN"
+      },
+      "taskId": "NR-02",
+      "cycle": 1,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "source": "Configured Lead ChatGPT chat"
+    },
+    {
+      "decisionId": "NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE",
+      "messageId": "6e6a4d6b-9069-49e6-a705-c3030bc9cab6",
+      "requestMessageId": "3a742a67-b5b2-47c1-b8b3-f43c3ed15661",
+      "requestSha256": "4059192e3f40c60868f6a3dd5a3507dfc2c5009c4dcd8c09e77a967148ab8e9f",
+      "responseSha256": "f599b874415408a23699a8043bb0a2ac7201cbbea5e37a57305085a79538cbc0",
+      "correlationVerified": true,
+      "decision": "REVISE_NR02_TO_CURRENT_6_1_3_PRODUCTION_BASELINE_AND_MINIMUM_WORKING_LIVE_BRIDGE",
+      "taskId": "NR-02",
+      "cycle": 1,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "currentAcceptanceState": {
+        "NR-02-AC1": "NOT_RUN",
+        "NR-02-AC2": "NOT_RUN",
+        "NR-02-AC3": "DEFERRED_HARDENING",
+        "NR-02-AC4": "IN_PROGRESS"
+      },
+      "scopeChange": true,
+      "acceptanceCriteriaChanged": true,
+      "newBundleHashRequired": true,
+      "freshReviewerVerdictRequired": true,
+      "source": "Configured Lead ChatGPT chat"
+    },
+    {
+      "assignmentId": "NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE",
+      "messageId": "0e99af7e-62b1-4b2d-9b48-8628bc6e51b1",
+      "requestMessageId": "b13e306f-5ad4-431b-830a-6773678320a0",
+      "requestSha256": "d590861ca60379c1df9ba1339c8eb38b4f981bd7f7c87dbaa90a150b47c186cf",
+      "responseSha256": "d3095dcd84aecd4626adc8227e86efb3b6f6adc28c01a86a7f71504d5a592f30",
+      "correlationVerified": true,
+      "type": "TASK_ASSIGNMENT",
+      "taskId": "NR-02",
+      "cycle": 2,
+      "sessionId": "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0",
+      "role": "lead",
+      "implementationAuthority": {
+        "repositoryEdits": "AUTHORIZED_WITHIN_SCOPE",
+        "commitAndPushToExistingPrBranch": "AUTHORIZED_WITHIN_SCOPE",
+        "updatePrNarrative": "AUTHORIZED_WITHIN_SCOPE",
+        "liveConnectorCalls": "NOT_AUTHORIZED",
+        "productionRuntimeActions": "NOT_AUTHORIZED",
+        "productionTunnelActions": "NOT_AUTHORIZED",
+        "merge": "NOT_AUTHORIZED"
+      },
+      "source": "Configured Lead ChatGPT chat"
     }
   ],
   "worktreeVerification": {
@@ -1354,5 +1494,49 @@
       "scope": "Use the ordinary DEV contour for all NightReviewer development, experiments, debugging, browser/MCP checks, tests, and technically appropriate live observations.",
       "qualificationEffect": "No change. purpose=dev-harness still has no Responses listener; simulated receipts do not qualify AC1-AC3."
     }
-  ]
+  ],
+  "currentCycle": {
+    "cycle": 2,
+    "assignmentId": "NR-02-C2-D40-MINIMUM-WORKING-613-BRIDGE",
+    "assignmentMessageId": "0e99af7e-62b1-4b2d-9b48-8628bc6e51b1",
+    "decisionId": "NR-02-D40-REBASE-ON-CURRENT-613-PROD-MINIMUM-WORKING-BRIDGE",
+    "decisionMessageId": "6e6a4d6b-9069-49e6-a705-c3030bc9cab6",
+    "status": "CYCLE2_DOCUMENTATION_READY_LIVE_EVIDENCE_PENDING",
+    "activeProductionBaseline": {
+      "version": "6.1.3",
+      "status": "PASS_READY",
+      "tunnel": "existing production tunnel"
+    },
+    "connector": {
+      "identity": "Codex Native2 NR-02",
+      "status": "PASS_CONNECTED",
+      "authentication": "None",
+      "permission": "Always ask",
+      "transportBinding": "PASS_BY_USER_ATTESTATION"
+    },
+    "acceptance": {
+      "NR-02-AC1": "NOT_RUN",
+      "NR-02-AC2": "NOT_RUN",
+      "NR-02-AC3": "DEFERRED_HARDENING",
+      "NR-02-AC4": "PASS"
+    },
+    "implementationLimit": "scripts/bridge-spike.ts still hardcodes EXPECTED_UPSTREAM_VERSION=6.1.1; it cannot qualify 6.1.3 until separately adapted under Lead authorization.",
+    "priorReviewer": {
+      "cycle": 1,
+      "verdict": "BLOCKED",
+      "finding": "NR-02-R1-F1",
+      "status": "NOT_FIXED",
+      "reuseForCycle2": false
+    },
+    "reviewerRequestNow": "NOT_REQUIRED_BY_ASSIGNMENT",
+    "mergeAuthorization": "NOT_GRANTED",
+    "documentationVerificationRef": "nr-02-cycle2-doc-verification-20260930",
+    "nextRequiredAction": "Obtain a separate Lead assignment/authorization for the smallest source-checked 6.1.3 runner adaptation and bounded AC1/AC2 LIVE acceptance.",
+    "documentationVerificationArtifact": {
+      "id": "nr-02-cycle2-doc-verification-20260930",
+      "path": "docs/evidence/NR-02-cycle2-doc-verification-20260930.txt",
+      "sha256": "7fd61d7c868043c0b45fcab59ac140e808259a1525d3bba8b68624cb2033ce6b",
+      "sizeBytes": 4367
+    }
+  }
 }

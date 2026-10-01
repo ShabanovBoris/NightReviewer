@@ -17,6 +17,7 @@ import {
 import { isStreamTerminationWithinAcknowledgementWindow } from "../src/spikes/cancellation-contract";
 
 const EXPECTED_UPSTREAM_VERSION = "6.1.3";
+const EXPECTED_AC1_MODEL = "chatgpt-web/gpt-5.6-sol";
 const FIXTURE_KEY = "probe";
 const FIXTURE_PATH = resolve("spikes/bridge/fixtures/probe.txt");
 // The model sees only the controlled fixture tree, not the surrounding project checkout.
@@ -133,6 +134,8 @@ const EVIDENCE_FIELDS = new Set([
   "errorCode",
   "exitClassification",
   "lastProvenStage",
+  "model",
+  "reasoningEffort",
 ]);
 
 /** Replaces storage errors with a fixed message so private filesystem details cannot leak. */
@@ -192,6 +195,10 @@ function isSafeEvidenceValue(key: string, value: SafeEvidenceField): boolean {
       return value === "ok";
     case "version":
       return /^\d+\.\d+\.\d+$/.test(value);
+    case "model":
+      return value === EXPECTED_AC1_MODEL;
+    case "reasoningEffort":
+      return value === "high";
     case "mode":
       return value === "full";
     case "threadId":
@@ -727,6 +734,16 @@ function requiredEnvironment(
   return value;
 }
 
+/** Keeps unprefixed native models off the pinned release's non-connector passthrough route. */
+function requireAc1Model(value: string): string {
+  if (value !== EXPECTED_AC1_MODEL) {
+    throw new Error(
+      `BRIDGE_SPIKE_MODEL must equal ${EXPECTED_AC1_MODEL}; no request was sent.`,
+    );
+  }
+  return value;
+}
+
 /** Prevents local release metadata from becoming arbitrary URL query text. */
 export function validateReleaseClientVersion(value: string): string {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)) {
@@ -767,10 +784,13 @@ export function loadBridgeSettings(
       "BRIDGE_SPIKE_BASE_URL must be an unauthenticated local HTTP origin; no request was sent.",
     );
   }
+  const model = requireAc1Model(
+    requiredEnvironment("BRIDGE_SPIKE_MODEL", environment),
+  );
   return {
     baseUrl,
     apiKey: requiredEnvironment("BRIDGE_SPIKE_API_KEY", environment),
-    model: requiredEnvironment("BRIDGE_SPIKE_MODEL", environment),
+    model,
     clientVersion: validateReleaseClientVersion(
       requiredEnvironment("BRIDGE_SPIKE_CLIENT_VERSION", environment),
     ),
@@ -826,6 +846,7 @@ export async function verifyBridge(
   fetcher: BridgeFetch = fetch,
   evidence?: StageEvidenceRecorder,
 ): Promise<BridgeProcessIdentity> {
+  requireAc1Model(settings.model);
   evidence?.record("internal_health_1_attempted", {
     endpointClass: "health",
     method: "GET",
@@ -923,7 +944,10 @@ export async function verifyBridge(
     );
   }
 
-  evidence?.record("model_catalog_passed");
+  evidence?.record("model_catalog_passed", {
+    model: settings.model,
+    reasoningEffort: "high",
+  });
   evidence?.record("internal_health_2_attempted", {
     endpointClass: "health",
     method: "GET",
@@ -1209,6 +1233,7 @@ async function sendTurn(
   body: Record<string, unknown>,
   options: SendTurnOptions = {},
 ): Promise<BridgeSseOutcome> {
+  requireAc1Model(settings.model);
   const attemptedStage =
     options.responseLeg === "initial"
       ? "initial_responses_attempted"
@@ -1636,7 +1661,7 @@ export async function runAc1OnlyWithEvidence(
   evidence.record("runner_started");
   try {
     const settings = loadBridgeSettings(environment);
-    evidence.record("settings_validated");
+    evidence.record("settings_validated", { model: settings.model });
     const bridgeIdentity = await verifyBridge(settings, fetcher, evidence);
     const receipt = await runAc1Only(settings, runFreshContext, {
       ...dependencies,

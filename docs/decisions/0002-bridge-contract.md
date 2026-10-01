@@ -1,8 +1,8 @@
 # ADR-0002 — ChatGPT Web bridge contract spike
 
-Дата: 2026-09-27; актуализация: 2026-10-01 по D49–D52. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC1 `UNVERIFIED`, AC2 `NOT_RUN`, reviewer approval и merge authorization отсутствуют.
+Дата: 2026-09-27; актуализация: 2026-10-01 по D49–D56. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC1 `UNVERIFIED`, AC2 `NOT_RUN`, reviewer approval и merge authorization отсутствуют.
 
-## Текущее решение Lead D49–D52
+## Текущее решение Lead D49–D56
 
 D49 израсходовала один LIVE AC1 запуск: внутренний guard прошёл, но terminal evidence была отброшена. D50 не нашла относящихся к запуску логов и не сохранила точный интервал; причина результата и сам tool outcome не устанавливаются. AC1 остаётся `UNVERIFIED`. D51 сохранила hold на production/connector/LIVE действия.
 
@@ -13,6 +13,12 @@ D52 (`NR-02-D52-DURABLE-EVIDENCE-CAPTURE-OFFLINE`, message `0c07907a-dcea-4c3a-b
 Lead D40/D41 target — существующий production Codex Web GPT `6.1.3` и неизменённый connector `Codex Native2`, который выбирается неизменённым production `config.appName`. Auxiliary connector и DEV настройки не меняются. В рамках D52 production bridge HTTP requests, connector calls и production/DEV mutations равны нулю.
 
 D52 ответ виден в configured Lead ChatGPT conversation через встроенный browser, но accessibility extraction обрезала response после `verification.liveTraffic="PROHIBITED"`; оставшиеся follow-up поля прочитаны визуально. Полный raw response не сохранён, поэтому response SHA-256 не заявляется. Private evidence должна сохранять эту capture limitation, а не выдавать нормализованное summary за raw receipt.
+
+D53 authorized and consumed exactly one durable host-native AC1 attempt. Production health/catalog guards passed, then `/v1/responses` returned HTTP 400 before any tool call. The request used `gpt-6.1-sol`. D55 classified the 400 source as `NON_REQUEST_CONTRACT_400`: upstream 6.1.3 sends models without the `chatgpt-web/` prefix through native Responses passthrough before the browser adapter. The actual downstream 400 cause was not retained and remains unknown; it is not attributed to the route mismatch. No retry is authorized.
+
+D56 (`NR-02-D56-ROUTE-AC1-THROUGH-CHATGPT-WEB-ADAPTER`, message `a2a55e98-a535-4956-9f73-d29e53663265`) assigns offline route remediation on PR #3. AC1 must use exact slug `chatgpt-web/gpt-5.6-sol` with `high` reasoning on the unchanged runtime version `6.1.3`; native passthrough is not an acceptable AC1 backend. The assignment requires fail-closed validation before the first fetch, exact catalog row/high-effort verification, preservation of the single-tool request contract, and sanitized route metadata in the D52 stage ledger. The implementation must not invent `chatgpt-web/gpt-6.1-sol` or derive a Web slug from the active native Codex model.
+
+D56 permits commit/push to the existing PR #3 branch, PR narrative update and exact-head CI. It prohibits production HTTP, connector calls, LIVE/AC2/AC3, DEV or runtime/tunnel/config/credential/permission mutation, reviewer request and merge. After the corrected head passes verification, the next message is a `DECISION_REQUEST` for separate host-native AC1 authorization; publication and CI do not authorize LIVE execution.
 
 ### Lead D42/D43 — consumed catalog preflight and offline correction
 
@@ -26,7 +32,7 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 
 Историческое состояние на момент D43 (superseded by D49–D52): AC1 `NOT_RUN`; AC2 `NOT_RUN`; unavailable subcheck `NOT_AUTHORIZED_NOT_RUN`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY`. D49/D50 later classify the consumed AC1 attempt as `UNVERIFIED`. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
 
-## D41 acceptance runner contract — AC unchanged; authorization governed by D52
+## D41 acceptance runner contract — AC unchanged; current execution governed by D56
 
 - **Preflight:** до model discovery и повторно после неё exact `/healthz` должен подтверждать `active_http_turns=0` и `active_browser_turns=0`; отсутствующие/ненулевые значения закрывают gate. Остальные identity, readiness, authenticated catalog, выбранная модель, `high` effort и catalog accounting проверки сохранены.
 - **AC1:** один generated fresh `threadId`/`turnId`, один unique canary, ровно один `read_fixture({"fixture":"probe"})` function call через выбранный production `Codex Native2`, controlled fixture result через `function_call_output`, correlated final response с тем же canary и exact fixture SHA-256. Санitized trace не содержит fixture contents, model output или credentials.
@@ -34,11 +40,11 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 - **AC2 unavailable:** не исполнять `--connector-unavailable-only`, не симулировать произвольный 4xx, не менять connector/config. Оставить subcheck `NOT_RUN`.
 - **AC3:** сохранить исторический трёхконтекстный код только для deferred hardening; в этом задании его не запускать.
 
-Эти Phase A/B строки сохраняют историческую последовательность D41, позднее уточнённую D42/D43 и заменённую D49–D52. Текущий D52 разрешает только offline remediation, deterministic checks, push в существующий PR и exact-head CI; любой LIVE step требует отдельной будущей Lead authorization.
+Эти Phase A/B строки сохраняют историческую последовательность D41, позднее уточнённую D42/D43 и заменённую D49–D56. Текущий D56 разрешает только route remediation, deterministic checks, push в существующий PR и exact-head CI; любой LIVE step требует отдельной будущей Lead authorization.
 
 ## Исторический source audit и route decisions цикла 1
 
-Разделы ниже сохраняют source-level сведения, D1–D39 route decisions и наблюдения цикла 1. Они не заменяют текущий D49–D52 статус в начале ADR. Старые D3/D5 инструкции по 6.1.1 и трёхконтекстная matrix не являются текущими gating requirements.
+Разделы ниже сохраняют source-level сведения, D1–D39 route decisions и наблюдения цикла 1. Они не заменяют текущий D49–D56 статус в начале ADR. Старые D3/D5 инструкции по 6.1.1 и трёхконтекстная matrix не являются текущими gating requirements.
 
 ### Historical upstream source audit — pin 6.1.1
 

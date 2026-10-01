@@ -27,7 +27,7 @@ import {
 const PREFLIGHT_ENV = {
   BRIDGE_SPIKE_BASE_URL: "http://127.0.0.1:17841",
   BRIDGE_SPIKE_API_KEY: "test-bearer-must-not-be-emitted",
-  BRIDGE_SPIKE_MODEL: "gpt-6.1-sol",
+  BRIDGE_SPIKE_MODEL: "chatgpt-web/gpt-5.6-sol",
   BRIDGE_SPIKE_CLIENT_VERSION: "0.159.0",
 };
 type TestFetch = (
@@ -294,6 +294,36 @@ test("preflight requires a valid client version before it can call fetch", async
   expect(() => loadBridgeSettings(malformedVersion)).toThrow();
 });
 
+test("AC1 rejects native and unsupported model slugs before its first fetch", async () => {
+  let fetchCalls = 0;
+  const fetcher: TestFetch = async () => {
+    fetchCalls += 1;
+    return Response.json({});
+  };
+
+  expect(loadBridgeSettings(PREFLIGHT_ENV).model).toBe(
+    "chatgpt-web/gpt-5.6-sol",
+  );
+  for (const model of [
+    "gpt-6.1-sol",
+    "gpt-5.6-sol",
+    "chatgpt-web/high",
+    "chatgpt-web/gpt-6.1-sol",
+  ]) {
+    await expect(
+      runPreflight({ ...PREFLIGHT_ENV, BRIDGE_SPIKE_MODEL: model }, fetcher),
+    ).rejects.toThrow(
+      "BRIDGE_SPIKE_MODEL must equal chatgpt-web/gpt-5.6-sol; no request was sent.",
+    );
+    expect(() =>
+      loadBridgeSettings({ ...PREFLIGHT_ENV, BRIDGE_SPIKE_MODEL: model }),
+    ).toThrow(
+      "BRIDGE_SPIKE_MODEL must equal chatgpt-web/gpt-5.6-sol; no request was sent.",
+    );
+  }
+  expect(fetchCalls).toBe(0);
+});
+
 test("preflight sends one explicit client_version and no Responses request", async () => {
   const requests: Array<{
     url: URL;
@@ -355,6 +385,31 @@ test("preflight sends one explicit client_version and no Responses request", asy
     false,
   );
   expect(output.join("\n")).not.toContain(PREFLIGHT_ENV.BRIDGE_SPIKE_API_KEY);
+});
+
+test("model catalog does not accept a native passthrough slug for AC1", async () => {
+  const paths: string[] = [];
+  const fetcher: TestFetch = async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    paths.push(url.pathname);
+    if (url.pathname === "/healthz") return Response.json(healthyBridge());
+    if (url.pathname === "/v1/models") {
+      return Response.json({
+        models: [
+          {
+            slug: "gpt-6.1-sol",
+            supported_reasoning_levels: [{ effort: "high" }],
+          },
+        ],
+      });
+    }
+    throw new Error(`Unexpected local request path: ${url.pathname}`);
+  };
+
+  await expect(
+    verifyBridge(loadBridgeSettings(PREFLIGHT_ENV), fetcher),
+  ).rejects.toThrow("BRIDGE_SPIKE_MODEL is absent from the live catalog");
+  expect(paths).toEqual(["/healthz", "/v1/models"]);
 });
 
 test("catalog failure receipt retains numeric status and only safe health classification", async () => {
@@ -688,6 +743,7 @@ test("fully simulated AC1 persists ordered stages and never reaches global fetch
   let healthReads = 0;
   let responseCalls = 0;
   let canaryId: string | undefined;
+  let initialRequestBody: Record<string, unknown> | undefined;
   const fetcher: TestFetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     routes.push(url.pathname);
@@ -707,7 +763,12 @@ test("fully simulated AC1 persists ordered stages and never reaches global fetch
     }
     if (url.pathname === "/v1/responses") {
       responseCalls += 1;
+      const requestBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
       if (responseCalls === 1) {
+        initialRequestBody = requestBody;
         canaryId = canaryFromRequest(init);
         return functionCallResponse();
       }
@@ -752,6 +813,42 @@ test("fully simulated AC1 persists ordered stages and never reaches global fetch
   expect(receipt?.check).toBe("nr02-ac1");
   expect(receipt?.status).toBe("pass");
   expect(receipt?.fixture.sha256).toBe(fixtureSha256);
+  expect(initialRequestBody).toMatchObject({
+    model: "chatgpt-web/gpt-5.6-sol",
+    stream: true,
+    tool_choice: { type: "function", name: "read_fixture" },
+    parallel_tool_calls: false,
+    reasoning: { effort: "high" },
+  });
+  expect(initialRequestBody?.previous_response_id).toBeUndefined();
+  const tools = initialRequestBody?.tools as Array<Record<string, unknown>>;
+  expect(tools).toHaveLength(1);
+  expect(tools[0]).toMatchObject({
+    type: "function",
+    name: "read_fixture",
+    strict: true,
+  });
+  expect(tools[0]?.parameters).toMatchObject({
+    required: ["fixture"],
+    additionalProperties: false,
+  });
+  const clientMetadata = initialRequestBody?.client_metadata as Record<
+    string,
+    string
+  >;
+  expect(Object.keys(clientMetadata)).toEqual(["x-codex-turn-metadata"]);
+  const turnMetadata = JSON.parse(
+    clientMetadata["x-codex-turn-metadata"] ?? "{}",
+  ) as Record<string, unknown>;
+  expect(turnMetadata).toMatchObject({
+    thread_id: expect.any(String),
+    turn_id: expect.any(String),
+    request_kind: "turn",
+    sandbox_mode: "read-only",
+  });
+  expect(turnMetadata.workspaces).toEqual({
+    [resolve("spikes/bridge/fixtures")]: {},
+  });
   expect(globalFetchCalls).toBe(0);
   expect(routes).toEqual([
     "/healthz",
@@ -761,17 +858,30 @@ test("fully simulated AC1 persists ordered stages and never reaches global fetch
     "/v1/responses",
     "/healthz",
   ]);
+  const ledger = readFileSync(store.evidencePath, "utf8");
   expect(
-    validateStageLedger(
-      readFileSync(store.evidencePath, "utf8"),
-      store.evidenceRunId,
-      "f".repeat(40),
-    ),
+    validateStageLedger(ledger, store.evidenceRunId, "f".repeat(40)),
   ).toMatchObject({
     terminalStage: "terminal_success",
     lastProvenStage: "post_ac1_health_passed",
     requestSent: true,
     initialResponsesRequestSent: true,
   });
+  const ledgerEvents = ledger
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(
+    ledgerEvents.find((event) => event.stage === "settings_validated"),
+  ).toMatchObject({
+    model: "chatgpt-web/gpt-5.6-sol",
+  });
+  expect(
+    ledgerEvents.find((event) => event.stage === "model_catalog_passed"),
+  ).toMatchObject({
+    model: "chatgpt-web/gpt-5.6-sol",
+    reasoningEffort: "high",
+  });
+  expect(ledger).not.toContain(PREFLIGHT_ENV.BRIDGE_SPIKE_API_KEY);
   rmSync(store.root, { recursive: true, force: true });
 });

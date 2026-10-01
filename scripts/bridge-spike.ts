@@ -33,11 +33,18 @@ const OUTPUT_SCHEMA = {
 };
 
 /** Local connection configuration stays process-local and is never copied into evidence. */
-interface BridgeSettings {
+interface LoopbackBridgeSettings {
   readonly baseUrl: URL;
+}
+
+interface BridgeSettings extends LoopbackBridgeSettings {
   readonly apiKey: string;
   readonly model: string;
   readonly clientVersion: string;
+}
+
+interface UnavailableBridgeSettings extends LoopbackBridgeSettings {
+  readonly model: typeof EXPECTED_AC1_MODEL;
 }
 
 type BridgeFetch = (
@@ -644,6 +651,13 @@ interface BridgeProcessIdentity {
   readonly mode: "full";
 }
 
+interface UnavailableBridgeIdentity {
+  readonly service: "codex-chatgpt-web";
+  readonly pid: number;
+  readonly version: typeof EXPECTED_UPSTREAM_VERSION;
+  readonly mode: "browser-only";
+}
+
 /** Matches the upstream identity pair whose cancellation and browser session share ownership. */
 interface TurnIdentity {
   readonly threadId: string;
@@ -754,10 +768,10 @@ export function validateReleaseClientVersion(value: string): string {
   return value;
 }
 
-/** Keeps real prompts and credentials on the user's local loopback bridge. */
-export function loadBridgeSettings(
+/** Shares one loopback-only boundary while keeping each probe's auth/catalog contract separate. */
+function loadLoopbackBaseUrl(
   environment: Readonly<Record<string, string | undefined>> = process.env,
-): BridgeSettings {
+): URL {
   const rawBaseUrl = requiredEnvironment("BRIDGE_SPIKE_BASE_URL", environment);
   let baseUrl: URL;
   try {
@@ -784,6 +798,23 @@ export function loadBridgeSettings(
       "BRIDGE_SPIKE_BASE_URL must be an unauthenticated local HTTP origin; no request was sent.",
     );
   }
+  return baseUrl;
+}
+
+/** Loads only the inputs allowed to select the isolated browser-only unavailable route. */
+export function loadUnavailableBridgeSettings(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): UnavailableBridgeSettings {
+  const baseUrl = loadLoopbackBaseUrl(environment);
+  requireAc1Model(requiredEnvironment("BRIDGE_SPIKE_MODEL", environment));
+  return { baseUrl, model: EXPECTED_AC1_MODEL };
+}
+
+/** Keeps AC1 and cancellation on their existing bearer/catalog contract. */
+export function loadBridgeSettings(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): BridgeSettings {
+  const baseUrl = loadLoopbackBaseUrl(environment);
   const model = requireAc1Model(
     requiredEnvironment("BRIDGE_SPIKE_MODEL", environment),
   );
@@ -798,7 +829,7 @@ export function loadBridgeSettings(
 }
 
 /** Resolves API paths only after loadBridgeSettings has restricted the destination to loopback. */
-function endpoint(settings: BridgeSettings, path: string): URL {
+function endpoint(settings: LoopbackBridgeSettings, path: string): URL {
   return new URL(path, settings.baseUrl);
 }
 
@@ -1033,6 +1064,73 @@ export async function runPreflight(
   return verifyBridge(loadBridgeSettings(environment), fetcher);
 }
 
+/** Restricts the unavailable probe to one ready, idle 6.1.3 browser-only process. */
+async function readUnavailableBridgeHealth(
+  settings: UnavailableBridgeSettings,
+  fetcher: BridgeFetch,
+): Promise<UnavailableBridgeIdentity> {
+  const response = await fetcher(endpoint(settings, "/healthz"));
+  if (!response.ok) {
+    throw new Error(
+      `Unavailable bridge health check returned HTTP ${response.status}.`,
+    );
+  }
+  const health = asRecord(await response.json());
+  if (health?.service !== "codex-chatgpt-web" || health?.status !== "ok") {
+    throw new Error(
+      "The isolated endpoint is not a healthy codex-chatgpt-web bridge.",
+    );
+  }
+  if (
+    typeof health.pid !== "number" ||
+    !Number.isSafeInteger(health.pid) ||
+    health.pid <= 0
+  ) {
+    throw new Error(
+      "The isolated browser-only bridge omitted its process identity.",
+    );
+  }
+  if (health.version !== EXPECTED_UPSTREAM_VERSION) {
+    throw new Error(
+      `Pinned bridge version ${EXPECTED_UPSTREAM_VERSION} is required for the unavailable probe.`,
+    );
+  }
+  if (health.mode !== "browser-only") {
+    throw new Error(
+      "The unavailable-connector probe requires mode=browser-only; no Responses request was sent.",
+    );
+  }
+  if (health.accepting_turns !== true) {
+    throw new Error("The isolated browser-only bridge is not accepting turns.");
+  }
+  requireIdleBridge(health, "at the unavailable-connector health check");
+  return {
+    service: "codex-chatgpt-web",
+    pid: health.pid,
+    version: EXPECTED_UPSTREAM_VERSION,
+    mode: "browser-only",
+  };
+}
+
+/** Confirms the single unavailable response left the same isolated browser-only process idle. */
+async function verifyUnavailableBridgeStillIdle(
+  settings: UnavailableBridgeSettings,
+  identity: UnavailableBridgeIdentity,
+  fetcher: BridgeFetch,
+): Promise<void> {
+  const confirmed = await readUnavailableBridgeHealth(settings, fetcher);
+  if (
+    confirmed.service !== identity.service ||
+    confirmed.pid !== identity.pid ||
+    confirmed.version !== identity.version ||
+    confirmed.mode !== identity.mode
+  ) {
+    throw new Error(
+      "The isolated browser-only bridge identity changed during the unavailable probe.",
+    );
+  }
+}
+
 /** Keeps pre-LIVE work behind an idle gate at both health observations. */
 export function requireIdleBridge(
   health: Record<string, unknown>,
@@ -1181,7 +1279,7 @@ function makeToolDefinition(): Record<string, unknown> {
 
 /** Keeps thread and turn identity stable across the tool-result continuation. */
 function makeTurnBody(
-  settings: BridgeSettings,
+  settings: { readonly model: string },
   identity: TurnIdentity,
   input: unknown[],
   firstTurn: boolean,
@@ -2111,10 +2209,40 @@ async function runCancellationProbe(settings: BridgeSettings): Promise<void> {
   if (failureReason) throw new Error(failureReason);
 }
 
-/** Exercises the typed missing-connector failure using an isolated, unmatched connector name. */
-async function runUnavailableConnectorProbe(
-  settings: BridgeSettings,
-): Promise<void> {
+/** Rejects incomplete traces and any function-call evidence before granting unavailable-probe credit. */
+function hasUnprovenUnavailableOutcome(outcome: BridgeSseOutcome): boolean {
+  const trace = outcome.sanitizedTrace;
+  if (!trace?.complete) return true;
+  const terminalEvents = trace.frames.filter((frame) =>
+    ["response.completed", "response.incomplete", "response.failed"].includes(
+      frame.event,
+    ),
+  );
+  if (
+    terminalEvents.length !== 1 ||
+    terminalEvents[0]?.event !== "response.failed"
+  ) {
+    return true;
+  }
+  return trace.frames.some(
+    (frame) =>
+      frame.itemId !== undefined ||
+      frame.callId !== undefined ||
+      frame.toolName !== undefined ||
+      frame.event === "response.output_item.added" ||
+      frame.event === "response.output_item.done" ||
+      frame.event === "response.function_call_arguments.delta" ||
+      frame.event === "response.function_call_arguments.done",
+  );
+}
+
+/** Runs the isolated missing-connector contract without native-catalog or bearer-auth traffic. */
+export async function runUnavailableConnectorProbe(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  fetcher: BridgeFetch = fetch,
+) {
+  const settings = loadUnavailableBridgeSettings(environment);
+  const bridgeIdentity = await readUnavailableBridgeHealth(settings, fetcher);
   const identity = { threadId: randomUUID(), turnId: randomUUID() };
   const canaryId = randomUUID();
   const body = makeTurnBody(
@@ -2123,32 +2251,60 @@ async function runUnavailableConnectorProbe(
     [makeEnvironmentMessage(identity), makeUserMessage(identity, canaryId)],
     true,
   );
-  const outcome = await sendTurn(settings, body);
+  const response = await fetcher(endpoint(settings, "/v1/responses"), {
+    method: "POST",
+    headers: {
+      accept: "text/event-stream",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180_000),
+  });
+  const contentType = response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (response.status !== 200 || contentType !== "text/event-stream") {
+    throw new Error(
+      "Unavailable connector did not return a streamed HTTP 200 Responses outcome.",
+    );
+  }
+  const outcome = await readBridgeSse(response, {
+    captureSanitizedTrace: true,
+  });
   if (
     outcome.kind !== "failed" ||
     outcome.status !== 424 ||
     outcome.errorType !== "connector_error" ||
-    outcome.code !== "connector_not_found"
+    outcome.code !== "connector_not_found" ||
+    !outcome.events.includes("response.failed") ||
+    outcome.events.includes("response.completed") ||
+    hasUnprovenUnavailableOutcome(outcome)
   ) {
     throw new Error(
-      `Unavailable connector did not return the pinned typed outcome (${outcome.kind}).`,
+      "Unavailable connector did not return a complete typed failure without completion or tool-call evidence.",
     );
   }
-  console.log(
-    JSON.stringify({
-      check: "unavailable-connector",
-      status: "pass",
-      threadId: identity.threadId,
-      turnId: identity.turnId,
-      outcome: {
-        kind: "failed",
-        status: outcome.status,
-        errorType: outcome.errorType,
-        code: outcome.code,
-      },
-      events: outcome.events,
-    }),
-  );
+  await verifyUnavailableBridgeStillIdle(settings, bridgeIdentity, fetcher);
+  const receipt = {
+    check: "unavailable-connector",
+    status: "pass",
+    threadId: identity.threadId,
+    turnId: identity.turnId,
+    canaryId,
+    outcome: {
+      kind: "failed",
+      status: outcome.status,
+      errorType: outcome.errorType,
+      code: outcome.code,
+    },
+    events: outcome.events,
+    isolatedBridge: bridgeIdentity,
+    postHealth: "same-process-idle",
+  };
+  console.log(JSON.stringify(receipt));
+  return receipt;
 }
 
 // ❌ Удалён implicit three-context/combined-cancel default: D41 requires one named action per LIVE invocation.
@@ -2217,12 +2373,12 @@ async function main(): Promise<void> {
     }
     return;
   }
-  const settings = loadBridgeSettings();
-  await verifyBridge(settings);
   if (mode === "--connector-unavailable-only") {
-    await runUnavailableConnectorProbe(settings);
+    await runUnavailableConnectorProbe();
     return;
   }
+  const settings = loadBridgeSettings();
+  await verifyBridge(settings);
   if (mode === "--cancel-only") {
     await runCancellationProbe(settings);
     return;

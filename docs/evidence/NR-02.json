@@ -7,12 +7,12 @@
   "acceptance": [
     {
       "acceptanceId": "NR-02-AC1",
-      "status": "UNVERIFIED",
+      "status": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D49 was consumed without terminal evidence. D53 then consumed exactly one authorized host-native attempt: production health/model-catalog guards passed, initial /v1/responses returned HTTP 400 before tool_call_observed, fixture read, or continuation. D55 classified the source path as NON_REQUEST_CONTRACT_400; the downstream 400 cause remains unknown. D56 permits offline route remediation only; AC1 remains UNVERIFIED with no acceptance credit.",
+      "environment": "Per Lead D70 acceptanceState: PASS_LIVE_PENDING_INDEPENDENT_REVIEW. This offline D70 runner correction produces no AC1 LIVE evidence; the assignment did not bind the reported pass to a new test SHA.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -46,18 +46,19 @@
         "lead-decision-d52",
         "nr-02-d53-live-ac1-failure-20261001",
         "nr-02-d55-offline-diagnosis-20261001",
-        "lead-decision-d56-route-ac1-through-chatgpt-web-adapter"
+        "lead-decision-d56-route-ac1-through-chatgpt-web-adapter",
+        "lead-assignment-d70-offline-unavailable-runner"
       ],
-      "notes": "UNVERIFIED_NO_ACCEPTANCE_CREDIT. D53 did not reach a connector/tool call. Do not infer that the route discrepancy caused the downstream 400, and do not promote offline D56 tests to LIVE acceptance."
+      "notes": "Lead D70 reports AC1 PASS_LIVE_PENDING_INDEPENDENT_REVIEW. No AC1 request or retry ran under D70; offline checks do not add LIVE acceptance evidence."
     },
     {
       "acceptanceId": "NR-02-AC2",
-      "status": "NOT_RUN",
+      "status": "INCOMPLETE",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D56 prohibits LIVE/AC2, connector calls, production HTTP, DEV, runtime/tunnel/config/credential/permission changes. Cancellation and unavailable-connector/tool remain NOT_AUTHORIZED_NOT_RUN.",
+      "environment": "Per Lead D70 acceptanceState: cancellation PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable subcheck NOT_RUN. D70 authorizes only offline runner correction, not cancellation/unavailable HTTP or connector execution.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -95,9 +96,10 @@
         "nr-02-cycle2-d41-runner-verification-20260930",
         "nr-02-d42-replacement-preflight-20260930",
         "lead-decision-d43",
-        "lead-decision-d52"
+        "lead-decision-d52",
+        "lead-assignment-d70-offline-unavailable-runner"
       ],
-      "notes": "NOT_RUN. D56 offline route remediation does not authorize cancellation or unavailable-connector/tool requests."
+      "notes": "AC2 remains INCOMPLETE: cancellation awaits independent review; unavailable-connector/tool remains NOT_RUN. Offline tests verify only the local runner contract."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -106,7 +108,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "D56 leaves the three-context leakage/cleanup matrix deferred and authorizes no LIVE run.",
+      "environment": "Per Lead D70: DEFERRED_HARDENING. No three-context LIVE matrix was run or authorized.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -130,18 +132,19 @@
         "lead-task-assignment-cycle2",
         "lead-decision-d41",
         "lead-assignment-d41",
-        "lead-decision-d52"
+        "lead-decision-d52",
+        "lead-assignment-d70-offline-unavailable-runner"
       ],
       "notes": "Three-context matrix remains deferred hardening. No LIVE matrix was run or claimed."
     },
     {
       "acceptanceId": "NR-02-AC4",
-      "status": "PASS",
+      "status": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json; D56 route-contract consistency audit",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json",
       "exitCode": 0,
-      "environment": "macOS arm64, pinned Bun 1.4.2; D56 offline ChatGPT-Web route remediation. No production HTTP, connector, runtime, tunnel, configuration, credentials, permissions, or DEV operations.",
+      "environment": "Local developer host; pinned Bun 1.4.2 (744846f84); D70 offline browser-only unavailable-runner contract and documentation updates. No production/isolated HTTP, connector/browser actions, or runtime mutations. Exact-head CI pending publication.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -189,9 +192,14 @@
         "nr-02-d55-offline-diagnosis-20261001",
         "lead-decision-d56-route-ac1-through-chatgpt-web-adapter",
         "nr-02-d56-route-remediation-local-verification-20261001",
-        "nr-02-d56-route-contract-tests-20261001"
+        "nr-02-d56-route-contract-tests-20261001",
+        "lead-assignment-d70-offline-unavailable-runner",
+        "nr-02-d70-offline-verification-20261001"
       ],
-      "notes": "PASS_DOCUMENTATION_ONLY. D56 route/contract tests and documentation were locally verified. No LIVE success is claimed; AC1 remains UNVERIFIED."
+      "notes": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI. The D70 offline contract/docs passed local verification; tests do not qualify LIVE acceptance.",
+      "testCount": 46,
+      "failedTestCount": 0,
+      "expectCalls": 229
     }
   ],
   "checks": [
@@ -1361,6 +1369,57 @@
       "artifactSha256": "6001b7dfa60d37a10c29e40e8cabf23d2f8c54334fb6a6d1b0ec32e76e31fe47",
       "artifactSizeBytes": 707,
       "observedAtUtc": "2026-10-01T00:29:03.008Z"
+    },
+    {
+      "id": "nr-02-d70-offline-verification-20261001",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Local developer host; Bun 1.4.2 (744846f84); D70 changes in working tree before commit.",
+      "testCount": 45,
+      "failedTestCount": 0,
+      "expectCalls": 223,
+      "focusedUnavailableTestCount": 8,
+      "focusedUnavailableFailedTestCount": 0,
+      "focusedUnavailableExpectCalls": 51,
+      "summary": "Typecheck, Biome, 45 tests/223 assertions, and build passed. Eight unavailable-runner tests/51 assertions passed with injected fake fetch; no production/isolated HTTP, connector/browser actions, or runtime/config mutations. Exact-head CI pending.",
+      "artifactRef": "nr-02-d70-offline-verification-20261001",
+      "observedAtUtc": "2026-10-01T12:05:44.000Z"
+    },
+    {
+      "id": "nr-02-d70-unavailable-tests-20261001",
+      "kind": "CONTRACT",
+      "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-runner.test.ts --test-name-pattern unavailable",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Bun 1.4.2; injected fake fetch only; no production/isolated HTTP or connector/browser action.",
+      "testCount": 9,
+      "failedTestCount": 0,
+      "expectCalls": 57,
+      "summary": "All D70 unavailable-runner tests passed: exact streamed typed failure, browser-only pre/post health, full-mode guard, missing API key/client version, no model catalog or Authorization, function/tool/completion/incomplete/wrong-outcome rejection, and changed/non-idle health rejection.",
+      "artifactRef": "nr-02-d70-offline-verification-20261001",
+      "observedAtUtc": "2026-10-01T12:09:14.000Z"
+    },
+    {
+      "id": "nr-02-d70-diff-check-20261001",
+      "kind": "CONTRACT",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "Whitespace/error-marker check passed for all current D70 scoped changes.",
+      "artifactRef": "nr-02-d70-offline-verification-20261001",
+      "observedAtUtc": "2026-10-01T12:09:14.000Z"
+    },
+    {
+      "id": "nr-02-d70-evidence-json-parse-20261001",
+      "kind": "CONTRACT",
+      "command": "jq empty docs/evidence/NR-02.json",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "D70-updated evidence JSON parses successfully.",
+      "artifactRef": "nr-02-d70-offline-verification-20261001",
+      "observedAtUtc": "2026-10-01T12:09:14.000Z"
     }
   ],
   "decisionReceipts": [
@@ -1717,20 +1776,52 @@
         "merge"
       ],
       "source": "Configured Lead ChatGPT conversation via Codex in-app browser and read_thread; complete response saved privately and correlation verified"
+    },
+    {
+      "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
+      "messageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
+      "requestMessageId": "f53ee4b9-512e-48c3-b606-76b96567d01a",
+      "responseSha256": "593aa01f31f9833d4379c7bee53ab3e67e5ab78cd86f766232bf656f2b3a1e59",
+      "responseBytes": 11136,
+      "correlationVerified": true,
+      "decision": "CORRECT_UNAVAILABLE_RUNNER_OFFLINE_FOR_BROWSER_ONLY_ISOLATION",
+      "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+      "startingHeadSha": "ab927a482bcdffce5644ddbb0062e523189a3345",
+      "specHashAtAssignment": "de108e8d01d6c8a7c16effbdd4b62a353cd4bf581a823ca2641e5f0be2de4dd9",
+      "authorized": [
+        "bounded offline implementation",
+        "deterministic tests",
+        "docs/evidence update",
+        "commit/push to existing PR #3 branch",
+        "PR narrative update",
+        "exact-head CI"
+      ],
+      "prohibited": [
+        "production or isolated HTTP",
+        "connector/browser actions",
+        "D69 automatic resume",
+        "reviewer request",
+        "merge"
+      ],
+      "source": "Configured Lead chat read with verified message correlation; raw assignment retained privately"
     }
   ],
   "worktreeVerification": {
-    "artifactRef": "nr-02-review-remediation-20260928",
-    "path": "docs/evidence/NR-02-review-remediation-20260928.txt",
-    "sha256": "d4354be30dca1df4dd80b43fcad82be8aa32f9092dbb07ed60918a0e4ebc5360",
+    "artifactRef": "nr-02-d70-offline-verification-20261001",
+    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
+    "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
     "exitCode": 0,
-    "testedSha": "4af5d09337153707c768394681628ec19b0b4481",
-    "sizeBytes": 1950,
-    "testCount": 18,
+    "testedSha": null,
+    "sizeBytes": 2928,
+    "testCount": 46,
     "failedTestCount": 0,
-    "observedAtUtc": "2026-09-28T07:07:35Z",
-    "artifactSha256": "d4354be30dca1df4dd80b43fcad82be8aa32f9092dbb07ed60918a0e4ebc5360",
-    "artifactSizeBytes": 1950
+    "expectCalls": 229,
+    "focusedUnavailableTestCount": 9,
+    "focusedUnavailableFailedTestCount": 0,
+    "focusedUnavailableExpectCalls": 57,
+    "observedAtUtc": "2026-10-01T12:09:14.000Z",
+    "artifactSha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
+    "artifactSizeBytes": 2928
   },
   "userAuthorizations": [
     {
@@ -1759,11 +1850,11 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-D53-WEB-ROUTE-CONTRACT-REMEDIATION",
-    "assignmentMessageId": "a2a55e98-a535-4956-9f73-d29e53663265",
-    "decisionId": "NR-02-D56-ROUTE-AC1-THROUGH-CHATGPT-WEB-ADAPTER",
-    "decisionMessageId": "a2a55e98-a535-4956-9f73-d29e53663265",
-    "status": "D56_OFFLINE_ROUTE_REMEDIATION_IMPLEMENTED_LOCAL_VERIFICATION_PASS_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+    "assignmentId": "NR-02-C2-D70-BROWSER-ONLY-UNAVAILABLE-RUNNER",
+    "assignmentMessageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
+    "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
+    "decisionMessageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
+    "status": "D70_OFFLINE_IMPLEMENTATION_AND_LOCAL_VERIFY_PASSED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1776,12 +1867,14 @@
       "transportBinding": "not independently proven by a Responses/tool receipt"
     },
     "acceptance": {
-      "NR-02-AC1": "UNVERIFIED_D53_ONE_SHOT_HTTP_400_BEFORE_TOOL_CALL_NO_ACCEPTANCE_CREDIT",
-      "NR-02-AC2": "NOT_RUN_D56_LIVE_PROBES_PROHIBITED",
+      "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
+      "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
+      "NR-02-AC2-unavailable": "NOT_RUN",
+      "NR-02-AC2-overall": "INCOMPLETE",
       "NR-02-AC3": "DEFERRED_HARDENING",
-      "NR-02-AC4": "PASS_DOCUMENTATION_AND_OFFLINE_CONTRACT_ONLY"
+      "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI"
     },
-    "implementationLimit": "D53 consumed exactly one AC1 attempt and returned HTTP 400 before any tool call. D55 proves the request selected native passthrough because its model was gpt-6.1-sol, but does not prove this caused the downstream 400. D56 corrects only the offline route contract to chatgpt-web/gpt-5.6-sol at high reasoning. No production/DEV HTTP, connector, or mutation is authorized; a new LIVE attempt requires a separate Lead decision.",
+    "implementationLimit": "D70 corrects only the offline unavailable runner for a browser-only runtime. API key, client version and /v1/models are not used; the single fake-fetch contract requires HTTP 200 SSE response.failed 424/connector_error/connector_not_found and same-process idle post-health. No production or isolated HTTP, connector/browser action, AC1/cancellation retry, AC3, DEV, or runtime/config mutation occurred.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1789,14 +1882,14 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "NOT_AUTHORIZED_D56_OFFLINE_ASSIGNMENT",
+    "reviewerRequestNow": "NOT_AUTHORIZED_D70",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-d56-route-remediation-local-verification-20261001",
-    "nextRequiredAction": "Commit/push only to existing PR #3, verify exact-head GitHub CI, update the PR narrative, and send Lead a correlated DECISION_REQUEST with changed-file hashes and verification receipts for a separate one-shot host-native AC1 authorization. Do not run LIVE automatically.",
+    "documentationVerificationRef": "nr-02-d70-offline-verification-20261001",
+    "nextRequiredAction": "Commit/push to existing PR #3 branch, verify exact-head CI, update PR narrative, then send Lead the D70 DECISION_REQUEST with hashes, run ID/conclusion, verification/test receipts, updated spec/task/evidence hashes, and zero-side-effect confirmation. No reviewer request, D69 resume, LIVE action, or merge.",
     "documentationVerificationArtifact": {
-      "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d56-route-remediation-verification-20261001.json",
-      "sha256": "8c652aa28cb9297d7f18c19d7470cf7558a7cea57e4c0e253095ae934e45cf32",
-      "sizeBytes": 2994
+      "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
+      "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
+      "sizeBytes": 2928
     },
     "auxiliaryConnector": {
       "identity": "Codex Native2 NR-02",
@@ -1862,8 +1955,9 @@
       "liveTraffic": "NOT_RUN; D43 AUTHORIZES NO LIVE TRAFFIC"
     },
     "ac2": {
-      "cancellation": "D41_CONDITIONAL_AUTHORIZATION_NOT_ACTIONABLE; D43_REQUIRES_NEW_PREFLIGHT_DECISION",
-      "unavailableConnectorOrTool": "NOT_AUTHORIZED_NOT_RUN"
+      "cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
+      "unavailableConnectorOrTool": "NOT_RUN_D70_OFFLINE_RUNNER_CORRECTION_ONLY",
+      "overall": "INCOMPLETE"
     },
     "leadDecisionObserved": {
       "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
@@ -1871,7 +1965,7 @@
       "inReplyTo": "827a7ac9-2a06-473c-b1a6-2802a31a61ac",
       "source": "Configured Lead ChatGPT conversation observed in the built-in browser"
     },
-    "afterLiveAction": "Superseded by D43. No further preflight or LIVE action is authorized; a new Lead decision is required before any network request.",
+    "afterLiveAction": "D70 is offline-only. D69 is paused and not resumable on the old head; any follow-up live action requires a new Lead assignment.",
     "d42": {
       "decisionId": "NR-02-D42-ONE-REPLACEMENT-PREFLIGHT-AFTER-LOCAL-INPUT-BOOTSTRAP",
       "preflightArtifactId": "nr-02-d42-replacement-preflight-20260930",
@@ -1907,10 +2001,11 @@
       }
     },
     "currentLeadDecisionObserved": {
-      "decisionId": "NR-02-D43-OFFLINE-MODEL-CATALOG-CONTRACT-CORRECTION",
-      "messageId": "2e7a4439-dcb1-4a98-9a90-0e09fba35ce5",
-      "inReplyTo": "d3c6d59d-b450-443c-86aa-57b6e13828b7",
-      "source": "Configured Lead ChatGPT conversation observed through Codex app read_thread"
+      "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
+      "messageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
+      "inReplyTo": "f53ee4b9-512e-48c3-b606-76b96567d01a",
+      "responseSha256": "593aa01f31f9833d4379c7bee53ab3e67e5ab78cd86f766232bf656f2b3a1e59",
+      "source": "Configured Lead Chat; full task assignment saved privately and correlation verified"
     },
     "d49D50D51": {
       "d49": "Single AC1 attempt consumed; internal guard passed; terminal evidence discarded; tool outcome cannot be established.",
@@ -1970,17 +2065,23 @@
       "status": "PASS",
       "runtime": "Bun 1.4.2 (744846f84)",
       "testedSha": null,
-      "testCount": 37,
+      "testCount": 46,
       "failedTestCount": 0,
-      "expectCalls": 172,
+      "expectCalls": 229,
       "changedWorktree": true,
-      "reason": "D56 offline implementation locally verified before commit; exact-head GitHub CI remains pending.",
+      "reason": "D70 offline implementation locally verified before publication; exact-head GitHub CI pending.",
       "productionHttpRequests": 0,
+      "isolatedHttpRequests": 0,
       "connectorCalls": 0,
+      "browserActions": 0,
       "productionOrDevMutations": 0,
-      "artifactRef": "nr-02-d56-route-remediation-local-verification-20261001",
-      "artifactSha256": "8c652aa28cb9297d7f18c19d7470cf7558a7cea57e4c0e253095ae934e45cf32",
-      "artifactSizeBytes": 2994
+      "focusedUnavailableTestCount": 9,
+      "focusedUnavailableFailedTestCount": 0,
+      "focusedUnavailableExpectCalls": 57,
+      "artifactRef": "nr-02-d70-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
+      "artifactSha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
+      "artifactSizeBytes": 2928
     },
     "d53Attempt": {
       "decisionId": "NR-02-D53-ONE-DURABLE-HOST-NATIVE-AC1",
@@ -2033,6 +2134,72 @@
       "responseSha256": "27ef8440bbbac6fb75d5abec73098d5f200087562a72ceeb40a3fbe733e3cb44",
       "responseBytes": 12195,
       "rawPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-assignment-a2a55e98-a535-4956-9f73-d29e53663265.raw.json"
+    },
+    "d70": {
+      "assignmentId": "NR-02-C2-D70-BROWSER-ONLY-UNAVAILABLE-RUNNER",
+      "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
+      "messageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
+      "inReplyTo": "f53ee4b9-512e-48c3-b606-76b96567d01a",
+      "assignmentSha256": "593aa01f31f9833d4379c7bee53ab3e67e5ab78cd86f766232bf656f2b3a1e59",
+      "assignmentBytes": 11136,
+      "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+      "startingHeadSha": "ab927a482bcdffce5644ddbb0062e523189a3345",
+      "specHashAtAssignment": "de108e8d01d6c8a7c16effbdd4b62a353cd4bf581a823ca2641e5f0be2de4dd9",
+      "pausedPriorAssignment": "NR-02-C2-D69-ISOLATED-MISSING-CONNECTOR-LIVE",
+      "priorProductionPreHealthConsumed": true,
+      "automaticD69Resume": false,
+      "acceptanceStateFromLead": {
+        "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+        "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+        "NR-02-AC2-unavailable": "NOT_RUN",
+        "NR-02-AC2-overall": "INCOMPLETE",
+        "NR-02-AC3": "DEFERRED_HARDENING",
+        "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_D70_UPDATE"
+      },
+      "runnerContract": {
+        "requiredModel": "chatgpt-web/gpt-5.6-sol",
+        "requiredBridgeVersion": "6.1.3",
+        "requiredMode": "browser-only",
+        "apiKeyRequired": false,
+        "clientVersionRequired": false,
+        "modelCatalogRequests": 0,
+        "responsesAuthorizationHeader": false,
+        "requiredOutcome": {
+          "httpStatus": 200,
+          "stream": true,
+          "status": 424,
+          "errorType": "connector_error",
+          "code": "connector_not_found"
+        },
+        "requiredPostHealth": "same pid/version/mode and idle counts"
+      },
+      "localVerification": {
+        "status": "PASS",
+        "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+        "exitCode": 0,
+        "runtime": "Bun 1.4.2 (744846f84)",
+        "testCount": 46,
+        "failedTestCount": 0,
+        "expectCalls": 229,
+        "focusedUnavailableTestCount": 9,
+        "focusedUnavailableFailedTestCount": 0,
+        "focusedUnavailableExpectCalls": 57,
+        "diffCheck": "PASS",
+        "evidenceJsonParse": "PASS",
+        "exactHeadCi": "PENDING",
+        "artifactRef": "nr-02-d70-offline-verification-20261001",
+        "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
+        "artifactSha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
+        "artifactSizeBytes": 2928
+      },
+      "sideEffects": {
+        "productionHttpRequests": 0,
+        "isolatedHttpRequests": 0,
+        "connectorCalls": 0,
+        "browserActions": 0,
+        "productionMutations": 0,
+        "devMutations": 0
+      }
     }
   }
 }

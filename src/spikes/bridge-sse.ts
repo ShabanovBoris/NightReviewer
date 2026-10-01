@@ -44,6 +44,7 @@ export interface BridgeSseOptions {
   readonly signal?: AbortSignal;
   readonly onTerminalEvent?: (eventName: BridgeSseTerminalEvent) => void;
   readonly captureSanitizedTrace?: boolean;
+  readonly onSanitizedTrace?: (trace: BridgeSseTrace) => void;
 }
 
 /** Binds safe event identities to hashes of exact SSE data without retaining model or tool payload text. */
@@ -201,18 +202,19 @@ export async function readBridgeSse(
     });
   };
 
-  const withTrace = (outcome: BridgeSseOutcome): BridgeSseOutcome =>
-    traceFrames
-      ? {
-          ...outcome,
-          sanitizedTrace: {
-            schemaVersion: "nr02-sanitized-sse/1",
-            complete: traceComplete,
-            observedFrames: observedTraceFrames,
-            frames: traceFrames,
-          },
-        }
-      : outcome;
+  const sanitizedTrace = (): BridgeSseTrace => ({
+    schemaVersion: "nr02-sanitized-sse/1",
+    complete: traceComplete,
+    observedFrames: observedTraceFrames,
+    frames: traceFrames ?? [],
+  });
+
+  const withTrace = (outcome: BridgeSseOutcome): BridgeSseOutcome => {
+    if (!traceFrames) return outcome;
+    const trace = sanitizedTrace();
+    options.onSanitizedTrace?.(trace);
+    return { ...outcome, sanitizedTrace: trace };
+  };
 
   if (!response.ok) {
     const body = await response.json().catch(() => undefined);
@@ -458,6 +460,10 @@ export async function readBridgeSse(
   } catch (error) {
     if (options.signal?.aborted)
       return withTrace({ kind: "cancelled", events: [...events] });
+    if (traceFrames) {
+      traceComplete = false;
+      options.onSanitizedTrace?.(sanitizedTrace());
+    }
     throw error;
   } finally {
     reader.releaseLock();

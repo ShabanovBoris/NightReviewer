@@ -4,10 +4,14 @@ import {
   fchmodSync,
   constants as fsConstants,
   fsyncSync,
+  ftruncateSync,
+  lstatSync,
   openSync,
+  realpathSync,
+  statSync,
   writeSync,
 } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   type BridgeFunctionCall,
   type BridgeSseOutcome,
@@ -45,6 +49,85 @@ interface BridgeSettings extends LoopbackBridgeSettings {
 
 interface UnavailableBridgeSettings extends LoopbackBridgeSettings {
   readonly model: typeof EXPECTED_AC1_MODEL;
+  readonly expectedPid: number;
+  readonly expectedPort: number;
+  readonly productionPort: number;
+  readonly evidencePath: string;
+}
+
+type SanitizedHealthMode = "full" | "browser-only" | "other";
+
+interface SanitizedUnavailableHealth {
+  readonly observed: boolean;
+  readonly httpStatus: number | null;
+  readonly service: "codex-chatgpt-web" | "other" | null;
+  readonly status: "ok" | "other" | null;
+  readonly pid: number | null;
+  readonly port: number | null;
+  readonly version: "6.1.3" | "other" | null;
+  readonly mode: SanitizedHealthMode | null;
+  readonly acceptingTurns: boolean | null;
+  readonly activeHttpTurns: number | null;
+  readonly activeBrowserTurns: number | null;
+  readonly idle: boolean | null;
+}
+
+interface UnavailableProbeEvidence {
+  readonly schemaVersion: "nr02-unavailable-evidence/1";
+  readonly expectedIsolatedPid: number;
+  readonly expectedIsolatedPort: number;
+  readonly productionPortGuard: number;
+  readonly model: typeof EXPECTED_AC1_MODEL;
+  preHealth: SanitizedUnavailableHealth;
+  responsesRequestAttempted: boolean;
+  outerHttpStatus: number | null;
+  outerContentTypeClass:
+    | "not_received"
+    | "missing"
+    | "text/event-stream"
+    | "application/json"
+    | "other";
+  sanitizedSseTrace: {
+    readonly schemaVersion: "nr02-sanitized-sse/1";
+    readonly complete: boolean;
+    readonly frameCount: number;
+    readonly observedFrames: number;
+    readonly frames: readonly BridgeSseTrace["frames"][number][];
+  };
+  terminalOutcomeKind:
+    | "not_observed"
+    | "failed"
+    | "completed"
+    | "incomplete"
+    | "cancelled"
+    | "stream_error";
+  typedStatus: number | null;
+  typedErrorType: "connector_error" | "other" | null;
+  typedCode: "connector_not_found" | "other" | null;
+  responseFailedObserved: boolean;
+  responseCompletedObserved: boolean;
+  responseIncompleteObserved: boolean;
+  functionOrToolEvidenceObserved: boolean;
+  readFixtureEvidenceObserved: boolean;
+  readonly continuationRequests: 0;
+  readonly fixtureReadsExecuted: 0;
+  postHealth: {
+    attempted: boolean;
+    observed: boolean;
+    sameProcess: boolean | null;
+    idle: boolean | null;
+    health: SanitizedUnavailableHealth;
+  };
+  terminalClassification: "IN_PROGRESS" | "PASS" | "FAIL";
+  failureStage?:
+    | "pre_health"
+    | "pre_health_validation"
+    | "responses_request"
+    | "responses_http"
+    | "sse_read"
+    | "terminal_validation"
+    | "post_health"
+    | "evidence_persistence";
 }
 
 type BridgeFetch = (
@@ -150,6 +233,14 @@ export class EvidenceWriterError extends Error {
   constructor() {
     super("Stage evidence could not be persisted.");
     this.name = "EvidenceWriterError";
+  }
+}
+
+/** Keeps the unavailable probe's durable receipt separate from the AC1 stage ledger. */
+export class UnavailableEvidenceError extends Error {
+  constructor() {
+    super("Sanitized unavailable-probe evidence could not be persisted.");
+    this.name = "UnavailableEvidenceError";
   }
 }
 
@@ -651,13 +742,6 @@ interface BridgeProcessIdentity {
   readonly mode: "full";
 }
 
-interface UnavailableBridgeIdentity {
-  readonly service: "codex-chatgpt-web";
-  readonly pid: number;
-  readonly version: typeof EXPECTED_UPSTREAM_VERSION;
-  readonly mode: "browser-only";
-}
-
 /** Matches the upstream identity pair whose cancellation and browser session share ownership. */
 interface TurnIdentity {
   readonly threadId: string;
@@ -748,6 +832,23 @@ function requiredEnvironment(
   return value;
 }
 
+/** Parses process and port guards before the unavailable route can use fetch. */
+function requiredUnavailableInteger(
+  name: string,
+  environment: Readonly<Record<string, string | undefined>>,
+  maximum: number,
+): number {
+  const rawValue = environment[name];
+  if (!rawValue || !/^[1-9]\d*$/.test(rawValue)) {
+    throw new Error(`${name} must be a positive decimal integer.`);
+  }
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value > maximum) {
+    throw new Error(`${name} is outside its allowed range.`);
+  }
+  return value;
+}
+
 /** Keeps unprefixed native models off the pinned release's non-connector passthrough route. */
 function requireAc1Model(value: string): string {
   if (value !== EXPECTED_AC1_MODEL) {
@@ -801,13 +902,148 @@ function loadLoopbackBaseUrl(
   return baseUrl;
 }
 
-/** Loads only the inputs allowed to select the isolated browser-only unavailable route. */
+/** Loads exact isolation guards before any network-capable unavailable-probe action. */
 export function loadUnavailableBridgeSettings(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): UnavailableBridgeSettings {
-  const baseUrl = loadLoopbackBaseUrl(environment);
-  requireAc1Model(requiredEnvironment("BRIDGE_SPIKE_MODEL", environment));
-  return { baseUrl, model: EXPECTED_AC1_MODEL };
+  const expectedPid = requiredUnavailableInteger(
+    "BRIDGE_SPIKE_EXPECTED_ISOLATED_PID",
+    environment,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const expectedPort = requiredUnavailableInteger(
+    "BRIDGE_SPIKE_EXPECTED_ISOLATED_PORT",
+    environment,
+    65_535,
+  );
+  const productionPort = requiredUnavailableInteger(
+    "BRIDGE_SPIKE_PRODUCTION_PORT",
+    environment,
+    65_535,
+  );
+  if (expectedPort === productionPort) {
+    throw new Error(
+      "The isolated bridge port must differ from the production port; no request was sent.",
+    );
+  }
+  if (environment.BRIDGE_SPIKE_MODEL !== EXPECTED_AC1_MODEL) {
+    throw new Error(
+      `BRIDGE_SPIKE_MODEL must equal ${EXPECTED_AC1_MODEL}; no request was sent.`,
+    );
+  }
+  const expectedBaseUrl = `http://127.0.0.1:${expectedPort}/`;
+  if (environment.BRIDGE_SPIKE_BASE_URL !== expectedBaseUrl) {
+    throw new Error(
+      "BRIDGE_SPIKE_BASE_URL must exactly match the guarded isolated loopback port; no request was sent.",
+    );
+  }
+  const evidencePath = requiredEnvironment(
+    "BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH",
+    environment,
+  );
+  if (!isAbsolute(evidencePath)) {
+    throw new UnavailableEvidenceError();
+  }
+  return {
+    baseUrl: new URL(expectedBaseUrl),
+    model: EXPECTED_AC1_MODEL,
+    expectedPid,
+    expectedPort,
+    productionPort,
+    evidencePath,
+  };
+}
+
+/** Writes fsynced sanitized snapshots only into an existing private ignored evidence directory. */
+class FileUnavailableEvidenceWriter {
+  readonly #fd: number;
+  #closed = false;
+
+  constructor(evidencePath: string) {
+    try {
+      if (!isAbsolute(evidencePath)) throw new Error();
+      const privateRoot = realpathSync(resolve(".nightreviewer"));
+      const rootStat = statSync(privateRoot);
+      const resolvedEvidencePath = resolve(evidencePath);
+      const parentPath = realpathSync(dirname(resolvedEvidencePath));
+      const relativeParent = relative(privateRoot, parentPath);
+      const parentStat = statSync(parentPath);
+      const currentUid = process.getuid?.();
+      if (
+        currentUid === undefined ||
+        !rootStat.isDirectory() ||
+        rootStat.uid !== currentUid ||
+        (rootStat.mode & 0o077) !== 0 ||
+        (relativeParent !== "" &&
+          (relativeParent.startsWith("..") || isAbsolute(relativeParent))) ||
+        !parentStat.isDirectory() ||
+        parentStat.uid !== currentUid ||
+        (parentStat.mode & 0o077) !== 0
+      ) {
+        throw new Error();
+      }
+      const safePath = resolve(parentPath, basename(resolvedEvidencePath));
+      try {
+        const existing = lstatSync(safePath);
+        if (
+          !existing.isFile() ||
+          existing.uid !== currentUid ||
+          existing.nlink !== 1 ||
+          (existing.mode & 0o077) !== 0
+        ) {
+          throw new Error();
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      this.#fd = openSync(
+        safePath,
+        fsConstants.O_WRONLY |
+          fsConstants.O_CREAT |
+          fsConstants.O_TRUNC |
+          fsConstants.O_NOFOLLOW,
+        0o600,
+      );
+      fchmodSync(this.#fd, 0o600);
+      fsyncSync(this.#fd);
+    } catch {
+      throw new UnavailableEvidenceError();
+    }
+  }
+
+  record(evidence: UnavailableProbeEvidence): void {
+    if (this.#closed) throw new UnavailableEvidenceError();
+    const bytes = Buffer.from(`${JSON.stringify(evidence)}\n`, "utf8");
+    try {
+      ftruncateSync(this.#fd, 0);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const written = writeSync(
+          this.#fd,
+          bytes,
+          offset,
+          bytes.length - offset,
+          offset,
+        );
+        if (written <= 0) throw new Error();
+        offset += written;
+      }
+      fsyncSync(this.#fd);
+    } catch {
+      throw new UnavailableEvidenceError();
+    }
+  }
+
+  close(): void {
+    if (this.#closed) return;
+    try {
+      fsyncSync(this.#fd);
+      closeSync(this.#fd);
+      this.#closed = true;
+    } catch {
+      throw new UnavailableEvidenceError();
+    }
+  }
 }
 
 /** Keeps AC1 and cancellation on their existing bearer/catalog contract. */
@@ -1064,71 +1300,104 @@ export async function runPreflight(
   return verifyBridge(loadBridgeSettings(environment), fetcher);
 }
 
-/** Restricts the unavailable probe to one ready, idle 6.1.3 browser-only process. */
-async function readUnavailableBridgeHealth(
-  settings: UnavailableBridgeSettings,
-  fetcher: BridgeFetch,
-): Promise<UnavailableBridgeIdentity> {
-  const response = await fetcher(endpoint(settings, "/healthz"));
-  if (!response.ok) {
-    throw new Error(
-      `Unavailable bridge health check returned HTTP ${response.status}.`,
-    );
-  }
-  const health = asRecord(await response.json());
-  if (health?.service !== "codex-chatgpt-web" || health?.status !== "ok") {
-    throw new Error(
-      "The isolated endpoint is not a healthy codex-chatgpt-web bridge.",
-    );
-  }
-  if (
-    typeof health.pid !== "number" ||
-    !Number.isSafeInteger(health.pid) ||
-    health.pid <= 0
-  ) {
-    throw new Error(
-      "The isolated browser-only bridge omitted its process identity.",
-    );
-  }
-  if (health.version !== EXPECTED_UPSTREAM_VERSION) {
-    throw new Error(
-      `Pinned bridge version ${EXPECTED_UPSTREAM_VERSION} is required for the unavailable probe.`,
-    );
-  }
-  if (health.mode !== "browser-only") {
-    throw new Error(
-      "The unavailable-connector probe requires mode=browser-only; no Responses request was sent.",
-    );
-  }
-  if (health.accepting_turns !== true) {
-    throw new Error("The isolated browser-only bridge is not accepting turns.");
-  }
-  requireIdleBridge(health, "at the unavailable-connector health check");
+/** Supplies explicit unknown fields when a health response was not observed. */
+// ❌ Удалены browser-only health guards и UnavailableBridgeIdentity: D73 pins full mode and exact PID/port.
+function emptyUnavailableHealth(observed = false): SanitizedUnavailableHealth {
   return {
-    service: "codex-chatgpt-web",
-    pid: health.pid,
-    version: EXPECTED_UPSTREAM_VERSION,
-    mode: "browser-only",
+    observed,
+    httpStatus: null,
+    service: null,
+    status: null,
+    pid: null,
+    port: null,
+    version: null,
+    mode: null,
+    acceptingTurns: null,
+    activeHttpTurns: null,
+    activeBrowserTurns: null,
+    idle: null,
   };
 }
 
-/** Confirms the single unavailable response left the same isolated browser-only process idle. */
-async function verifyUnavailableBridgeStillIdle(
+/** Projects health replies onto fixed scalar fields so diagnostics cannot retain arbitrary payloads. */
+function sanitizeUnavailableHealth(
+  httpStatus: number,
+  value: unknown,
+): SanitizedUnavailableHealth {
+  const health = asRecord(value);
+  const positiveInteger = (field: unknown, maximum: number): number | null =>
+    typeof field === "number" &&
+    Number.isSafeInteger(field) &&
+    field > 0 &&
+    field <= maximum
+      ? field
+      : null;
+  const nonNegativeInteger = (field: unknown): number | null =>
+    typeof field === "number" && Number.isSafeInteger(field) && field >= 0
+      ? field
+      : null;
+  const activeHttpTurns = nonNegativeInteger(health?.active_http_turns);
+  const activeBrowserTurns = nonNegativeInteger(health?.active_browser_turns);
+  return {
+    observed: true,
+    httpStatus,
+    service:
+      health?.service === "codex-chatgpt-web" ? "codex-chatgpt-web" : "other",
+    status: health?.status === "ok" ? "ok" : "other",
+    pid: positiveInteger(health?.pid, Number.MAX_SAFE_INTEGER),
+    port: positiveInteger(health?.port, 65_535),
+    version:
+      health?.version === EXPECTED_UPSTREAM_VERSION
+        ? EXPECTED_UPSTREAM_VERSION
+        : "other",
+    mode:
+      health?.mode === "full" || health?.mode === "browser-only"
+        ? health.mode
+        : "other",
+    acceptingTurns:
+      typeof health?.accepting_turns === "boolean"
+        ? health.accepting_turns
+        : null,
+    activeHttpTurns,
+    activeBrowserTurns,
+    idle:
+      activeHttpTurns === null || activeBrowserTurns === null
+        ? null
+        : activeHttpTurns === 0 && activeBrowserTurns === 0,
+  };
+}
+
+/** Owns one health side effect and returns only evidence-safe scalar fields. */
+async function readUnavailableBridgeHealth(
   settings: UnavailableBridgeSettings,
-  identity: UnavailableBridgeIdentity,
   fetcher: BridgeFetch,
-): Promise<void> {
-  const confirmed = await readUnavailableBridgeHealth(settings, fetcher);
-  if (
-    confirmed.service !== identity.service ||
-    confirmed.pid !== identity.pid ||
-    confirmed.version !== identity.version ||
-    confirmed.mode !== identity.mode
-  ) {
-    throw new Error(
-      "The isolated browser-only bridge identity changed during the unavailable probe.",
-    );
-  }
+): Promise<SanitizedUnavailableHealth> {
+  const response = await fetcher(endpoint(settings, "/healthz"), {
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = await response.json().catch(() => undefined);
+  return sanitizeUnavailableHealth(response.status, body);
+}
+
+/** Applies the same pinned identity and idle contract to pre-health and post-health. */
+function isExpectedUnavailableHealth(
+  settings: UnavailableBridgeSettings,
+  health: SanitizedUnavailableHealth,
+): boolean {
+  return (
+    health.observed &&
+    health.httpStatus !== null &&
+    health.httpStatus >= 200 &&
+    health.httpStatus < 300 &&
+    health.service === "codex-chatgpt-web" &&
+    health.status === "ok" &&
+    health.pid === settings.expectedPid &&
+    health.port === settings.expectedPort &&
+    health.version === EXPECTED_UPSTREAM_VERSION &&
+    health.mode === "full" &&
+    health.acceptingTurns === true &&
+    health.idle === true
+  );
 }
 
 /** Keeps pre-LIVE work behind an idle gate at both health observations. */
@@ -2209,22 +2478,72 @@ async function runCancellationProbe(settings: BridgeSettings): Promise<void> {
   if (failureReason) throw new Error(failureReason);
 }
 
-/** Rejects incomplete traces and any function-call evidence before granting unavailable-probe credit. */
-function hasUnprovenUnavailableOutcome(outcome: BridgeSseOutcome): boolean {
-  const trace = outcome.sanitizedTrace;
-  if (!trace?.complete) return true;
-  const terminalEvents = trace.frames.filter((frame) =>
-    ["response.completed", "response.incomplete", "response.failed"].includes(
-      frame.event,
-    ),
+/** Initializes every contract field so the first fsynced snapshot is self-describing. */
+function emptyUnavailableProbeEvidence(
+  settings: UnavailableBridgeSettings,
+): UnavailableProbeEvidence {
+  return {
+    schemaVersion: "nr02-unavailable-evidence/1",
+    expectedIsolatedPid: settings.expectedPid,
+    expectedIsolatedPort: settings.expectedPort,
+    productionPortGuard: settings.productionPort,
+    model: settings.model,
+    preHealth: emptyUnavailableHealth(),
+    responsesRequestAttempted: false,
+    outerHttpStatus: null,
+    outerContentTypeClass: "not_received",
+    sanitizedSseTrace: {
+      schemaVersion: "nr02-sanitized-sse/1",
+      complete: false,
+      frameCount: 0,
+      observedFrames: 0,
+      frames: [],
+    },
+    terminalOutcomeKind: "not_observed",
+    typedStatus: null,
+    typedErrorType: null,
+    typedCode: null,
+    responseFailedObserved: false,
+    responseCompletedObserved: false,
+    responseIncompleteObserved: false,
+    functionOrToolEvidenceObserved: false,
+    readFixtureEvidenceObserved: false,
+    continuationRequests: 0,
+    fixtureReadsExecuted: 0,
+    postHealth: {
+      attempted: false,
+      observed: false,
+      sameProcess: null,
+      idle: null,
+      health: emptyUnavailableHealth(),
+    },
+    terminalClassification: "IN_PROGRESS",
+  };
+}
+
+/** Copies only the parser's bounded allowlisted trace into the durable receipt. */
+function storeUnavailableTrace(
+  evidence: UnavailableProbeEvidence,
+  trace: BridgeSseTrace,
+): void {
+  evidence.sanitizedSseTrace = {
+    schemaVersion: trace.schemaVersion,
+    complete: trace.complete,
+    frameCount: trace.frames.length,
+    observedFrames: trace.observedFrames,
+    frames: trace.frames,
+  };
+  const terminalEvents = trace.frames.map((frame) => frame.event);
+  evidence.responseFailedObserved = terminalEvents.includes("response.failed");
+  evidence.responseCompletedObserved =
+    terminalEvents.includes("response.completed");
+  evidence.responseIncompleteObserved = terminalEvents.includes(
+    "response.incomplete",
   );
-  if (
-    terminalEvents.length !== 1 ||
-    terminalEvents[0]?.event !== "response.failed"
-  ) {
-    return true;
-  }
-  return trace.frames.some(
+  evidence.readFixtureEvidenceObserved = trace.frames.some(
+    (frame) => frame.toolName === "read_fixture",
+  );
+  evidence.functionOrToolEvidenceObserved = trace.frames.some(
     (frame) =>
       frame.itemId !== undefined ||
       frame.callId !== undefined ||
@@ -2236,75 +2555,307 @@ function hasUnprovenUnavailableOutcome(outcome: BridgeSseOutcome): boolean {
   );
 }
 
-/** Runs the isolated missing-connector contract without native-catalog or bearer-auth traffic. */
+/** Projects parsed outcomes into typed flags without serializing output or arguments. */
+function storeUnavailableOutcome(
+  evidence: UnavailableProbeEvidence,
+  outcome: BridgeSseOutcome,
+): void {
+  evidence.terminalOutcomeKind = outcome.kind;
+  const observedEvents = outcome.events;
+  evidence.responseFailedObserved ||=
+    observedEvents.includes("response.failed");
+  evidence.responseCompletedObserved ||=
+    observedEvents.includes("response.completed");
+  evidence.responseIncompleteObserved ||= observedEvents.includes(
+    "response.incomplete",
+  );
+  if (outcome.kind === "failed") {
+    evidence.typedStatus =
+      Number.isInteger(outcome.status) &&
+      outcome.status >= 100 &&
+      outcome.status <= 599
+        ? outcome.status
+        : null;
+    evidence.typedErrorType =
+      outcome.errorType === "connector_error" ? "connector_error" : "other";
+    evidence.typedCode =
+      outcome.code === "connector_not_found" ? "connector_not_found" : "other";
+  }
+  if (outcome.kind === "completed" && outcome.functionCalls.length > 0) {
+    evidence.functionOrToolEvidenceObserved = true;
+    if (outcome.functionCalls.some((call) => call.name === "read_fixture")) {
+      evidence.readFixtureEvidenceObserved = true;
+    }
+  }
+}
+
+// ❌ Удалён hasUnprovenUnavailableOutcome: D73 must persist the full mismatch before rejection.
+/** Rejects incomplete, contradictory, completed, or tool-bearing negative-path outcomes. */
+function isExactUnavailableOutcome(
+  evidence: UnavailableProbeEvidence,
+  outcome: BridgeSseOutcome | undefined,
+): boolean {
+  const terminalFrames = evidence.sanitizedSseTrace.frames.filter((frame) =>
+    ["response.completed", "response.incomplete", "response.failed"].includes(
+      frame.event,
+    ),
+  );
+  return (
+    outcome?.kind === "failed" &&
+    outcome.status === 424 &&
+    outcome.errorType === "connector_error" &&
+    outcome.code === "connector_not_found" &&
+    evidence.sanitizedSseTrace.complete &&
+    terminalFrames.length === 1 &&
+    terminalFrames[0]?.event === "response.failed" &&
+    evidence.responseFailedObserved &&
+    !evidence.responseCompletedObserved &&
+    !evidence.responseIncompleteObserved &&
+    !evidence.functionOrToolEvidenceObserved
+  );
+}
+
+/** Maps internal failure stages to fixed text so raw provider errors never escape. */
+function unavailableFailureMessage(
+  stage: UnavailableProbeEvidence["failureStage"],
+): string {
+  switch (stage) {
+    case "pre_health":
+    case "pre_health_validation":
+      return "The guarded isolated full-mode bridge failed its pre-health check.";
+    case "responses_request":
+      return "The isolated Responses request failed before an HTTP outcome was received.";
+    case "responses_http":
+      return "The isolated Responses request did not return HTTP 200 text/event-stream.";
+    case "sse_read":
+      return "The isolated Responses stream could not be read completely.";
+    case "terminal_validation":
+      return "The isolated Responses stream did not satisfy the typed connector_not_found contract.";
+    case "post_health":
+      return "The guarded isolated full-mode bridge failed its post-health check.";
+    case "evidence_persistence":
+      return "Sanitized unavailable-probe evidence could not be persisted.";
+    default:
+      return "The isolated unavailable-connector probe failed.";
+  }
+}
+
+/** Runs the one-shot full-mode negative route with exact isolation and durable sanitized evidence. */
 export async function runUnavailableConnectorProbe(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   fetcher: BridgeFetch = fetch,
 ) {
   const settings = loadUnavailableBridgeSettings(environment);
-  const bridgeIdentity = await readUnavailableBridgeHealth(settings, fetcher);
-  const identity = { threadId: randomUUID(), turnId: randomUUID() };
-  const canaryId = randomUUID();
-  const body = makeTurnBody(
-    settings,
-    identity,
-    [makeEnvironmentMessage(identity), makeUserMessage(identity, canaryId)],
-    true,
+  const evidence = emptyUnavailableProbeEvidence(settings);
+  const evidenceWriter = new FileUnavailableEvidenceWriter(
+    settings.evidencePath,
   );
-  const response = await fetcher(endpoint(settings, "/v1/responses"), {
-    method: "POST",
-    headers: {
-      accept: "text/event-stream",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
-  });
-  const contentType = response.headers
-    .get("content-type")
-    ?.split(";", 1)[0]
-    ?.trim()
-    .toLowerCase();
-  if (response.status !== 200 || contentType !== "text/event-stream") {
-    throw new Error(
-      "Unavailable connector did not return a streamed HTTP 200 Responses outcome.",
-    );
-  }
-  const outcome = await readBridgeSse(response, {
-    captureSanitizedTrace: true,
-  });
-  if (
-    outcome.kind !== "failed" ||
-    outcome.status !== 424 ||
-    outcome.errorType !== "connector_error" ||
-    outcome.code !== "connector_not_found" ||
-    !outcome.events.includes("response.failed") ||
-    outcome.events.includes("response.completed") ||
-    hasUnprovenUnavailableOutcome(outcome)
-  ) {
-    throw new Error(
-      "Unavailable connector did not return a complete typed failure without completion or tool-call evidence.",
-    );
-  }
-  await verifyUnavailableBridgeStillIdle(settings, bridgeIdentity, fetcher);
-  const receipt = {
-    check: "unavailable-connector",
-    status: "pass",
-    threadId: identity.threadId,
-    turnId: identity.turnId,
-    canaryId,
-    outcome: {
-      kind: "failed",
-      status: outcome.status,
-      errorType: outcome.errorType,
-      code: outcome.code,
-    },
-    events: outcome.events,
-    isolatedBridge: bridgeIdentity,
-    postHealth: "same-process-idle",
+  let evidencePersistenceFailed = false;
+  let phase: NonNullable<UnavailableProbeEvidence["failureStage"]> =
+    "pre_health";
+  const persist = (): boolean => {
+    try {
+      evidenceWriter.record(evidence);
+      return true;
+    } catch {
+      evidencePersistenceFailed = true;
+      evidence.failureStage = "evidence_persistence";
+      return false;
+    }
   };
-  console.log(JSON.stringify(receipt));
-  return receipt;
+  const noteFailure = (
+    stage: NonNullable<UnavailableProbeEvidence["failureStage"]>,
+  ): void => {
+    if (!evidence.failureStage) evidence.failureStage = stage;
+  };
+
+  try {
+    if (!persist()) throw new UnavailableEvidenceError();
+
+    phase = "pre_health";
+    try {
+      evidence.preHealth = await readUnavailableBridgeHealth(settings, fetcher);
+    } catch {
+      noteFailure("pre_health");
+      evidence.terminalClassification = "FAIL";
+      if (!persist()) throw new UnavailableEvidenceError();
+      throw new Error(unavailableFailureMessage(evidence.failureStage));
+    }
+    if (!persist()) throw new UnavailableEvidenceError();
+    if (!isExpectedUnavailableHealth(settings, evidence.preHealth)) {
+      noteFailure("pre_health_validation");
+      evidence.terminalClassification = "FAIL";
+      if (!persist()) throw new UnavailableEvidenceError();
+      throw new Error(unavailableFailureMessage(evidence.failureStage));
+    }
+
+    phase = "responses_request";
+    const identity = { threadId: randomUUID(), turnId: randomUUID() };
+    const canaryId = randomUUID();
+    const body = makeTurnBody(
+      settings,
+      identity,
+      [makeEnvironmentMessage(identity), makeUserMessage(identity, canaryId)],
+      true,
+    );
+    evidence.responsesRequestAttempted = true;
+    if (!persist()) throw new UnavailableEvidenceError();
+
+    let response: Response;
+    try {
+      response = await fetcher(endpoint(settings, "/v1/responses"), {
+        method: "POST",
+        headers: {
+          accept: "text/event-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(180_000),
+      });
+    } catch {
+      noteFailure("responses_request");
+      evidence.terminalClassification = "FAIL";
+      if (!persist()) throw new UnavailableEvidenceError();
+      throw new Error(unavailableFailureMessage(evidence.failureStage));
+    }
+
+    evidence.outerHttpStatus = response.status;
+    const rawContentType = response.headers.get("content-type");
+    const contentType = rawContentType?.split(";", 1)[0]?.trim().toLowerCase();
+    evidence.outerContentTypeClass =
+      contentType === "text/event-stream"
+        ? "text/event-stream"
+        : contentType === "application/json"
+          ? "application/json"
+          : rawContentType
+            ? "other"
+            : "missing";
+    persist();
+
+    phase = "responses_http";
+    let outcome: BridgeSseOutcome | undefined;
+    let streamReadFailed = false;
+    if (response.status === 200 && contentType === "text/event-stream") {
+      phase = "sse_read";
+      let tracePersisted = false;
+      try {
+        outcome = await readBridgeSse(response, {
+          captureSanitizedTrace: true,
+          onSanitizedTrace: (trace) => {
+            storeUnavailableTrace(evidence, trace);
+            tracePersisted = true;
+            persist();
+          },
+        });
+      } catch {
+        streamReadFailed = true;
+        try {
+          await response.body?.cancel();
+        } catch {
+          // The post-health observation still runs if a failed stream cannot be cancelled.
+        }
+        evidence.terminalOutcomeKind = "stream_error";
+        noteFailure("sse_read");
+        if (!tracePersisted) {
+          storeUnavailableTrace(evidence, {
+            schemaVersion: "nr02-sanitized-sse/1",
+            complete: false,
+            observedFrames: 0,
+            frames: [],
+          });
+        }
+      }
+      if (outcome) storeUnavailableOutcome(evidence, outcome);
+      if (!persist()) evidencePersistenceFailed = true;
+    } else {
+      try {
+        await response.body?.cancel();
+      } catch {
+        // A mismatched outer response must not suppress the post-health check.
+      }
+      noteFailure("responses_http");
+      persist();
+    }
+
+    const outcomeMatches =
+      !streamReadFailed && isExactUnavailableOutcome(evidence, outcome);
+    if (!outcomeMatches && !streamReadFailed) {
+      noteFailure(
+        evidence.outerContentTypeClass === "text/event-stream" &&
+          evidence.outerHttpStatus === 200
+          ? "terminal_validation"
+          : "responses_http",
+      );
+    }
+    persist();
+
+    phase = "post_health";
+    evidence.postHealth.attempted = true;
+    persist();
+    try {
+      const postHealth = await readUnavailableBridgeHealth(settings, fetcher);
+      evidence.postHealth.observed = postHealth.observed;
+      evidence.postHealth.health = postHealth;
+      evidence.postHealth.sameProcess = postHealth.observed
+        ? postHealth.pid === settings.expectedPid &&
+          postHealth.port === settings.expectedPort
+        : null;
+      evidence.postHealth.idle = postHealth.observed ? postHealth.idle : null;
+      if (
+        !isExpectedUnavailableHealth(settings, postHealth) ||
+        evidence.postHealth.sameProcess !== true
+      ) {
+        noteFailure("post_health");
+      }
+    } catch {
+      evidence.postHealth.observed = false;
+      evidence.postHealth.sameProcess = null;
+      evidence.postHealth.idle = null;
+      evidence.postHealth.health = emptyUnavailableHealth();
+      noteFailure("post_health");
+    }
+    persist();
+
+    if (evidencePersistenceFailed) noteFailure("evidence_persistence");
+    evidence.terminalClassification = evidence.failureStage ? "FAIL" : "PASS";
+    if (!persist()) evidencePersistenceFailed = true;
+    if (evidencePersistenceFailed) throw new UnavailableEvidenceError();
+    if (evidence.terminalClassification !== "PASS") {
+      throw new Error(unavailableFailureMessage(evidence.failureStage));
+    }
+
+    const receipt = {
+      check: "unavailable-connector",
+      status: "pass",
+      model: settings.model,
+      isolatedBridge: {
+        service: "codex-chatgpt-web",
+        pid: settings.expectedPid,
+        port: settings.expectedPort,
+        version: EXPECTED_UPSTREAM_VERSION,
+        mode: "full",
+      },
+      outcome: {
+        kind: "failed",
+        status: 424,
+        errorType: "connector_error",
+        code: "connector_not_found",
+      },
+      postHealth: "same-process-idle",
+    };
+    console.log(JSON.stringify(receipt));
+    return receipt;
+  } catch (error) {
+    if (evidence.terminalClassification === "IN_PROGRESS") {
+      noteFailure(phase);
+      evidence.terminalClassification = "FAIL";
+      persist();
+    }
+    if (error instanceof UnavailableEvidenceError) throw error;
+    throw new Error(unavailableFailureMessage(evidence.failureStage));
+  } finally {
+    evidenceWriter.close();
+  }
 }
 
 // ❌ Удалён implicit three-context/combined-cancel default: D41 requires one named action per LIVE invocation.

@@ -12,7 +12,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Per Lead D70 acceptanceState: PASS_LIVE_PENDING_INDEPENDENT_REVIEW. This offline D70 runner correction produces no AC1 LIVE evidence; the assignment did not bind the reported pass to a new test SHA.",
+      "environment": "Lead D73 retains PASS_LIVE_PENDING_INDEPENDENT_REVIEW; D73 performs only offline runner hardening and adds no AC1 evidence.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -47,9 +47,10 @@
         "nr-02-d53-live-ac1-failure-20261001",
         "nr-02-d55-offline-diagnosis-20261001",
         "lead-decision-d56-route-ac1-through-chatgpt-web-adapter",
-        "lead-assignment-d70-offline-unavailable-runner"
+        "lead-assignment-d70-offline-unavailable-runner",
+        "nr-02-d73-offline-verification-20261001"
       ],
-      "notes": "Lead D70 reports AC1 PASS_LIVE_PENDING_INDEPENDENT_REVIEW. No AC1 request or retry ran under D70; offline checks do not add LIVE acceptance evidence."
+      "notes": "AC1 remains PASS_LIVE_PENDING_INDEPENDENT_REVIEW per Lead D73; no AC1 or cancellation retry ran under D73."
     },
     {
       "acceptanceId": "NR-02-AC2",
@@ -58,7 +59,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Per Lead D70 acceptanceState: cancellation PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable subcheck NOT_RUN. D70 authorizes only offline runner correction, not cancellation/unavailable HTTP or connector execution.",
+      "environment": "Per Lead D73: cancellation PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable subcheck NOT_PASS; AC2 remains INCOMPLETE. This offline runner work does not satisfy AC2.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -97,9 +98,10 @@
         "nr-02-d42-replacement-preflight-20260930",
         "lead-decision-d43",
         "lead-decision-d52",
-        "lead-assignment-d70-offline-unavailable-runner"
+        "lead-assignment-d70-offline-unavailable-runner",
+        "nr-02-d73-offline-verification-20261001"
       ],
-      "notes": "AC2 remains INCOMPLETE: cancellation awaits independent review; unavailable-connector/tool remains NOT_RUN. Offline tests verify only the local runner contract."
+      "notes": "Cancellation still awaits independent review; unavailable connector/tool remains NOT_PASS. Offline tests only verify the isolated full-mode runner contract."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -108,7 +110,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Per Lead D70: DEFERRED_HARDENING. No three-context LIVE matrix was run or authorized.",
+      "environment": "Per Lead D73: DEFERRED_HARDENING. D73 authorizes no three-context LIVE matrix.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -133,7 +135,8 @@
         "lead-decision-d41",
         "lead-assignment-d41",
         "lead-decision-d52",
-        "lead-assignment-d70-offline-unavailable-runner"
+        "lead-assignment-d70-offline-unavailable-runner",
+        "nr-02-d73-offline-verification-20261001"
       ],
       "notes": "Three-context matrix remains deferred hardening. No LIVE matrix was run or claimed."
     },
@@ -144,7 +147,7 @@
       "testedSha": null,
       "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json",
       "exitCode": 0,
-      "environment": "Local developer host; pinned Bun 1.4.2 (744846f84); D70 offline browser-only unavailable-runner contract and documentation updates. No production/isolated HTTP, connector/browser actions, or runtime mutations. Exact-head CI pending publication.",
+      "environment": "Local developer host; pinned Bun 1.4.2 (744846f84); D73 full-mode runner and docs verified offline. Exact-head CI pending publication.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -194,12 +197,13 @@
         "nr-02-d56-route-remediation-local-verification-20261001",
         "nr-02-d56-route-contract-tests-20261001",
         "lead-assignment-d70-offline-unavailable-runner",
-        "nr-02-d70-offline-verification-20261001"
+        "nr-02-d70-offline-verification-20261001",
+        "nr-02-d73-offline-verification-20261001"
       ],
-      "notes": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI. The D70 offline contract/docs passed local verification; tests do not qualify LIVE acceptance.",
-      "testCount": 46,
+      "notes": "D73 documentation and local contract checks are offline only; they cannot establish AC2 unavailable acceptance.",
+      "testCount": 50,
       "failedTestCount": 0,
-      "expectCalls": 229
+      "expectCalls": 312
     }
   ],
   "checks": [
@@ -1420,6 +1424,66 @@
       "summary": "D70-updated evidence JSON parses successfully.",
       "artifactRef": "nr-02-d70-offline-verification-20261001",
       "observedAtUtc": "2026-10-01T12:09:14.000Z"
+    },
+    {
+      "id": "nr-02-d73-offline-verification-20261001",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS arm64; pinned Bun 1.4.2 (744846f84); D73 offline working tree before publication.",
+      "testCount": 50,
+      "failedTestCount": 0,
+      "expectCalls": 312,
+      "summary": "Typecheck, Biome, 50 tests/312 assertions, and build passed. D73 tests use injected fake fetch and private temp evidence only; zero product HTTP/socket, runtime/listener, browser/Launcher, connector, tunnel, or credential side effects. Exact-head CI pending.",
+      "observedAtUtc": "2026-10-01T15:14:09Z",
+      "artifactRef": "nr-02-d73-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+      "artifactSizeBytes": 3540
+    },
+    {
+      "id": "nr-02-d73-unavailable-tests-20261001",
+      "kind": "CONTRACT",
+      "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-runner.test.ts --test-name-pattern unavailable",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Bun 1.4.2; injected fake fetch only.",
+      "testCount": 13,
+      "failedTestCount": 0,
+      "expectCalls": 140,
+      "summary": "Full-mode expected failure, all PID/port/base guards, no auth/catalog, mismatch persistence, post-health after mismatch, partial stream capture, redaction, and private mode 0600 passed.",
+      "observedAtUtc": "2026-10-01T15:14:09Z",
+      "artifactRef": "nr-02-d73-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+      "artifactSizeBytes": 3540
+    },
+    {
+      "id": "nr-02-d73-diff-check-20261001",
+      "kind": "CONTRACT",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "Final D73 source/docs/evidence-pointer whitespace check passed; validation metadata was recorded afterward and checked once more.",
+      "observedAtUtc": "2026-10-01T15:15:59Z",
+      "artifactRef": "nr-02-d73-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+      "artifactSizeBytes": 3540
+    },
+    {
+      "id": "nr-02-d73-evidence-json-parse-20261001",
+      "kind": "CONTRACT",
+      "command": "jq empty docs/evidence/NR-02.json",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "Evidence JSON parsed after the D73 verification artifact was linked; validation metadata was recorded afterward and checked once more.",
+      "observedAtUtc": "2026-10-01T15:15:59Z",
+      "artifactRef": "nr-02-d73-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+      "artifactSizeBytes": 3540
     }
   ],
   "decisionReceipts": [
@@ -1804,24 +1868,57 @@
         "merge"
       ],
       "source": "Configured Lead chat read with verified message correlation; raw assignment retained privately"
+    },
+    {
+      "assignmentId": "NR-02-C2-D73-FULL-MODE-MISSING-CONNECTOR-RUNNER",
+      "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
+      "messageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
+      "requestMessageId": "5e670c6b-c870-4903-a657-4e91ce7cd387",
+      "responseSha256": "132ebe930a1ed2fad0f0731b544ea8fab11267ae3193a0f8e26dde3e1253e476",
+      "responseBytes": 13732,
+      "rawPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-response-turn-ded8dfd9-7dbb-4c7a-afba-b1d5bc5749df.raw.txt",
+      "correlationVerified": true,
+      "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+      "startingHeadSha": "30ceb0c46bb5d2ea2d14f6d48b6881efc981b32f",
+      "specHashAtAssignment": "e5a440eea20af32d700f8680c2adc588077ed8c5eca19f490aa6789a632beec6",
+      "decision": "ACCEPT_D72_AUDIT_AND_AUTHORIZE_OFFLINE_FULL_MODE_UNAVAILABLE_RUNNER_HARDENING",
+      "authorized": [
+        "bounded offline implementation in D73 allowlist",
+        "deterministic fake-fetch tests",
+        "docs/specs/NR-02.md, docs/tasks/NR-02.md, docs/evidence/NR-02.json",
+        "commit/push to existing PR #3 branch",
+        "PR narrative update if required",
+        "exact-head CI"
+      ],
+      "prohibited": [
+        "product HTTP or socket traffic",
+        "runtime/listener start",
+        "browser/Launcher interaction or setup",
+        "connector, tunnel, credential, key, or auth changes",
+        "AC1/cancellation retry, unavailable LIVE probe, AC3",
+        "reviewer request",
+        "merge"
+      ],
+      "source": "Configured Lead chat; complete raw assignment retained privately and correlation verified"
     }
   ],
   "worktreeVerification": {
-    "artifactRef": "nr-02-d70-offline-verification-20261001",
-    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
-    "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
+    "artifactRef": "nr-02-d73-offline-verification-20261001",
     "exitCode": 0,
     "testedSha": null,
-    "sizeBytes": 2928,
-    "testCount": 46,
+    "testCount": 50,
     "failedTestCount": 0,
-    "expectCalls": 229,
-    "focusedUnavailableTestCount": 9,
+    "expectCalls": 312,
+    "focusedUnavailableTestCount": 13,
     "focusedUnavailableFailedTestCount": 0,
-    "focusedUnavailableExpectCalls": 57,
-    "observedAtUtc": "2026-10-01T12:09:14.000Z",
-    "artifactSha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
-    "artifactSizeBytes": 2928
+    "focusedUnavailableExpectCalls": 140,
+    "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+    "observedAtUtc": "2026-10-01T15:15:59Z",
+    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+    "sha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+    "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+    "sizeBytes": 3540,
+    "artifactSizeBytes": 3540
   },
   "userAuthorizations": [
     {
@@ -1850,11 +1947,11 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-D70-BROWSER-ONLY-UNAVAILABLE-RUNNER",
-    "assignmentMessageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
-    "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
-    "decisionMessageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
-    "status": "D70_OFFLINE_IMPLEMENTATION_AND_LOCAL_VERIFY_PASSED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+    "assignmentId": "NR-02-C2-D73-FULL-MODE-MISSING-CONNECTOR-RUNNER",
+    "assignmentMessageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
+    "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
+    "decisionMessageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
+    "status": "D73_OFFLINE_IMPLEMENTATION_VERIFIED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1867,14 +1964,14 @@
       "transportBinding": "not independently proven by a Responses/tool receipt"
     },
     "acceptance": {
-      "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
-      "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
-      "NR-02-AC2-unavailable": "NOT_RUN",
+      "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
+      "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
+      "NR-02-AC2-unavailable": "NOT_PASS",
       "NR-02-AC2-overall": "INCOMPLETE",
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI"
     },
-    "implementationLimit": "D70 corrects only the offline unavailable runner for a browser-only runtime. API key, client version and /v1/models are not used; the single fake-fetch contract requires HTTP 200 SSE response.failed 424/connector_error/connector_not_found and same-process idle post-health. No production or isolated HTTP, connector/browser action, AC1/cancellation retry, AC3, DEV, or runtime/config mutation occurred.",
+    "implementationLimit": "D73 changes only the offline unavailable runner to isolated full mode with exact PID/port/production-port guards and durable sanitized evidence. Fake-fetch tests passed. AC2 unavailable remains NOT_PASS; no product HTTP/socket request, runtime/listener, browser/Launcher, connector, tunnel, credential, auth, or configuration action occurred.",
     "priorReviewer": {
       "cycle": 1,
       "verdict": "BLOCKED",
@@ -1882,10 +1979,10 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "NOT_AUTHORIZED_D70",
+    "reviewerRequestNow": "NOT_AUTHORIZED_D73",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-d70-offline-verification-20261001",
-    "nextRequiredAction": "Commit/push to existing PR #3 branch, verify exact-head CI, update PR narrative, then send Lead the D70 DECISION_REQUEST with hashes, run ID/conclusion, verification/test receipts, updated spec/task/evidence hashes, and zero-side-effect confirmation. No reviewer request, D69 resume, LIVE action, or merge.",
+    "documentationVerificationRef": "nr-02-d73-offline-verification-20261001",
+    "nextRequiredAction": "Commit/push to the existing PR #3 branch, verify exact-head CI, update the PR narrative, then send Lead the correlated D73 DECISION_REQUEST with the new head, changed-file hashes, updated spec/task/evidence hashes, checks, and zero-side-effect confirmation. No live follow-up, reviewer request, or merge.",
     "documentationVerificationArtifact": {
       "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
       "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
@@ -1955,8 +2052,8 @@
       "liveTraffic": "NOT_RUN; D43 AUTHORIZES NO LIVE TRAFFIC"
     },
     "ac2": {
-      "cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D70",
-      "unavailableConnectorOrTool": "NOT_RUN_D70_OFFLINE_RUNNER_CORRECTION_ONLY",
+      "cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
+      "unavailableConnectorOrTool": "NOT_PASS_D73_OFFLINE_ONLY",
       "overall": "INCOMPLETE"
     },
     "leadDecisionObserved": {
@@ -1965,7 +2062,7 @@
       "inReplyTo": "827a7ac9-2a06-473c-b1a6-2802a31a61ac",
       "source": "Configured Lead ChatGPT conversation observed in the built-in browser"
     },
-    "afterLiveAction": "D70 is offline-only. D69 is paused and not resumable on the old head; any follow-up live action requires a new Lead assignment.",
+    "afterLiveAction": "D73 is offline-only; no unavailable LIVE probe, descriptor setup, reviewer request, or merge is authorized.",
     "d42": {
       "decisionId": "NR-02-D42-ONE-REPLACEMENT-PREFLIGHT-AFTER-LOCAL-INPUT-BOOTSTRAP",
       "preflightArtifactId": "nr-02-d42-replacement-preflight-20260930",
@@ -2001,11 +2098,11 @@
       }
     },
     "currentLeadDecisionObserved": {
-      "decisionId": "NR-02-D70-OFFLINE-ISOLATED-UNAVAILABLE-RUNNER-CORRECTION",
-      "messageId": "2d63e139-b3ae-45b0-b1e6-b35f0a982aea",
-      "inReplyTo": "f53ee4b9-512e-48c3-b606-76b96567d01a",
-      "responseSha256": "593aa01f31f9833d4379c7bee53ab3e67e5ab78cd86f766232bf656f2b3a1e59",
-      "source": "Configured Lead Chat; full task assignment saved privately and correlation verified"
+      "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
+      "messageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
+      "inReplyTo": "5e670c6b-c870-4903-a657-4e91ce7cd387",
+      "responseSha256": "132ebe930a1ed2fad0f0731b544ea8fab11267ae3193a0f8e26dde3e1253e476",
+      "source": "Configured Lead chat; full task assignment saved privately and correlation verified"
     },
     "d49D50D51": {
       "d49": "Single AC1 attempt consumed; internal guard passed; terminal evidence discarded; tool outcome cannot be established.",
@@ -2062,26 +2159,35 @@
       "limitation": "Accessibility extraction returned a truncated response; tail was verified visually; no raw response hash is claimed."
     },
     "localVerification": {
-      "status": "PASS",
+      "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
       "runtime": "Bun 1.4.2 (744846f84)",
-      "testedSha": null,
-      "testCount": 46,
-      "failedTestCount": 0,
-      "expectCalls": 229,
-      "changedWorktree": true,
-      "reason": "D70 offline implementation locally verified before publication; exact-head GitHub CI pending.",
-      "productionHttpRequests": 0,
-      "isolatedHttpRequests": 0,
+      "fullVerify": {
+        "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+        "exitCode": 0,
+        "testCount": 50,
+        "failedTestCount": 0,
+        "expectCalls": 312
+      },
+      "focusedTests": {
+        "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-runner.test.ts --test-name-pattern unavailable",
+        "exitCode": 0,
+        "testCount": 13,
+        "failedTestCount": 0,
+        "expectCalls": 140
+      },
+      "diffCheck": "PASS",
+      "evidenceJsonParse": "PASS_AFTER_D73_ARTIFACT_LINK",
+      "exactHeadCi": "PENDING_PUBLICATION",
+      "productHttpRequests": 0,
+      "runtimeStarts": 0,
+      "browserInteractions": 0,
       "connectorCalls": 0,
-      "browserActions": 0,
-      "productionOrDevMutations": 0,
-      "focusedUnavailableTestCount": 9,
-      "focusedUnavailableFailedTestCount": 0,
-      "focusedUnavailableExpectCalls": 57,
-      "artifactRef": "nr-02-d70-offline-verification-20261001",
-      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
-      "artifactSha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
-      "artifactSizeBytes": 2928
+      "tunnelActions": 0,
+      "observedAtUtc": "2026-10-01T15:15:59Z",
+      "artifactRef": "nr-02-d73-offline-verification-20261001",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+      "artifactSizeBytes": 3540
     },
     "d53Attempt": {
       "decisionId": "NR-02-D53-ONE-DURABLE-HOST-NATIVE-AC1",
@@ -2199,6 +2305,110 @@
         "browserActions": 0,
         "productionMutations": 0,
         "devMutations": 0
+      }
+    },
+    "d73": {
+      "assignmentId": "NR-02-C2-D73-FULL-MODE-MISSING-CONNECTOR-RUNNER",
+      "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
+      "messageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
+      "requestMessageId": "5e670c6b-c870-4903-a657-4e91ce7cd387",
+      "responseSha256": "132ebe930a1ed2fad0f0731b544ea8fab11267ae3193a0f8e26dde3e1253e476",
+      "responseBytes": 13732,
+      "rawPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-response-turn-ded8dfd9-7dbb-4c7a-afba-b1d5bc5749df.raw.txt",
+      "correlationVerified": true,
+      "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+      "startingHeadSha": "30ceb0c46bb5d2ea2d14f6d48b6881efc981b32f",
+      "specHashAtAssignment": "e5a440eea20af32d700f8680c2adc588077ed8c5eca19f490aa6789a632beec6",
+      "d71Disposition": "CONSUMED_NO_ACCEPTANCE_CREDIT",
+      "d72Disposition": {
+        "primaryClassification": "SHARED_LAUNCHER_UNSAFE_FOR_NEGATIVE_CONNECTOR_TEST",
+        "conditionalRoute": "ISOLATED_FULL_MODE_NON_TUNNEL_MISSING_CONNECTOR_ROUTE_FEASIBLE",
+        "acceptedByLead": true
+      },
+      "runnerContract": {
+        "requiredMode": "full",
+        "requiredVersion": "6.1.3",
+        "requiredModel": "chatgpt-web/gpt-5.6-sol",
+        "expectedPidAndPortRequiredBeforeNetwork": true,
+        "productionPortMustDifferBeforeNetwork": true,
+        "baseUrlExactUnauthenticated127001": true,
+        "apiKeyRequiredOrRead": false,
+        "clientVersionRequiredOrRead": false,
+        "modelCatalogRequests": 0,
+        "responsesAuthorizationHeader": false,
+        "responsesPosts": 1,
+        "fixtureReadsExecuted": 0,
+        "continuationRequests": 0,
+        "postHealthAfterAnyReceivedResponsesOutcome": true,
+        "requiredOutcome": {
+          "httpStatus": 200,
+          "stream": true,
+          "terminalEventCount": 1,
+          "status": 424,
+          "errorType": "connector_error",
+          "code": "connector_not_found"
+        }
+      },
+      "durableEvidence": {
+        "path": "BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH below existing owner-only ignored .nightreviewer/",
+        "fileMode": "0600",
+        "writeOrdering": [
+          "preflight",
+          "responsesRequestAttempted",
+          "outer HTTP class",
+          "bounded sanitized SSE",
+          "post-health",
+          "terminal classification"
+        ],
+        "redaction": "No prompt, model output, arguments/tool output, fixture bytes, raw SSE, credentials, cookies, control/session tokens, tunnel IDs/keys, or browser diagnostics."
+      },
+      "futureLivePrerequisites": [
+        "D73 merged only into the open PR head with exact-head CI success, not main",
+        "distinct authenticated Launcher/browser descriptor verified without production browser mutation",
+        "isolated home/port/controlToken/broker",
+        "synthetic inert tunnel metadata source-checked against exact installed 6.1.3 artifact",
+        "fresh Lead assignment bound to exact head, PID/port, and one attempt"
+      ],
+      "notAuthorizedNow": [
+        "live HTTP/socket, runtime/listener, browser/Launcher, connector/tunnel/key/auth/config actions",
+        "AC1/cancellation retry, unavailable LIVE attempt, AC3, reviewer request, merge",
+        "creating or testing the separate authenticated launcher/browser descriptor"
+      ],
+      "localVerification": {
+        "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+        "runtime": "Bun 1.4.2 (744846f84)",
+        "fullVerify": {
+          "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+          "exitCode": 0,
+          "testCount": 50,
+          "failedTestCount": 0,
+          "expectCalls": 312
+        },
+        "focusedTests": {
+          "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-runner.test.ts --test-name-pattern unavailable",
+          "exitCode": 0,
+          "testCount": 13,
+          "failedTestCount": 0,
+          "expectCalls": 140
+        },
+        "diffCheck": "PASS",
+        "evidenceJsonParse": "PASS_AFTER_D73_ARTIFACT_LINK",
+        "exactHeadCi": "PENDING_PUBLICATION",
+        "productHttpRequests": 0,
+        "runtimeStarts": 0,
+        "browserInteractions": 0,
+        "connectorCalls": 0,
+        "tunnelActions": 0,
+        "observedAtUtc": "2026-10-01T15:15:59Z",
+        "artifactRef": "nr-02-d73-offline-verification-20261001",
+        "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
+        "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
+        "artifactSizeBytes": 3540
+      },
+      "d72Evidence": {
+        "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d72-offline-source-audit-20261001.json",
+        "sha256": "2e0a81c79f7496bb36c3dbbde67a186c2537ffdaf7a42251d1d06c313ce4ffee",
+        "sizeBytes": 33610
       }
     }
   }

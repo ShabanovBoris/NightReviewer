@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
@@ -32,9 +33,17 @@ const PREFLIGHT_ENV = {
   BRIDGE_SPIKE_MODEL: "chatgpt-web/gpt-5.6-sol",
   BRIDGE_SPIKE_CLIENT_VERSION: "0.159.0",
 };
+const unavailableTestRoot = privateTestRoot("nr02-unavailable-runner-");
 const UNAVAILABLE_ENV = {
-  BRIDGE_SPIKE_BASE_URL: "http://127.0.0.1:17841",
+  BRIDGE_SPIKE_BASE_URL: "http://127.0.0.1:17841/",
   BRIDGE_SPIKE_MODEL: "chatgpt-web/gpt-5.6-sol",
+  BRIDGE_SPIKE_EXPECTED_ISOLATED_PID: "24680",
+  BRIDGE_SPIKE_EXPECTED_ISOLATED_PORT: "17841",
+  BRIDGE_SPIKE_PRODUCTION_PORT: "17842",
+  BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH: resolve(
+    unavailableTestRoot,
+    "evidence.json",
+  ),
 };
 type TestFetch = (
   input: RequestInfo | URL,
@@ -47,6 +56,18 @@ function privateTestRoot(prefix: string): string {
   mkdirSync(evidenceRoot, { recursive: true, mode: 0o700 });
   chmodSync(evidenceRoot, 0o700);
   return mkdtempSync(resolve(evidenceRoot, prefix));
+}
+
+afterAll(() => rmSync(unavailableTestRoot, { recursive: true, force: true }));
+
+/** Reads the last complete snapshot emitted by the offline unavailable-route tests. */
+function readUnavailableEvidence(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(
+      UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH,
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
 }
 
 /** Supplies stable process identity and idle counts for offline bridge-contract tests. */
@@ -64,7 +85,7 @@ function healthyBridge(successfulCatalogRequests = 0) {
   };
 }
 
-/** Keeps unavailable-route tests independent from the authenticated full-mode preflight contract. */
+/** Supplies an isolated full-mode health identity for the negative connector route. */
 function healthyUnavailableBridge(
   overrides: Readonly<Record<string, unknown>> = {},
 ) {
@@ -73,7 +94,8 @@ function healthyUnavailableBridge(
     status: "ok",
     pid: 24680,
     version: "6.1.3",
-    mode: "browser-only",
+    port: 17841,
+    mode: "full",
     accepting_turns: true,
     active_http_turns: 0,
     active_browser_turns: 0,
@@ -133,7 +155,7 @@ function unavailableProbeFixture(
       const health =
         healthReplies[Math.min(healthReads, healthReplies.length - 1)];
       healthReads += 1;
-      if (!health) throw new Error("No mocked browser-only health reply.");
+      if (!health) throw new Error("No mocked isolated health reply.");
       return Response.json(health);
     }
     if (url.pathname === "/v1/responses") return response;
@@ -271,10 +293,14 @@ test("pre-LIVE bridge guard requires both active-turn counts to be zero", () => 
   ).toThrow("zero active HTTP and browser turns");
 });
 
-test("unavailable probe uses one unauthenticated browser-only route and a strict read_fixture request", async () => {
+test("unavailable probe accepts only the guarded full-mode failure and writes a private receipt", async () => {
   expect(loadUnavailableBridgeSettings(UNAVAILABLE_ENV)).toEqual({
     baseUrl: new URL(UNAVAILABLE_ENV.BRIDGE_SPIKE_BASE_URL),
     model: "chatgpt-web/gpt-5.6-sol",
+    expectedPid: 24680,
+    expectedPort: 17841,
+    productionPort: 17842,
+    evidencePath: UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH,
   });
   const fixture = unavailableProbeFixture(unavailableFailureResponse());
   const receipt = await runUnavailableConnectorProbe(
@@ -292,6 +318,12 @@ test("unavailable probe uses one unauthenticated browser-only route and a strict
     "POST",
     "GET",
   ]);
+  expect(
+    fixture.requests.filter(
+      ({ url, method }) =>
+        url.pathname === "/v1/responses" && method === "POST",
+    ),
+  ).toHaveLength(1);
   expect(
     fixture.requests.every(
       ({ url }) => !url.searchParams.has("client_version"),
@@ -353,23 +385,63 @@ test("unavailable probe uses one unauthenticated browser-only route and a strict
     isolatedBridge: {
       service: "codex-chatgpt-web",
       pid: 24680,
+      port: 17841,
       version: "6.1.3",
-      mode: "browser-only",
+      mode: "full",
     },
     postHealth: "same-process-idle",
   });
+  const evidence = readUnavailableEvidence();
+  expect(evidence).toMatchObject({
+    schemaVersion: "nr02-unavailable-evidence/1",
+    expectedIsolatedPid: 24680,
+    expectedIsolatedPort: 17841,
+    productionPortGuard: 17842,
+    model: "chatgpt-web/gpt-5.6-sol",
+    responsesRequestAttempted: true,
+    outerHttpStatus: 200,
+    outerContentTypeClass: "text/event-stream",
+    terminalOutcomeKind: "failed",
+    typedStatus: 424,
+    typedErrorType: "connector_error",
+    typedCode: "connector_not_found",
+    responseFailedObserved: true,
+    responseCompletedObserved: false,
+    responseIncompleteObserved: false,
+    functionOrToolEvidenceObserved: false,
+    readFixtureEvidenceObserved: false,
+    continuationRequests: 0,
+    fixtureReadsExecuted: 0,
+    terminalClassification: "PASS",
+    preHealth: {
+      observed: true,
+      pid: 24680,
+      port: 17841,
+      version: "6.1.3",
+      mode: "full",
+      acceptingTurns: true,
+      activeHttpTurns: 0,
+      activeBrowserTurns: 0,
+      idle: true,
+    },
+    postHealth: {
+      attempted: true,
+      observed: true,
+      sameProcess: true,
+      idle: true,
+    },
+  });
+  expect(
+    statSync(UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH).mode &
+      0o777,
+  ).toBe(0o600);
 });
 
-test("unavailable route reaches Responses when API key or client version is independently absent", async () => {
+test("unavailable mode works with API key and client version both absent", async () => {
   const environments = [
-    {
-      ...UNAVAILABLE_ENV,
-      BRIDGE_SPIKE_CLIENT_VERSION: "0.159.0",
-    },
-    {
-      ...UNAVAILABLE_ENV,
-      BRIDGE_SPIKE_API_KEY: "unused-test-bearer",
-    },
+    { ...UNAVAILABLE_ENV },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_API_KEY: "unused-test-bearer" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_CLIENT_VERSION: "0.159.0" },
   ];
   for (const environment of environments) {
     const fixture = unavailableProbeFixture(unavailableFailureResponse());
@@ -382,33 +454,114 @@ test("unavailable route reaches Responses when API key or client version is inde
   }
 });
 
-test("unavailable route rejects full mode before sending a Responses request", async () => {
+test("unavailable route rejects browser-only mode before sending a Responses request", async () => {
   const fixture = unavailableProbeFixture(unavailableFailureResponse(), [
-    healthyUnavailableBridge({ mode: "full" }),
+    healthyUnavailableBridge({ mode: "browser-only" }),
   ]);
   await expect(
     runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
-  ).rejects.toThrow(
-    "requires mode=browser-only; no Responses request was sent",
-  );
+  ).rejects.toThrow("pre-health check");
   expect(fixture.requests.map(({ url }) => url.pathname)).toEqual(["/healthz"]);
+  expect(readUnavailableEvidence()).toMatchObject({
+    responsesRequestAttempted: false,
+    terminalClassification: "FAIL",
+    failureStage: "pre_health_validation",
+  });
 });
 
-test("unavailable route requires a positive integer process identity before Responses", async () => {
-  for (const pid of [0, -1, 1.5]) {
-    const fixture = unavailableProbeFixture(unavailableFailureResponse(), [
-      healthyUnavailableBridge({ pid }),
-    ]);
+test("unavailable configuration guards reject bad PID, ports, and base URL before any fetch", async () => {
+  const cases = [
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_EXPECTED_ISOLATED_PID: "0" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_EXPECTED_ISOLATED_PID: "1.5" },
+    {
+      ...UNAVAILABLE_ENV,
+      BRIDGE_SPIKE_EXPECTED_ISOLATED_PID: "9007199254740992",
+    },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_EXPECTED_ISOLATED_PORT: "0" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_EXPECTED_ISOLATED_PORT: "65536" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_PRODUCTION_PORT: "65536" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_PRODUCTION_PORT: "17841" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_MODEL: "gpt-6.1-sol" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_BASE_URL: "http://localhost:17841/" },
+    { ...UNAVAILABLE_ENV, BRIDGE_SPIKE_BASE_URL: "http://127.0.0.1:17841" },
+    {
+      ...UNAVAILABLE_ENV,
+      BRIDGE_SPIKE_EXPECTED_ISOLATED_PORT: "17843",
+    },
+  ];
+  for (const environment of cases) {
+    const fixture = unavailableProbeFixture(unavailableFailureResponse());
     await expect(
-      runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
-    ).rejects.toThrow("omitted its process identity");
-    expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
-      "/healthz",
-    ]);
+      runUnavailableConnectorProbe(environment, fixture.fetcher),
+    ).rejects.toThrow();
+    expect(fixture.requests).toHaveLength(0);
   }
 });
 
-test("unavailable route never uses model catalog and rejects non-stream HTTP responses", async () => {
+test("unavailable evidence path must have an existing private parent under ignored storage", async () => {
+  const missingParent = {
+    ...UNAVAILABLE_ENV,
+    BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH: resolve(
+      unavailableTestRoot,
+      "missing-parent/evidence.json",
+    ),
+  };
+  const fixture = unavailableProbeFixture(unavailableFailureResponse());
+  await expect(
+    runUnavailableConnectorProbe(missingParent, fixture.fetcher),
+  ).rejects.toThrow("evidence could not be persisted");
+  expect(fixture.requests).toHaveLength(0);
+
+  const publicDirectory = resolve(unavailableTestRoot, "public-parent");
+  mkdirSync(publicDirectory, { mode: 0o755 });
+  chmodSync(publicDirectory, 0o755);
+  try {
+    const publicPath = {
+      ...UNAVAILABLE_ENV,
+      BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH: resolve(
+        publicDirectory,
+        "evidence.json",
+      ),
+    };
+    const publicFixture = unavailableProbeFixture(unavailableFailureResponse());
+    await expect(
+      runUnavailableConnectorProbe(publicPath, publicFixture.fetcher),
+    ).rejects.toThrow("evidence could not be persisted");
+    expect(publicFixture.requests).toHaveLength(0);
+  } finally {
+    rmSync(publicDirectory, { recursive: true, force: true });
+  }
+});
+
+test("unavailable pre-health requires the exact expected PID and port", async () => {
+  for (const health of [
+    healthyUnavailableBridge({ pid: 24681 }),
+    healthyUnavailableBridge({ port: 17843 }),
+    healthyUnavailableBridge({ pid: 0 }),
+    healthyUnavailableBridge({ port: undefined }),
+    healthyUnavailableBridge({ service: "other" }),
+    healthyUnavailableBridge({ version: "6.1.2" }),
+    healthyUnavailableBridge({ accepting_turns: false }),
+    healthyUnavailableBridge({ active_http_turns: 1 }),
+    healthyUnavailableBridge({ active_browser_turns: 1 }),
+  ]) {
+    const fixture = unavailableProbeFixture(unavailableFailureResponse(), [
+      health,
+    ]);
+    await expect(
+      runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
+    ).rejects.toThrow("pre-health check");
+    expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
+      "/healthz",
+    ]);
+    expect(readUnavailableEvidence()).toMatchObject({
+      responsesRequestAttempted: false,
+      terminalClassification: "FAIL",
+    });
+  }
+});
+
+test("unavailable route never uses model catalog and persists non-stream HTTP mismatch before post-health", async () => {
   const fixture = unavailableProbeFixture(
     new Response("{}", {
       status: 201,
@@ -417,25 +570,38 @@ test("unavailable route never uses model catalog and rejects non-stream HTTP res
   );
   await expect(
     runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
-  ).rejects.toThrow("streamed HTTP 200 Responses outcome");
+  ).rejects.toThrow("HTTP 200 text/event-stream");
   expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
     "/healthz",
     "/v1/responses",
+    "/healthz",
   ]);
   expect(
     fixture.requests.some(({ url }) => url.pathname === "/v1/models"),
   ).toBe(false);
+  expect(readUnavailableEvidence()).toMatchObject({
+    outerHttpStatus: 201,
+    outerContentTypeClass: "application/json",
+    postHealth: {
+      attempted: true,
+      observed: true,
+      sameProcess: true,
+      idle: true,
+    },
+    terminalClassification: "FAIL",
+    failureStage: "responses_http",
+  });
 });
 
 test("unavailable route rejects any typed error mismatch, completion, or incomplete stream", async () => {
   const cases = [
     {
       response: unavailableFailureResponse(500),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: unavailableFailureResponse(424, "upstream_error"),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: unavailableFailureResponse(
@@ -443,7 +609,7 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
         "connector_error",
         "other_code",
       ),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: unavailableFailureResponse(
@@ -460,7 +626,7 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
           },
         ],
       ),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: unavailableFailureResponse(
@@ -477,7 +643,7 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
           },
         ],
       ),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: unavailableFailureResponse(
@@ -501,7 +667,7 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
           },
         ],
       ),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
     {
       response: sseResponse([
@@ -513,7 +679,7 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
           },
         },
       ]),
-      expected: "complete typed failure",
+      expected: "typed connector_not_found contract",
     },
   ];
   for (const testCase of cases) {
@@ -524,7 +690,13 @@ test("unavailable route rejects any typed error mismatch, completion, or incompl
     expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
       "/healthz",
       "/v1/responses",
+      "/healthz",
     ]);
+    expect(readUnavailableEvidence()).toMatchObject({
+      responsesRequestAttempted: true,
+      postHealth: { attempted: true, observed: true },
+      terminalClassification: "FAIL",
+    });
   }
 });
 
@@ -547,11 +719,20 @@ test("unavailable route rejects function-call evidence without continuing to fix
   );
   await expect(
     runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
-  ).rejects.toThrow("complete typed failure");
+  ).rejects.toThrow("typed connector_not_found contract");
   expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
     "/healthz",
     "/v1/responses",
+    "/healthz",
   ]);
+  expect(readUnavailableEvidence()).toMatchObject({
+    functionOrToolEvidenceObserved: true,
+    readFixtureEvidenceObserved: true,
+    fixtureReadsExecuted: 0,
+    continuationRequests: 0,
+    postHealth: { attempted: true, observed: true },
+    terminalClassification: "FAIL",
+  });
 });
 
 test("unavailable route rejects a truncated sanitized trace even with the expected failure", async () => {
@@ -569,18 +750,25 @@ test("unavailable route rejects a truncated sanitized trace even with the expect
   );
   await expect(
     runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
-  ).rejects.toThrow("complete typed failure");
+  ).rejects.toThrow("typed connector_not_found contract");
   expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
     "/healthz",
     "/v1/responses",
+    "/healthz",
   ]);
+  expect(readUnavailableEvidence()).toMatchObject({
+    sanitizedSseTrace: { complete: false, frameCount: 512 },
+    postHealth: { attempted: true, observed: true },
+    terminalClassification: "FAIL",
+  });
 });
 
 test("unavailable route checks post-health process identity and idle state", async () => {
   const changedHealth = [
     healthyUnavailableBridge({ pid: 24681 }),
+    healthyUnavailableBridge({ port: 17843 }),
     healthyUnavailableBridge({ version: "6.1.2" }),
-    healthyUnavailableBridge({ mode: "full" }),
+    healthyUnavailableBridge({ mode: "browser-only" }),
     healthyUnavailableBridge({ active_http_turns: 1 }),
     healthyUnavailableBridge({ active_browser_turns: 1 }),
   ];
@@ -597,7 +785,108 @@ test("unavailable route checks post-health process identity and idle state", asy
       "/v1/responses",
       "/healthz",
     ]);
+    expect(readUnavailableEvidence()).toMatchObject({
+      postHealth: { attempted: true, observed: true },
+      terminalClassification: "FAIL",
+      failureStage: "post_health",
+    });
   }
+});
+
+test("unavailable mismatch evidence keeps only sanitized trace data", async () => {
+  const argumentSecret = "D73_FUNCTION_ARGUMENT_SENTINEL";
+  const outputSecret = "D73_MODEL_OUTPUT_SENTINEL";
+  const fixture = unavailableProbeFixture(
+    unavailableFailureResponse(424, "connector_error", "connector_not_found", [
+      {
+        name: "response.output_item.added",
+        body: {
+          type: "response.output_item.added",
+          item: {
+            id: "item_safe_1",
+            type: "function_call",
+            call_id: "call_safe_1",
+            name: "read_fixture",
+            arguments: argumentSecret,
+          },
+        },
+      },
+      {
+        name: "response.output_text.delta",
+        body: { type: "response.output_text.delta", delta: outputSecret },
+      },
+    ]),
+  );
+  await expect(
+    runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
+  ).rejects.toThrow();
+  const contents = readFileSync(
+    UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH,
+    "utf8",
+  );
+  const responsesBody = JSON.parse(fixture.requests[1]?.body ?? "{}") as {
+    input?: Array<{ content?: Array<{ text?: string }> }>;
+  };
+  const submittedPrompt = responsesBody.input?.[1]?.content?.[0]?.text ?? "";
+  const canaryId = submittedPrompt.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/,
+  )?.[0];
+  expect(canaryId).toBeDefined();
+  expect(contents).not.toContain(argumentSecret);
+  expect(contents).not.toContain(outputSecret);
+  if (canaryId) expect(contents).not.toContain(canaryId);
+  expect(contents).not.toContain('"prompt"');
+  expect(contents).not.toContain('"input"');
+  expect(contents).toContain('"dataSha256"');
+  expect(readUnavailableEvidence()).toMatchObject({
+    functionOrToolEvidenceObserved: true,
+    readFixtureEvidenceObserved: true,
+    postHealth: { attempted: true, observed: true },
+    terminalClassification: "FAIL",
+  });
+});
+
+test("unavailable stream read failure persists its partial trace before post-health", async () => {
+  const streamSecret = "D73_STREAM_ERROR_SENTINEL";
+  let sentFrame = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!sentFrame) {
+          sentFrame = true;
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_partial"}}\n\n',
+            ),
+          );
+          return;
+        }
+        controller.error(new Error(streamSecret));
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+  const fixture = unavailableProbeFixture(response);
+  await expect(
+    runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
+  ).rejects.toThrow("could not be read completely");
+  expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
+    "/healthz",
+    "/v1/responses",
+    "/healthz",
+  ]);
+  const contents = readFileSync(
+    UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH,
+    "utf8",
+  );
+  expect(contents).not.toContain(streamSecret);
+  expect(readUnavailableEvidence()).toMatchObject({
+    terminalOutcomeKind: "stream_error",
+    sanitizedSseTrace: { complete: false, frameCount: 1 },
+    postHealth: { attempted: true, observed: true },
+    terminalClassification: "FAIL",
+    failureStage: "sse_read",
+  });
 });
 
 test("AC1 generates one canary, calls one fresh context, and returns only sanitized receipt fields", async () => {

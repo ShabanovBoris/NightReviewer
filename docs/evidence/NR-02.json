@@ -1503,7 +1503,7 @@
       "observedAtUtc": "2026-10-02T16:34:21.936Z",
       "artifactRef": "nr-02-d102-offline-verification-20261002",
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
       "artifactSizeBytes": 6040
     },
     {
@@ -1520,7 +1520,7 @@
       "observedAtUtc": "2026-10-02T16:34:21.936Z",
       "artifactRef": "nr-02-d102-offline-verification-20261002",
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
       "artifactSizeBytes": 6040
     },
     {
@@ -1533,7 +1533,7 @@
       "observedAtUtc": "2026-10-02T16:34:21.936Z",
       "artifactRef": "nr-02-d102-offline-verification-20261002",
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
       "artifactSizeBytes": 6040
     },
     {
@@ -1546,7 +1546,7 @@
       "observedAtUtc": "2026-10-02T16:34:21.936Z",
       "artifactRef": "nr-02-d102-offline-verification-20261002",
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
       "artifactSizeBytes": 6040
     },
     {
@@ -2017,11 +2017,11 @@
     "focusedUnavailableTestCount": 44,
     "focusedUnavailableFailedTestCount": 0,
     "focusedUnavailableExpectCalls": 285,
-    "status": "PASS_LOCAL; EXACT_HEAD_CI_RECORDED",
+    "status": "PASS_LOCAL; PRIOR_EXACT_HEAD_CI_RECORDED",
     "observedAtUtc": "2026-10-02T16:34:21.936Z",
     "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-    "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
-    "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+    "sha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
+    "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
     "sizeBytes": 6040,
     "artifactSizeBytes": 6040,
     "exactHeadCi": {
@@ -2089,7 +2089,7 @@
       "NR-02-AC2-unavailable": "PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE",
       "NR-02-AC2-overall": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW",
       "NR-02-AC3": "DEFERRED_HARDENING",
-      "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI"
+      "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW"
     },
     "implementationLimit": "D73 changes only the offline unavailable runner to isolated full mode with exact PID/port/production-port guards and durable sanitized evidence. Fake-fetch tests passed. AC2 unavailable remains NOT_PASS; no product HTTP/socket request, runtime/listener, browser/Launcher, connector, tunnel, credential, auth, or configuration action occurred.",
     "priorReviewer": {
@@ -2279,7 +2279,7 @@
       "limitation": "Accessibility extraction returned a truncated response; tail was verified visually; no raw response hash is claimed."
     },
     "localVerification": {
-      "status": "PASS_LOCAL; EXACT_HEAD_CI_RECORDED",
+      "status": "PASS_LOCAL; PRIOR_EXACT_HEAD_CI_RECORDED",
       "runtime": "Bun 1.4.2 (744846f84)",
       "fullVerify": {
         "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
@@ -2335,7 +2335,7 @@
       "observedAtUtc": "2026-10-02T16:34:21.936Z",
       "artifactRef": "nr-02-d102-offline-verification-20261002",
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
       "artifactSizeBytes": 6040
     },
     "d53Attempt": {
@@ -2619,7 +2619,7 @@
         "verificationArtifact": {
           "id": "D102_OFFLINE_VERIFICATION",
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-          "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+          "sha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
           "sizeBytes": 6040
         },
         "changedFilesBeforeEvidencePointerUpdate": [
@@ -2635,8 +2635,8 @@
           },
           {
             "path": "docs/specs/NR-02.md",
-            "sha256": "de20e9d344dc79e5af41cb2309d2caa1b8863a08875d6dafc2b26a0dcf88c455",
-            "sizeBytes": 13262
+            "sha256": "94de54796a892f0033e75611233c3b5c51e463114884a77afba87ae7f603d6b8",
+            "sizeBytes": 13272
           },
           {
             "path": "docs/tasks/NR-02.md",
@@ -2693,7 +2693,7 @@
         {
           "id": "D102_OFFLINE_VERIFICATION",
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
-          "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+          "sha256": "3e7123ad9161f17d7c7b27cb4871d5c03588ceefb4bc87e9e7fd84a67f9e7a7f",
           "sizeBytes": 6040
         },
         {

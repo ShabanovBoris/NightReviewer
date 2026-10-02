@@ -1548,6 +1548,20 @@
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
       "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
       "artifactSizeBytes": 6040
+    },
+    {
+      "id": "nr-02-d102-exact-head-ci-3a000d3",
+      "kind": "CI",
+      "command": "gh run view 37036095544 --json headSha,headBranch,event,status,conclusion,workflowName,url,createdAt",
+      "exitCode": 0,
+      "testedSha": "3a000d388b7868eab3dcdb21c04a141a35d24847",
+      "environment": "GitHub Actions pull_request workflow verify",
+      "summary": "Exact-head verify passed on the published D102 head. A later evidence-ledger sync commit will require its own exact-head check.",
+      "observedAtUtc": "2026-10-02T16:51:21Z",
+      "artifactRef": "D102_EXACT_HEAD_CI_3A000D3",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/exact-head-ci-3a000d3.gh.json",
+      "artifactSha256": "4272f8997f50a57f3386035126374592fffadd67b1e44499e9ffd25bdb4f324a",
+      "artifactSizeBytes": 300
     }
   ],
   "decisionReceipts": [
@@ -2003,13 +2017,28 @@
     "focusedUnavailableTestCount": 44,
     "focusedUnavailableFailedTestCount": 0,
     "focusedUnavailableExpectCalls": 285,
-    "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+    "status": "PASS_LOCAL; EXACT_HEAD_CI_RECORDED",
     "observedAtUtc": "2026-10-02T16:34:21.936Z",
     "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
     "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
     "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
     "sizeBytes": 6040,
-    "artifactSizeBytes": 6040
+    "artifactSizeBytes": 6040,
+    "exactHeadCi": {
+      "status": "PASS",
+      "testedSha": "3a000d388b7868eab3dcdb21c04a141a35d24847",
+      "workflow": "verify",
+      "event": "pull_request",
+      "runId": 37036095544,
+      "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/37036095544",
+      "observedAtUtc": "2026-10-02T16:51:21Z",
+      "receipt": {
+        "id": "D102_EXACT_HEAD_CI_3A000D3",
+        "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/exact-head-ci-3a000d3.gh.json",
+        "sha256": "4272f8997f50a57f3386035126374592fffadd67b1e44499e9ffd25bdb4f324a",
+        "sizeBytes": 300
+      }
+    }
   },
   "userAuthorizations": [
     {
@@ -2042,7 +2071,7 @@
     "assignmentMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
     "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
     "decisionMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
-    "status": "D102_LOCAL_VERIFICATION_PASSED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+    "status": "D102_PUBLISHED_AWAITING_LEAD_DECISION_ON_REVIEW_REQUEST",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -2073,7 +2102,7 @@
     "reviewerRequestNow": "NOT_AUTHORIZED_UNDER_D102",
     "mergeAuthorization": "NOT_GRANTED",
     "documentationVerificationRef": "nr-02-d102-offline-verification-20261002",
-    "nextRequiredAction": "Finish D102 offline implementation, exact-head CI, PR narrative and review-context bundle; then request a Lead decision to authorize an independent REVIEW_REQUEST.",
+    "nextRequiredAction": "Prepare the canonical reviewContext for the exact PR #3 base/head, include D102/D100/D101 evidence and exact-head CI, then send the correlated DECISION_REQUEST to Lead requesting authorization for REVIEW_REQUEST. No LIVE retry or merge.",
     "documentationVerificationArtifact": {
       "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
       "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
@@ -2250,7 +2279,7 @@
       "limitation": "Accessibility extraction returned a truncated response; tail was verified visually; no raw response hash is claimed."
     },
     "localVerification": {
-      "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+      "status": "PASS_LOCAL; EXACT_HEAD_CI_RECORDED",
       "runtime": "Bun 1.4.2 (744846f84)",
       "fullVerify": {
         "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
@@ -2263,8 +2292,8 @@
         "typecheck": "PASS",
         "artifact": {
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/full-verify.log",
-          "sha256": "658cbfec31399ad8444de8d1549f83b82f2236951d456627753cf2911bd02ea3",
-          "sizeBytes": 7607,
+          "sha256": "fb5ee540eb0e48cca0fced41c4fd4e4dce8b2e5e5cb53616b93f371c6d0c163d",
+          "sizeBytes": 7628,
           "mode": "600"
         }
       },
@@ -2276,14 +2305,28 @@
         "expectCalls": 285,
         "artifact": {
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/focused-sse-unavailable.log",
-          "sha256": "87d3dcd6ee3cac2113c4ae0dd0d0762b34b2da90b054adb9820b5613fd751500",
-          "sizeBytes": 6279,
+          "sha256": "1a91f6492c0214c09eae61a0e3aa06e69e4e2e634748cc3e4bd5f856fdbe8dac",
+          "sizeBytes": 6300,
           "mode": "600"
         }
       },
       "diffCheck": "PASS",
       "evidenceJsonParse": "PASS_AFTER_D102_POINTER_UPDATE",
-      "exactHeadCi": "PENDING_PUBLICATION",
+      "exactHeadCi": {
+        "status": "PASS",
+        "testedSha": "3a000d388b7868eab3dcdb21c04a141a35d24847",
+        "workflow": "verify",
+        "event": "pull_request",
+        "runId": 37036095544,
+        "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/37036095544",
+        "observedAtUtc": "2026-10-02T16:51:21Z",
+        "receipt": {
+          "id": "D102_EXACT_HEAD_CI_3A000D3",
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/exact-head-ci-3a000d3.gh.json",
+          "sha256": "4272f8997f50a57f3386035126374592fffadd67b1e44499e9ffd25bdb4f324a",
+          "sizeBytes": 300
+        }
+      },
       "productHttpRequests": 0,
       "runtimeStarts": 0,
       "browserInteractions": 0,
@@ -2566,13 +2609,13 @@
         ]
       },
       "implementation": {
-        "status": "IMPLEMENTED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+        "status": "PUBLISHED; AWAITING_LEAD_REVIEW_REQUEST_AUTHORIZATION",
         "reviewerRequestAuthorization": "NOT_GRANTED",
         "mergeAuthorization": "NOT_GRANTED",
         "runtimeNetworkBrowserConnectorTunnelSideEffects": 0
       },
       "localVerification": {
-        "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+        "status": "PASS_LOCAL",
         "verificationArtifact": {
           "id": "D102_OFFLINE_VERIFICATION",
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
@@ -2587,18 +2630,18 @@
           },
           {
             "path": "docs/decisions/0002-bridge-contract.md",
-            "sha256": "9f222bed94ed43a417d1a11d1bc6c7a49972bf65f0aec937c23084167027732a",
-            "sizeBytes": 29673
+            "sha256": "6b8f304d4189f9a47f54420169c7171ce086f62a7088b9df38e8a262da6ce37d",
+            "sizeBytes": 29626
           },
           {
             "path": "docs/specs/NR-02.md",
-            "sha256": "25a76c36319f040a7325c024b751bf79fa067bdb0ba806ffb2bcd42e854ad147",
-            "sizeBytes": 13245
+            "sha256": "de20e9d344dc79e5af41cb2309d2caa1b8863a08875d6dafc2b26a0dcf88c455",
+            "sizeBytes": 13262
           },
           {
             "path": "docs/tasks/NR-02.md",
-            "sha256": "c1646bf0959be9a104c95c02944c7032002f17c5db35c1d9a3675cf8289dd5d9",
-            "sizeBytes": 19150
+            "sha256": "ad38fafb508532b1da9de0ca63c1eb35015fa204b8ff48b007b76a255a50e60b",
+            "sizeBytes": 19079
           },
           {
             "path": "scripts/bridge-spike.ts",
@@ -2617,8 +2660,8 @@
           },
           {
             "path": "tests/bridge-runner.test.ts",
-            "sha256": "53fba30b55b9cf3889f22327fbefb4668f5d194dd1063cf98840b2f1e62015fa",
-            "sizeBytes": 55390
+            "sha256": "a28d59aed2e244f020c831edd26e79b228c78936f945278eb8375f484e0c16f9",
+            "sizeBytes": 55423
           },
           {
             "path": "tests/bridge-sse.test.ts",
@@ -2626,7 +2669,21 @@
             "sizeBytes": 11377
           }
         ],
-        "exactHeadCi": "PENDING_PUBLICATION",
+        "exactHeadCi": {
+          "status": "PASS",
+          "testedSha": "3a000d388b7868eab3dcdb21c04a141a35d24847",
+          "workflow": "verify",
+          "event": "pull_request",
+          "runId": 37036095544,
+          "runUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/37036095544",
+          "observedAtUtc": "2026-10-02T16:51:21Z",
+          "receipt": {
+            "id": "D102_EXACT_HEAD_CI_3A000D3",
+            "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/exact-head-ci-3a000d3.gh.json",
+            "sha256": "4272f8997f50a57f3386035126374592fffadd67b1e44499e9ffd25bdb4f324a",
+            "sizeBytes": 300
+          }
+        },
         "fullVerifyExitCode": 0,
         "focusedExitCode": 0,
         "diffCheckExitCode": 0,
@@ -2638,6 +2695,12 @@
           "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
           "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
           "sizeBytes": 6040
+        },
+        {
+          "id": "D102_EXACT_HEAD_CI_3A000D3",
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/exact-head-ci-3a000d3.gh.json",
+          "sha256": "4272f8997f50a57f3386035126374592fffadd67b1e44499e9ffd25bdb4f324a",
+          "sizeBytes": 300
         }
       ]
     }

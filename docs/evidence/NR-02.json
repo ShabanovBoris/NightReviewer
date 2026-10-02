@@ -12,7 +12,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Lead D73 retains PASS_LIVE_PENDING_INDEPENDENT_REVIEW; D73 performs only offline runner hardening and adds no AC1 evidence.",
+      "environment": "D66 qualifying LIVE ChatGPT-Web round-trip on the assigned 6.1.3 route; receipt awaits independent review.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -48,18 +48,22 @@
         "nr-02-d55-offline-diagnosis-20261001",
         "lead-decision-d56-route-ac1-through-chatgpt-web-adapter",
         "lead-assignment-d70-offline-unavailable-runner",
-        "nr-02-d73-offline-verification-20261001"
+        "nr-02-d73-offline-verification-20261001",
+        "nr-02-d66-live-ac1-result-20261001",
+        "d66-lead-assignment",
+        "d66-host-capture",
+        "d66-stage-ledger"
       ],
-      "notes": "AC1 remains PASS_LIVE_PENDING_INDEPENDENT_REVIEW per Lead D73; no AC1 or cancellation retry ran under D73."
+      "notes": "D66 proves one fresh context, one read_fixture probe, correlated function_call_output, and final JSON with matching canary and fixture SHA-256. Acceptance remains pending independent review."
     },
     {
       "acceptanceId": "NR-02-AC2",
-      "status": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW",
+      "status": "INCOMPLETE",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Lead D102 formally revised the unavailable subcheck to the observable pinned 6.1.3 SSE contract. Cancellation remains PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable remains pending independent review of D102 and frozen D100 evidence. D100 retains no acceptance credit.",
+      "environment": "D67 qualifying LIVE cancellation receipt awaits independent review; the D102/D100 unavailable subcheck also awaits independent review. D100 remains no-credit.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -103,9 +107,15 @@
         "D100_SANITIZED_SSE",
         "D100_TERMINAL_CLASSIFICATION",
         "D101_SOURCE_AUDIT",
-        "D100_D102_FROZEN_REEVALUATION"
+        "D100_D102_FROZEN_REEVALUATION",
+        "d67-cancellation-completion-receipt",
+        "d67-cancellation-result",
+        "d67-cancellation-capture",
+        "d67-lead-assignment",
+        "D100_PREFLIGHT",
+        "D100_PREFLIGHT_RECONCILIATION"
       ],
-      "notes": "D100 is consumed and remains D100_UNAVAILABLE_OUTCOME_MISMATCH / acceptanceCredit=NONE. Frozen D100 reevaluation is only a candidate pending independent review; no LIVE retry occurred."
+      "notes": "Cancellation has a qualifying D67 receipt pending independent review. Unavailable remains pending review of D102 and frozen D100 evidence, including exact D100 pre-health artifacts. AC2 is INCOMPLETE until both subchecks are reviewed."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -114,7 +124,7 @@
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Per Lead D73: DEFERRED_HARDENING. D73 authorizes no three-context LIVE matrix.",
+      "environment": "D105 retains the deferred hardening state; no three-context LIVE matrix is claimed.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -146,12 +156,12 @@
     },
     {
       "acceptanceId": "NR-02-AC4",
-      "status": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI",
+      "status": "PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW",
       "kind": "CONTRACT",
       "testedSha": null,
-      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json",
+      "command": "./.nightreviewer/runtime/bun/bin/bun run verify; git diff --check; jq empty docs/evidence/NR-02.json",
       "exitCode": 0,
-      "environment": "Local developer host; pinned Bun 1.4.2 (744846f84); D73 full-mode runner and docs verified offline. Exact-head CI pending publication.",
+      "environment": "D105 local documentation/evidence verification passed with pinned Bun 1.4.2 (55 tests); exact-head CI and independent review remain required.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -202,9 +212,11 @@
         "nr-02-d56-route-contract-tests-20261001",
         "lead-assignment-d70-offline-unavailable-runner",
         "nr-02-d70-offline-verification-20261001",
-        "nr-02-d73-offline-verification-20261001"
+        "nr-02-d73-offline-verification-20261001",
+        "D105_OFFLINE_EVIDENCE_INVENTORY",
+        "d105-bun-run-verify-log"
       ],
-      "notes": "D73 documentation and local contract checks are offline only; they cannot establish AC2 unavailable acceptance.",
+      "notes": "Documentation-only contract coverage cannot establish AC1 or AC2 LIVE acceptance.",
       "testCount": 50,
       "failedTestCount": 0,
       "expectCalls": 312
@@ -2067,11 +2079,11 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION",
-    "assignmentMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
-    "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
-    "decisionMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
-    "status": "D102_PUBLISHED_AWAITING_LEAD_DECISION_ON_REVIEW_REQUEST",
+    "assignmentId": "NR-02-C2-D105-R2-FINDINGS-EVIDENCE-STATUS-REMEDIATION",
+    "assignmentMessageId": "c2c96db9-c388-4e7f-89a4-62cf71ae73ca",
+    "decisionId": "NR-02-D105-REMEDIATE-R2-F1-F2-F3-WITHOUT-LIVE",
+    "decisionMessageId": "c2c96db9-c388-4e7f-89a4-62cf71ae73ca",
+    "status": "D105_LOCAL_VERIFICATION_PASS_AWAITING_PUBLICATION",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -2087,7 +2099,7 @@
       "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
       "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
       "NR-02-AC2-unavailable": "PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE",
-      "NR-02-AC2-overall": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW",
+      "NR-02-AC2-overall": "INCOMPLETE",
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW"
     },
@@ -2099,14 +2111,14 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "NOT_AUTHORIZED_UNDER_D102",
+    "reviewerRequestNow": "CONDITIONALLY_AUTHORIZED_AFTER_D105_PUBLICATION_EXACT_HEAD_CI_AND_CONTEXT_FINALIZATION",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-d102-offline-verification-20261002",
-    "nextRequiredAction": "Prepare the canonical reviewContext for the exact PR #3 base/head, include D102/D100/D101 evidence and exact-head CI, then send the correlated DECISION_REQUEST to Lead requesting authorization for REVIEW_REQUEST. No LIVE retry or merge.",
+    "documentationVerificationRef": "d105-phase-a-offline-verification",
+    "nextRequiredAction": "Complete D105 offline verification, publish once to existing PR #3 branch, update PR narrative, and confirm exact-head CI. Finalize the new canonical reviewContext with D66/D67 and D100 pre-health evidence; then send exactly one fresh Reviewer BOOTSTRAP_REQUEST and, only after a matching READY and unchanged PR tuple/CI, exactly one FIX_REVIEW_REQUEST. No LIVE or merge action.",
     "documentationVerificationArtifact": {
-      "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
-      "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
-      "sizeBytes": 2928
+      "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d105-phase-a/bun-run-verify.log",
+      "sha256": "8dc108691febea0f73ab91f1eb8777c5b790ab8d4f5c5635e29e28e968a64dde",
+      "sizeBytes": 7628
     },
     "auxiliaryConnector": {
       "identity": "Codex Native2 NR-02",
@@ -2218,11 +2230,11 @@
       }
     },
     "currentLeadDecisionObserved": {
-      "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
-      "messageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
-      "inReplyTo": "4c2b6f8e-b160-4ff3-8ccd-6206f9df4c28",
-      "assignmentId": "NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION",
-      "source": "User-designated Lead ChatGPT conversation; correlated TASK_ASSIGNMENT saved privately"
+      "decisionId": "NR-02-D105-REMEDIATE-R2-F1-F2-F3-WITHOUT-LIVE",
+      "messageId": "c2c96db9-c388-4e7f-89a4-62cf71ae73ca",
+      "inReplyTo": "d09a7559-ad85-456c-8021-11dc9b9d6b9d",
+      "assignmentId": "NR-02-C2-D105-R2-FINDINGS-EVIDENCE-STATUS-REMEDIATION",
+      "source": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-response-d105-c2c96db9-c388-4e7f-89a4-62cf71ae73ca.raw.txt"
     },
     "d49D50D51": {
       "d49": "Single AC1 attempt consumed; internal guard passed; terminal evidence discarded; tool outcome cannot be established.",
@@ -2703,6 +2715,180 @@
           "sizeBytes": 300
         }
       ]
+    },
+    "d105": {
+      "assignmentId": "NR-02-C2-D105-R2-FINDINGS-EVIDENCE-STATUS-REMEDIATION",
+      "decisionId": "NR-02-D105-REMEDIATE-R2-F1-F2-F3-WITHOUT-LIVE",
+      "messageId": "c2c96db9-c388-4e7f-89a4-62cf71ae73ca",
+      "requestMessageId": "d09a7559-ad85-456c-8021-11dc9b9d6b9d",
+      "reviewerFindingIds": [
+        "NR-02-R2-F1",
+        "NR-02-R2-F2",
+        "NR-02-R2-F3"
+      ],
+      "phaseA": {
+        "mode": "OFFLINE_READ_ONLY",
+        "inventory": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d105-phase-a/phase-a-evidence-inventory.json",
+          "sha256": "bbca207a6ae257d10e16fca2404276fabd5b4cfa93ce7ccfe28a5d598d1f2747",
+          "sizeBytes": 30372
+        },
+        "ac1": "D66 qualifying; PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+        "cancellation": "D67 qualifying; PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+        "d100OriginalArtifactsUnchanged": true,
+        "historicalArtifactsModified": false,
+        "privateRawStreamsExported": false,
+        "liveAcceptanceCalls": 0,
+        "connectorCalls": 0,
+        "runtimeActions": 0
+      },
+      "qualifyingReceipts": {
+        "D66_AC1_RESULT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d66-live-ac1-result-20261001.json",
+          "sha256": "c4461ebb47785b53c9019a2c7c34b5fc18f7463478565f3df53b0cd21918fad8",
+          "sizeBytes": 4145
+        },
+        "D66_ASSIGNMENT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-task-assignment-5b349210-5c70-4b7d-a32f-6c906ec79f20.raw.txt",
+          "sha256": "bc65490b437dde1d1741075e28402bd4ec70991dcaf7d1544e0e1c1b39295d4a",
+          "sizeBytes": 7763
+        },
+        "D66_CAPTURE": {
+          "path": ".nightreviewer/dev/bb99ff30-f66b-4888-aaa2-b5708fbd6c1d/live-capture/capture.json",
+          "sha256": "24e6e6fcac5b521ba1b76a2480abccd200c7114dca9e4e72c2c95b3d759026cb",
+          "sizeBytes": 746
+        },
+        "D66_STAGE_LEDGER": {
+          "path": ".nightreviewer/dev/bb99ff30-f66b-4888-aaa2-b5708fbd6c1d/live-capture/stages.jsonl",
+          "sha256": "c5c28c6d8ac5dd2fd941b141d7f013583cb930354f808ddd95ea1b99c3080d8e",
+          "sizeBytes": 10769
+        },
+        "D67_COMPLETION_RECEIPT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d67-cancellation-552e5511-7df9-4717-a4ce-2a385b5ec1e2/completion-receipt.json",
+          "sha256": "fa9e56f1b94338e031b8849384002acebd59ced6543ca8ef6b4030232a427d8f",
+          "sizeBytes": 4115
+        },
+        "D67_RESULT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d67-cancellation-552e5511-7df9-4717-a4ce-2a385b5ec1e2/result.json",
+          "sha256": "51f80c71b1a6c7e3c08a4165cdc3e7746fc2415576e6f31be536dab488521ba0",
+          "sizeBytes": 2051
+        },
+        "D67_CAPTURE": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d67-cancellation-552e5511-7df9-4717-a4ce-2a385b5ec1e2/capture.json",
+          "sha256": "af38c0f87f5d3e01b2f0fe41f9b050426c5fedcf1a94fd346b317fc83600922e",
+          "sizeBytes": 316
+        },
+        "D67_ASSIGNMENT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-task-assignment-bf9aaed0-e9a6-4e97-92d5-79e41cb2fc70.raw.txt",
+          "sha256": "f598f9577a70738d95b5bdfa6d55d50a7aeae3a021a1fa4c00c43f9aa88abbb4",
+          "sizeBytes": 11852
+        }
+      },
+      "mandatoryD100PreHealth": {
+        "D100_PREFLIGHT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d100-7c9caab2/preflight.json",
+          "sha256": "8c96ed59b8dd2b78262e4d54069d5e4709d4a9216ead6d87db45e85e34c93910",
+          "sizeBytes": 1517
+        },
+        "D100_PREFLIGHT_RECONCILIATION": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d100-7c9caab2/preflight-reconciliation.json",
+          "sha256": "f38b9e9fb726d3d9ea31431cccb469f77100244a354b0d83a5978d0fef0dc69e",
+          "sizeBytes": 1198
+        }
+      },
+      "priorReview": {
+        "messageId": "8f7e4b66-29c3-4e2d-9859-8cf3a329f4e2",
+        "requestMessageId": "b13a8556-32be-4522-98d3-86a6ca59c85e",
+        "verdict": "NEEDS_FIX",
+        "receipt": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/reviewer-response-d104-8f7e4b66.raw.txt",
+          "sha256": "fd97c7bb712ea4b6032ac59b17ba1a6b960c6fa3d0fd8d087ef3e3925e46c1a8",
+          "sizeBytes": 8665
+        },
+        "validation": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/reviewer-response-d104-8f7e4b66.validation.json",
+          "sha256": "c8a3f4a9b3495b02c5311871851a68e7eae9f1ffb3dfb4e911261f7f04bcbc21",
+          "sizeBytes": 1145
+        }
+      },
+      "leadAssignmentReceipt": {
+        "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-response-d105-c2c96db9-c388-4e7f-89a4-62cf71ae73ca.raw.txt",
+        "sha256": "5077ab7a3d52549ae018e0e74556ce7cf8bf757663497a900d2863d6b5584ced",
+        "sizeBytes": 16434
+      },
+      "localVerification": {
+        "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI_AND_INDEPENDENT_REVIEW",
+        "runtime": "Bun 1.4.2",
+        "fullVerify": {
+          "command": "./.nightreviewer/runtime/bun/bin/bun run verify",
+          "exitCode": 0,
+          "testCount": 55,
+          "failedTestCount": 0,
+          "logPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d105-phase-a/bun-run-verify.log",
+          "logSha256": "8dc108691febea0f73ab91f1eb8777c5b790ab8d4f5c5635e29e28e968a64dde",
+          "logSizeBytes": 7628
+        },
+        "focusedTests": {
+          "status": "NOT_RUN_NOT_AFFECTED",
+          "reason": "D105 changes only documentation/evidence; no parser, runner, or cancellation source was edited."
+        },
+        "gitDiffCheck": {
+          "command": "git diff --check",
+          "exitCode": 0
+        },
+        "evidenceJsonParse": {
+          "command": "jq empty docs/evidence/NR-02.json",
+          "exitCode": 0
+        },
+        "staleAcceptanceClaims": "PASS: current AC1/cancellation claims cite D66/D67 and remain pending independent review; D49/D53/D56/D102 states are marked historical or superseded.",
+        "d100OriginalArtifactsUnchanged": true,
+        "productHttpRequests": 0,
+        "liveAcceptanceCalls": 0,
+        "connectorCalls": 0,
+        "runtimeActions": 0,
+        "exactHeadCi": "PENDING_AFTER_PUBLICATION"
+      },
+      "publication": {
+        "commitAuthorized": true,
+        "pushAuthorized": true,
+        "targetBranch": "nr-02-chatgpt-web-spike",
+        "maxCommits": 1,
+        "prNarrativeUpdateAuthorized": true,
+        "exactHeadCiRequired": true,
+        "mergeAuthorized": false,
+        "liveRuntimeActionsAuthorized": false
+      },
+      "reviewerFollowUp": {
+        "freshBootstrapAuthorizedConditionally": true,
+        "fixReviewRequestCount": 1,
+        "condition": "After publication, exact-head CI success, finalized canonical reviewContext; recheck matching READY and unchanged PR tuple/CI before FIX_REVIEW_REQUEST"
+      },
+      "nonLiveD6AuditRefs": {
+        "D6_CONTRACT_AUDIT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d6-cancellation-contract-audit-20260928.txt",
+          "sha256": "1e1b2f206759f22e3edec6d17747fdae3862f006dda095ba57d5791cf4aa1a11",
+          "sizeBytes": 6503,
+          "classification": "NON_LIVE_CONTRACT_OR_TEST_AUDIT"
+        },
+        "D6_CONTRACT_AUDIT_AFTER_ACK": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d6-cancellation-contract-audit-after-ack-window-20260928.txt",
+          "sha256": "3df3975c918b13553d658300aaea3dafd77933085e9cd2a80fcecc11c2b68697",
+          "sizeBytes": 12942,
+          "classification": "NON_LIVE_CONTRACT_OR_TEST_AUDIT"
+        },
+        "D6_CONTRACT_AUDIT_FINAL": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d6-cancellation-contract-audit-final-20260928.txt",
+          "sha256": "9bb810c960380609e197e35f97826a09a471f25b0941d74175ec6050f9dbd7e2",
+          "sizeBytes": 13039,
+          "classification": "NON_LIVE_CONTRACT_OR_TEST_AUDIT"
+        },
+        "D6_BOUNDARY_TEST_AUDIT": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d6-contract-audit-with-boundary-tests-20260928.txt",
+          "sha256": "604097d45dc0dce326a1c24e373b352bd4cbead14ea5d06387e5665b05cca183",
+          "sizeBytes": 15767,
+          "classification": "NON_LIVE_CONTRACT_OR_TEST_AUDIT"
+        }
+      }
     }
   }
 }

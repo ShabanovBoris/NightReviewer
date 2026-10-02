@@ -2,7 +2,11 @@
 
 This diagnostic client remains outside `src/index.ts`: its function-call relay is not NightReviewer’s production `ReviewerBackend`.
 
-## Current cycle 2 — D56 offline route remediation
+## Current acceptance status — D105
+
+The D66 AC1 round-trip and D67 cancellation have qualifying immutable LIVE receipts; both remain `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`. AC2 unavailable remains pending independent review of the D102 observable contract and frozen D100 evidence, so AC2 overall is `INCOMPLETE`. AC3 remains deferred hardening and AC4 remains documentation-only pending independent review. D105 authorizes status/evidence correction, publication, exact-head CI, and a conditional reviewer bootstrap/fix review. It authorizes no new LIVE or runtime action and no merge.
+
+## Historical implementation context — D56 offline route remediation
 
 The target runtime remains production Codex Web GPT `6.1.3` with unchanged connector `Codex Native2`, selected by production `config.appName`. D53's single authorized AC1 run sent `gpt-6.1-sol` and received HTTP 400 before any tool call. D55 proved that this unprefixed slug enters native Responses passthrough, so the browser adapter/connector cannot run on that route. D55 classified the source path as `NON_REQUEST_CONTRACT_400`; the downstream reason for HTTP 400 is unknown and is not attributed to the model route.
 
@@ -12,7 +16,7 @@ D52's `bridge:live` entry routes through `scripts/bridge-live-capture.ts`. Befor
 
 The runner records each `_attempted` event synchronously before a network side effect, then separately records response receipt, stream end, tool observation, fixture preparation, final correlation and post-run health. Request attempt is not treated as a response receipt. Unknown transport outcomes remain `UNKNOWN`; no prompt, key, cookie, model free text, fixture contents or raw tool output enters the sanitized receipt. The settings and catalog evidence now also bind the exact D56 routed slug and effort.
 
-D56 verification uses fake fetch/injected boundaries only: reject native/unsupported slugs before fetch, accept the exact model, validate catalog effort, check the simulated request shape and stage metadata, and assert zero real fetch/connector calls. The D52 capture failure/success/redaction suite remains required. Offline checks do not satisfy AC1. After exact-head CI, send the Lead a correlated `DECISION_REQUEST` for separate bounded host-native LIVE authorization. CI does not trigger LIVE, reviewer request or merge.
+D56 verification used fake fetch/injected boundaries only: reject native/unsupported slugs before fetch, accept the exact model, validate catalog effort, check simulated request shape and stage metadata, and assert zero real fetch/connector calls. Those offline checks did not satisfy AC1; the later D66 LIVE receipt is pending independent review. D105 supersedes D56's next-step instructions: complete the status/evidence correction, verify exact-head CI, then use the conditionally authorized reviewer bootstrap and fix review. No new LIVE attempt is authorized.
 
 ### Historical D42/D43 route correction
 

@@ -1,16 +1,22 @@
 # ADR-0002 — ChatGPT Web bridge contract spike
 
-Дата: 2026-09-27; актуализация: 2026-10-02 по D102. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC2-unavailable ждёт независимой проверки пересмотренного контракта и frozen D100 evidence; reviewer approval и merge authorization отсутствуют.
+Дата: 2026-09-27; актуализация: 2026-10-02 по D105. Статус: **provisional**; NR-02 остаётся IN_PROGRESS. AC1 и cancellation имеют qualifying D66/D67 receipts pending independent review; AC2-unavailable ждёт независимой проверки пересмотренного контракта и frozen D100 evidence. Reviewer approval и merge authorization отсутствуют.
 
-## Текущее решение Lead D102 — наблюдаемый контракт AC2-unavailable
+## Текущее состояние по Lead D105
+
+D105's offline audit found D66 as a qualifying AC1 LIVE round-trip receipt and D67 as a qualifying cancellation receipt. Both remain `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 overall remains `INCOMPLETE` because the unavailable subcheck is still pending independent review of the D102 contract and frozen D100 evidence. AC3 remains `DEFERRED_HARDENING`, and AC4 remains documentation-only pending independent review. Original D66/D67 receipts and D100 pre-health artifacts are immutable private evidence.
+
+D105 authorizes only tracked status/evidence corrections, publication to the existing PR #3 branch, exact-head CI, and then one fresh reviewer bootstrap plus one fix review request if the exact context is finalized. It authorizes no new LIVE/runtime/connector/tunnel action or merge.
+
+## Контракт Lead D102 — наблюдаемый AC2-unavailable
 
 D101 source audit показал, что exact Codex Web GPT 6.1.3 внутренне задаёт `status=424` для `connector_not_found`, но не сериализует числовой `error.status` в `/v1/responses` SSE. Наблюдаемы: outer HTTP 200 с `text/event-stream`, единственный terminal `response.failed`, `response.status="failed"`, `error.type="connector_error"` и `error.code="connector_not_found"`. Числовое поле не является acceptance gate; если оно реально присутствует, runner сохраняет его отдельно как `observedNumericStatus`. Локальный fallback парсера `502` не является provider evidence.
 
-D102 сохраняет полные stream/no-tool/no-continuation и exact pre/post idle identity guards, запрещает повтор D100 и разрешает offline contract correction, deterministic tests, frozen-D100 reevaluation candidate, публикацию в существующий PR #3 и exact-head CI. D100 остаётся `D100_UNAVAILABLE_OUTCOME_MISMATCH` / no credit до независимого reviewer решения на точной версии PR #3. D102 не разрешает новый LIVE вызов, reviewer request или merge.
+D102 сохраняет полные stream/no-tool/no-continuation и exact pre/post idle identity guards, запрещает повтор D100 и разрешила offline contract correction, deterministic tests, frozen-D100 reevaluation candidate, публикацию в существующий PR #3 и exact-head CI. D100 остаётся `D100_UNAVAILABLE_OUTCOME_MISMATCH` / no credit до независимого reviewer решения на точной версии PR #3. На момент D102 reviewer request и merge не были разрешены; условное reviewer-разрешение теперь задаёт D105.
 
 ## Исторические решения Lead D49–D56
 
-D49 израсходовала один LIVE AC1 запуск: внутренний guard прошёл, но terminal evidence была отброшена. D50 не нашла относящихся к запуску логов и не сохранила точный интервал; причина результата и сам tool outcome не устанавливаются. AC1 остаётся `UNVERIFIED`. D51 сохранила hold на production/connector/LIVE действия.
+D49 израсходовала один LIVE AC1 запуск: внутренний guard прошёл, но terminal evidence была отброшена. D50 не нашла относящихся к запуску логов и не сохранила точный интервал; причина результата и сам tool outcome не устанавливаются. На тот момент AC1 была `UNVERIFIED`; позднее D66 предоставила qualifying LIVE receipt, pending independent review. D51 сохранила тогдашний hold на production/connector/LIVE действия.
 
 D52 (`NR-02-D52-DURABLE-EVIDENCE-CAPTURE-OFFLINE`, message `0c07907a-dcea-4c3a-bd05-6defe03d5576`) назначила только offline remediation: durable ordered stage evidence, host-native child stdout/stderr capture, deterministic injected-failure tests и обновление документов. Разрешены commit/push только в существующую PR #3 ветку и exact-head CI. D52 не меняет acceptance, не разрешает новый LIVE/connector вызов, reviewer request или merge.
 
@@ -121,6 +127,6 @@ An acknowledgement without observed stream termination, HTTP status other than `
 - **D6 CANCELLATION CONTRACT:** Lead decision `NR-02-D6-ACK-PLUS-CORRELATED-STREAM-TERMINATION` is recorded at private message `lead-decision-a4b0f8e6-42be-4e08-a75d-1a4dd5bde69a.raw.txt` (raw SHA-256 `440af0e7bf37accfd47cbdef24cde1c20b106bac833275b8dcfefaf8235d3174`). The harness and runbook require HTTP 200/`status=ok`/`cancelled_http_turns=1` plus bounded termination of the correlated non-completed stream and preserve its actual parser/read disposition. D41 authorizes at most one cancellation after its gates. At the start of D41 no qualifying `/v1/responses` tool round-trip, unavailable outcome, or cancellation receipt had been collected.
 - **NOT VERIFIED:** No upstream process/tunnel lifecycle behavior was exercised by the spike harness. Launcher runtime ownership observations do not substitute for a request/cleanup receipt.
 
-## Текущий следующий шаг по D52
+## Исторический следующий шаг по D52 — superseded by D105
 
-После публикации offline remediation обновить PR #3 narrative, получить CI для точного head, сохранить локальный verification receipt и hashes changed files, затем отправить Lead коррелированный `DECISION_REQUEST` с просьбой выдать отдельную bounded host-native LIVE authorization. D52 запрещает запускать LIVE автоматически после CI и не разрешает reviewer request. AC1 остаётся `UNVERIFIED`, AC2 `NOT_RUN`, AC3 `DEFERRED_HARDENING`; merge authorization не выдана.
+На момент D52 после публикации требовалось запросить у Lead отдельную bounded host-native LIVE authorization; AC1 тогда оставалась `UNVERIFIED`, cancellation — `NOT_RUN`, а reviewer request не был разрешён. D105 supersedes этот следующий шаг: Phase A нашла qualifying D66/D67 receipts, status/evidence correction публикуется в PR #3, затем после exact-head CI и готового context выполняются условно разрешённые reviewer bootstrap и fix review. Новая LIVE попытка и merge остаются запрещены.

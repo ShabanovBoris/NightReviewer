@@ -1,8 +1,14 @@
 # ADR-0002 — ChatGPT Web bridge contract spike
 
-Дата: 2026-09-27; актуализация: 2026-10-01 по D49–D56. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC1 `UNVERIFIED`, AC2 `NOT_RUN`, reviewer approval и merge authorization отсутствуют.
+Дата: 2026-09-27; актуализация: 2026-10-02 по D102. Статус: **provisional**; NR-02 остаётся IN_PROGRESS, AC2-unavailable ждёт независимой проверки пересмотренного контракта и frozen D100 evidence; reviewer approval и merge authorization отсутствуют.
 
-## Текущее решение Lead D49–D56
+## Текущее решение Lead D102 — наблюдаемый контракт AC2-unavailable
+
+D101 source audit показал, что exact Codex Web GPT 6.1.3 внутренне задаёт `status=424` для `connector_not_found`, но не сериализует числовой `error.status` в `/v1/responses` SSE. Наблюдаемы: outer HTTP 200 с `text/event-stream`, единственный terminal `response.failed`, `response.status="failed"`, `error.type="connector_error"` и `error.code="connector_not_found"`. Числовое поле не является acceptance gate; если оно реально присутствует, runner сохраняет его отдельно как `observedNumericStatus`. Локальный fallback парсера `502` не является provider evidence.
+
+D102 сохраняет полные stream/no-tool/no-continuation и exact pre/post idle identity guards, запрещает повтор D100 и разрешает offline contract correction, deterministic tests, frozen-D100 reevaluation candidate, публикацию в существующий PR #3 и exact-head CI. D100 остаётся `D100_UNAVAILABLE_OUTCOME_MISMATCH` / no credit до независимого reviewer решения на точной версии PR #3. D102 не разрешает новый LIVE вызов, reviewer request или merge.
+
+## Исторические решения Lead D49–D56
 
 D49 израсходовала один LIVE AC1 запуск: внутренний guard прошёл, но terminal evidence была отброшена. D50 не нашла относящихся к запуску логов и не сохранила точный интервал; причина результата и сам tool outcome не устанавливаются. AC1 остаётся `UNVERIFIED`. D51 сохранила hold на production/connector/LIVE действия.
 
@@ -32,7 +38,7 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 
 Историческое состояние на момент D43 (superseded by D49–D52): AC1 `NOT_RUN`; AC2 `NOT_RUN`; unavailable subcheck `NOT_AUTHORIZED_NOT_RUN`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY`. D49/D50 later classify the consumed AC1 attempt as `UNVERIFIED`. Cycle 1 reviewer verdict `BLOCKED` / `NR-02-R1-F1 NOT_FIXED` не переносится как approval на cycle 2.
 
-## D41 acceptance runner contract — AC unchanged; current execution governed by D56
+## Historical D41 acceptance runner contract — superseded by D56, D73, and D102
 
 - **Preflight:** до model discovery и повторно после неё exact `/healthz` должен подтверждать `active_http_turns=0` и `active_browser_turns=0`; отсутствующие/ненулевые значения закрывают gate. Остальные identity, readiness, authenticated catalog, выбранная модель, `high` effort и catalog accounting проверки сохранены.
 - **AC1:** один generated fresh `threadId`/`turnId`, один unique canary, ровно один `read_fixture({"fixture":"probe"})` function call через выбранный production `Codex Native2`, controlled fixture result через `function_call_output`, correlated final response с тем же canary и exact fixture SHA-256. Санitized trace не содержит fixture contents, model output или credentials.
@@ -40,7 +46,7 @@ The runner requires `BRIDGE_SPIKE_CLIENT_VERSION`, validates exact release semve
 - **AC2 unavailable:** не исполнять `--connector-unavailable-only`, не симулировать произвольный 4xx, не менять connector/config. Оставить subcheck `NOT_RUN`.
 - **AC3:** сохранить исторический трёхконтекстный код только для deferred hardening; в этом задании его не запускать.
 
-Эти Phase A/B строки сохраняют историческую последовательность D41, позднее уточнённую D42/D43 и заменённую D49–D56. Текущий D56 разрешает только route remediation, deterministic checks, push в существующий PR и exact-head CI; любой LIVE step требует отдельной будущей Lead authorization.
+Эти Phase A/B строки сохраняют историческую последовательность D41, позднее уточнённую D42/D43 и заменённую D49–D56. D56 разрешал только route remediation, deterministic checks, публикацию в существующий PR и exact-head CI; текущий D102 объём и ограничения указаны в начале ADR.
 
 ## Исторический source audit и route decisions цикла 1
 

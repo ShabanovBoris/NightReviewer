@@ -155,9 +155,52 @@ test("keeps connector failures typed instead of treating them as empty output", 
   expect(outcome).toEqual({
     kind: "failed",
     status: 424,
+    responseStatus: "failed",
     errorType: "connector_error",
     code: "connector_not_found",
     events: ["response.failed", "data:[DONE]"],
+  });
+});
+
+test("preserves the 6.1.3 failed response shape without inventing a numeric status", async () => {
+  const outcome = await readBridgeSse(
+    new Response(
+      [
+        "event: response.failed",
+        'data: {"type":"response.failed","response":{"status":"failed","error":{"type":"connector_error","code":"connector_not_found"}}}',
+        "",
+        "event: data:[DONE]",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+      { headers: { "content-type": "text/event-stream" } },
+    ),
+    { captureSanitizedTrace: true },
+  );
+
+  expect(outcome).toMatchObject({
+    kind: "failed",
+    status: null,
+    responseStatus: "failed",
+    errorType: "connector_error",
+    code: "connector_not_found",
+    sanitizedTrace: { complete: true },
+  });
+});
+
+test("keeps an observed optional numeric failed-event status without using a fallback", async () => {
+  const outcome = await readBridgeSse(
+    new Response(
+      'event: response.failed\ndata: {"type":"response.failed","response":{"status":"failed","error":{"status":424,"type":"connector_error","code":"connector_not_found"}}}\n\n',
+    ),
+  );
+
+  expect(outcome).toMatchObject({
+    kind: "failed",
+    status: 424,
+    responseStatus: "failed",
+    errorType: "connector_error",
+    code: "connector_not_found",
   });
 });
 
@@ -267,7 +310,8 @@ test("does not expose a function call before the item-done event", async () => {
 
   expect(outcome).toEqual({
     kind: "failed",
-    status: 502,
+    status: null,
+    responseStatus: null,
     errorType: "bridge_protocol_error",
     code: "function_call_item_not_done",
     events: [
@@ -308,6 +352,7 @@ test("retains typed HTTP errors from a non-streaming response", async () => {
   expect(outcome).toEqual({
     kind: "failed",
     status: 424,
+    responseStatus: null,
     errorType: "connector_error",
     code: "connector_not_found",
     events: [],

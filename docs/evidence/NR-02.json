@@ -54,12 +54,12 @@
     },
     {
       "acceptanceId": "NR-02-AC2",
-      "status": "INCOMPLETE",
+      "status": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW",
       "kind": "LIVE",
       "testedSha": null,
       "command": null,
       "exitCode": null,
-      "environment": "Per Lead D73: cancellation PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable subcheck NOT_PASS; AC2 remains INCOMPLETE. This offline runner work does not satisfy AC2.",
+      "environment": "Lead D102 formally revised the unavailable subcheck to the observable pinned 6.1.3 SSE contract. Cancellation remains PASS_LIVE_PENDING_INDEPENDENT_REVIEW; unavailable remains pending independent review of D102 and frozen D100 evidence. D100 retains no acceptance credit.",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
@@ -99,9 +99,13 @@
         "lead-decision-d43",
         "lead-decision-d52",
         "lead-assignment-d70-offline-unavailable-runner",
-        "nr-02-d73-offline-verification-20261001"
+        "nr-02-d73-offline-verification-20261001",
+        "D100_SANITIZED_SSE",
+        "D100_TERMINAL_CLASSIFICATION",
+        "D101_SOURCE_AUDIT",
+        "D100_D102_FROZEN_REEVALUATION"
       ],
-      "notes": "Cancellation still awaits independent review; unavailable connector/tool remains NOT_PASS. Offline tests only verify the isolated full-mode runner contract."
+      "notes": "D100 is consumed and remains D100_UNAVAILABLE_OUTCOME_MISMATCH / acceptanceCredit=NONE. Frozen D100 reevaluation is only a candidate pending independent review; no LIVE retry occurred."
     },
     {
       "acceptanceId": "NR-02-AC3",
@@ -1484,6 +1488,66 @@
       "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
       "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
       "artifactSizeBytes": 3540
+    },
+    {
+      "id": "nr-02-d102-full-verify-20261002",
+      "kind": "CONTRACT",
+      "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "macOS local workspace; pinned Bun 1.4.2 (744846f84), TypeScript 7.0.2, Biome 2.5.14; offline fake-fetch contract tests.",
+      "testCount": 55,
+      "failedTestCount": 0,
+      "expectCalls": 324,
+      "summary": "Typecheck, Biome, 55 tests/324 assertions, and Bun build passed. No product HTTP/runtime/browser/connector/tunnel actions occurred.",
+      "observedAtUtc": "2026-10-02T16:34:21.936Z",
+      "artifactRef": "nr-02-d102-offline-verification-20261002",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSizeBytes": 6040
+    },
+    {
+      "id": "nr-02-d102-focused-sse-unavailable-20261002",
+      "kind": "CONTRACT",
+      "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-sse.test.ts tests/bridge-runner.test.ts",
+      "exitCode": 0,
+      "testedSha": null,
+      "environment": "Pinned Bun 1.4.2; injected fake fetch only.",
+      "testCount": 44,
+      "failedTestCount": 0,
+      "expectCalls": 285,
+      "summary": "SSE/parser and unavailable-runner focused suite passed, including absent numeric status, optional numeric evidence, response wrapper status, frozen D100 projection, post-health, no-tool and truncation cases.",
+      "observedAtUtc": "2026-10-02T16:34:21.936Z",
+      "artifactRef": "nr-02-d102-offline-verification-20261002",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSizeBytes": 6040
+    },
+    {
+      "id": "nr-02-d102-diff-check-20261002",
+      "kind": "CONTRACT",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "D102 implementation and documentation diff has no whitespace errors.",
+      "observedAtUtc": "2026-10-02T16:34:21.936Z",
+      "artifactRef": "nr-02-d102-offline-verification-20261002",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSizeBytes": 6040
+    },
+    {
+      "id": "nr-02-d102-evidence-json-parse-20261002",
+      "kind": "CONTRACT",
+      "command": "jq empty docs/evidence/NR-02.json",
+      "exitCode": 0,
+      "testedSha": null,
+      "summary": "Evidence JSON parsed before linking the D102 verification artifact; rechecked after the pointer update.",
+      "observedAtUtc": "2026-10-02T16:34:21.936Z",
+      "artifactRef": "nr-02-d102-offline-verification-20261002",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSizeBytes": 6040
     }
   ],
   "decisionReceipts": [
@@ -1900,25 +1964,52 @@
         "merge"
       ],
       "source": "Configured Lead chat; complete raw assignment retained privately and correlation verified"
+    },
+    {
+      "assignmentId": "NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION",
+      "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
+      "messageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
+      "requestMessageId": "4c2b6f8e-b160-4ff3-8ccd-6206f9df4c28",
+      "responseSha256": "63b35f532cae914828041e958d2321e40c80789a821a6925ec19efd06089e2a0",
+      "responseBytes": 15692,
+      "rawPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/messages/lead-response-d102-f22d03c9.raw.txt",
+      "correlationVerified": true,
+      "baseSha": "e9e7812ff4058ce9fc1184e7275be2ebdcd99588",
+      "startingHeadSha": "323ec1f142b59fe04f2c1b34666c7c2fe08512c3",
+      "specHashAtAssignment": "e1475e7deffd4063c87bcfdd51f2e05b3e0f001349b39b83334f92baf5bfc6dd",
+      "decision": "FORMALLY_REVISE_AC2_UNAVAILABLE_TO_OBSERVABLE_613_CONTRACT",
+      "authorized": [
+        "bounded parser/runner/tests/docs revision",
+        "frozen-D100 offline reevaluation candidate only",
+        "commit/push to existing PR #3 branch",
+        "PR narrative update and exact-head CI",
+        "prepare review bundle hash; return DECISION_REQUEST"
+      ],
+      "prohibited": [
+        "LIVE retry and any runtime/network/browser/connector/tunnel/auth action",
+        "reviewer request until a new Lead authorization",
+        "merge"
+      ],
+      "source": "User-designated Lead ChatGPT conversation; correlation verified"
     }
   ],
   "worktreeVerification": {
-    "artifactRef": "nr-02-d73-offline-verification-20261001",
+    "artifactRef": "nr-02-d102-offline-verification-20261002",
     "exitCode": 0,
     "testedSha": null,
-    "testCount": 50,
+    "testCount": 55,
     "failedTestCount": 0,
-    "expectCalls": 312,
-    "focusedUnavailableTestCount": 13,
+    "expectCalls": 324,
+    "focusedUnavailableTestCount": 44,
     "focusedUnavailableFailedTestCount": 0,
-    "focusedUnavailableExpectCalls": 140,
+    "focusedUnavailableExpectCalls": 285,
     "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
-    "observedAtUtc": "2026-10-01T15:15:59Z",
-    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
-    "sha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
-    "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
-    "sizeBytes": 3540,
-    "artifactSizeBytes": 3540
+    "observedAtUtc": "2026-10-02T16:34:21.936Z",
+    "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+    "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+    "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+    "sizeBytes": 6040,
+    "artifactSizeBytes": 6040
   },
   "userAuthorizations": [
     {
@@ -1947,11 +2038,11 @@
   ],
   "currentCycle": {
     "cycle": 2,
-    "assignmentId": "NR-02-C2-D73-FULL-MODE-MISSING-CONNECTOR-RUNNER",
-    "assignmentMessageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
-    "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
-    "decisionMessageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
-    "status": "D73_OFFLINE_IMPLEMENTATION_VERIFIED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+    "assignmentId": "NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION",
+    "assignmentMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
+    "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
+    "decisionMessageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
+    "status": "D102_LOCAL_VERIFICATION_PASSED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
     "activeProductionBaseline": {
       "version": "6.1.3",
       "status": "PASS_READY_LEAD_REPORTED",
@@ -1964,10 +2055,10 @@
       "transportBinding": "not independently proven by a Responses/tool receipt"
     },
     "acceptance": {
-      "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
-      "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
-      "NR-02-AC2-unavailable": "NOT_PASS",
-      "NR-02-AC2-overall": "INCOMPLETE",
+      "NR-02-AC1": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+      "NR-02-AC2-cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+      "NR-02-AC2-unavailable": "PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE",
+      "NR-02-AC2-overall": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW",
       "NR-02-AC3": "DEFERRED_HARDENING",
       "NR-02-AC4": "PASS_DOCUMENTATION_ONLY_PENDING_EXACT_HEAD_CI"
     },
@@ -1979,10 +2070,10 @@
       "status": "NOT_FIXED",
       "reuseForCycle2": false
     },
-    "reviewerRequestNow": "NOT_AUTHORIZED_D73",
+    "reviewerRequestNow": "NOT_AUTHORIZED_UNDER_D102",
     "mergeAuthorization": "NOT_GRANTED",
-    "documentationVerificationRef": "nr-02-d73-offline-verification-20261001",
-    "nextRequiredAction": "Commit/push to the existing PR #3 branch, verify exact-head CI, update the PR narrative, then send Lead the correlated D73 DECISION_REQUEST with the new head, changed-file hashes, updated spec/task/evidence hashes, checks, and zero-side-effect confirmation. No live follow-up, reviewer request, or merge.",
+    "documentationVerificationRef": "nr-02-d102-offline-verification-20261002",
+    "nextRequiredAction": "Finish D102 offline implementation, exact-head CI, PR narrative and review-context bundle; then request a Lead decision to authorize an independent REVIEW_REQUEST.",
     "documentationVerificationArtifact": {
       "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d70-offline-verification-20261001.json",
       "sha256": "6c96db409ba65168157ac7cbda086a71a2470d2870d44bc2c7f914e69802faad",
@@ -2052,9 +2143,9 @@
       "liveTraffic": "NOT_RUN; D43 AUTHORIZES NO LIVE TRAFFIC"
     },
     "ac2": {
-      "cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW_PER_D73",
-      "unavailableConnectorOrTool": "NOT_PASS_D73_OFFLINE_ONLY",
-      "overall": "INCOMPLETE"
+      "cancellation": "PASS_LIVE_PENDING_INDEPENDENT_REVIEW",
+      "unavailableConnectorOrTool": "PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE",
+      "overall": "INCOMPLETE_PENDING_INDEPENDENT_REVIEW"
     },
     "leadDecisionObserved": {
       "decisionId": "NR-02-D41-SOURCE-CORRECTED-MINIMUM-LIVE-613",
@@ -2098,11 +2189,11 @@
       }
     },
     "currentLeadDecisionObserved": {
-      "decisionId": "NR-02-D73-OFFLINE-FULL-MODE-UNAVAILABLE-RUNNER-HARDENING",
-      "messageId": "b8f7f81e-56cd-4f45-b30d-3c51ea2816b7",
-      "inReplyTo": "5e670c6b-c870-4903-a657-4e91ce7cd387",
-      "responseSha256": "132ebe930a1ed2fad0f0731b544ea8fab11267ae3193a0f8e26dde3e1253e476",
-      "source": "Configured Lead chat; full task assignment saved privately and correlation verified"
+      "decisionId": "NR-02-D102-FORMALIZE-OBSERVABLE-613-UNAVAILABLE-CONTRACT",
+      "messageId": "f22d03c9-5a96-4c37-bc52-6f775493a5cd",
+      "inReplyTo": "4c2b6f8e-b160-4ff3-8ccd-6206f9df4c28",
+      "assignmentId": "NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION",
+      "source": "User-designated Lead ChatGPT conversation; correlated TASK_ASSIGNMENT saved privately"
     },
     "d49D50D51": {
       "d49": "Single AC1 attempt consumed; internal guard passed; terminal evidence discarded; tool outcome cannot be established.",
@@ -2164,30 +2255,45 @@
       "fullVerify": {
         "command": "PATH=\"$PWD/.nightreviewer/runtime/bun/bin:$PATH\" ./.nightreviewer/runtime/bun/bin/bun run verify",
         "exitCode": 0,
-        "testCount": 50,
+        "testCount": 55,
         "failedTestCount": 0,
-        "expectCalls": 312
+        "expectCalls": 324,
+        "build": "PASS",
+        "lint": "PASS",
+        "typecheck": "PASS",
+        "artifact": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/full-verify.log",
+          "sha256": "658cbfec31399ad8444de8d1549f83b82f2236951d456627753cf2911bd02ea3",
+          "sizeBytes": 7607,
+          "mode": "600"
+        }
       },
-      "focusedTests": {
-        "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-runner.test.ts --test-name-pattern unavailable",
+      "focusedSseUnavailable": {
+        "command": "./.nightreviewer/runtime/bun/bin/bun test tests/bridge-sse.test.ts tests/bridge-runner.test.ts",
         "exitCode": 0,
-        "testCount": 13,
+        "testCount": 44,
         "failedTestCount": 0,
-        "expectCalls": 140
+        "expectCalls": 285,
+        "artifact": {
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/focused-sse-unavailable.log",
+          "sha256": "87d3dcd6ee3cac2113c4ae0dd0d0762b34b2da90b054adb9820b5613fd751500",
+          "sizeBytes": 6279,
+          "mode": "600"
+        }
       },
       "diffCheck": "PASS",
-      "evidenceJsonParse": "PASS_AFTER_D73_ARTIFACT_LINK",
+      "evidenceJsonParse": "PASS_AFTER_D102_POINTER_UPDATE",
       "exactHeadCi": "PENDING_PUBLICATION",
       "productHttpRequests": 0,
       "runtimeStarts": 0,
       "browserInteractions": 0,
       "connectorCalls": 0,
       "tunnelActions": 0,
-      "observedAtUtc": "2026-10-01T15:15:59Z",
-      "artifactRef": "nr-02-d73-offline-verification-20261001",
-      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/nr-02-d73-offline-verification-20261001.json",
-      "artifactSha256": "5546f178dc6399bc8b71a32495dc75fa6a52bd96c518a018e03836465e3e7d9f",
-      "artifactSizeBytes": 3540
+      "observedAtUtc": "2026-10-02T16:34:21.936Z",
+      "artifactRef": "nr-02-d102-offline-verification-20261002",
+      "artifactPath": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+      "artifactSha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+      "artifactSizeBytes": 6040
     },
     "d53Attempt": {
       "decisionId": "NR-02-D53-ONE-DURABLE-HOST-NATIVE-AC1",
@@ -2410,6 +2516,130 @@
         "sha256": "2e0a81c79f7496bb36c3dbbde67a186c2537ffdaf7a42251d1d06c313ce4ffee",
         "sizeBytes": 33610
       }
+    },
+    "d102": {
+      "decision": "FORMALLY_REVISE_AC2_UNAVAILABLE_TO_OBSERVABLE_613_CONTRACT",
+      "startingHeadSha": "323ec1f142b59fe04f2c1b34666c7c2fe08512c3",
+      "startingSpecHash": "e1475e7deffd4063c87bcfdd51f2e05b3e0f001349b39b83334f92baf5bfc6dd",
+      "contract": {
+        "terminalEvent": "response.failed",
+        "responseStatus": "failed",
+        "errorType": "connector_error",
+        "errorCode": "connector_not_found",
+        "numericErrorStatusRequired": false,
+        "absentNumericStatus": null,
+        "localFallback502IsProviderEvidence": false,
+        "completeStreamAndExactPrePostIdleHealthRequired": true,
+        "fixtureExecutions": 0,
+        "continuationRequests": 0
+      },
+      "d100": {
+        "classification": "D100_UNAVAILABLE_OUTCOME_MISMATCH",
+        "acceptanceCredit": "NONE",
+        "liveRetryAuthorized": false,
+        "reevaluation": {
+          "id": "D100_D102_FROZEN_REEVALUATION",
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/d100-reevaluation.json",
+          "sha256": "bd78c04f7a9fa6c32c07e95a17403cffbfb9bb5c0fc4aa63a6405d07e390ea77",
+          "sizeBytes": 5162
+        },
+        "reviewerAttention": "D100 does not separately persist wrapper response.status; D101 exact 6.1.3 source audit supplies that observable field for reviewer adjudication.",
+        "immutableEvidence": [
+          {
+            "id": "D100_SANITIZED_SSE",
+            "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d100-7c9caab2/sanitized-sse-trace.json",
+            "sha256": "f0ded8cd34b26c9a32b7bf50d287689215acf391485edb7f9224dbcbdc035814",
+            "sizeBytes": 3124
+          },
+          {
+            "id": "D100_TERMINAL_CLASSIFICATION",
+            "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d100-7c9caab2/terminal-classification.json",
+            "sha256": "60bec1f9cea0c21e758613594f7be1574d2b366ed3357241c1515fcc5a03f1e5",
+            "sizeBytes": 5417
+          },
+          {
+            "id": "D101_SOURCE_AUDIT",
+            "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d101-9a2f2a16/source-audit.json",
+            "sha256": "41f907cc0a4d44854a68ef6f70c6332958977b8101ff01e0f63b0d8daa71a145",
+            "sizeBytes": 17266
+          }
+        ]
+      },
+      "implementation": {
+        "status": "IMPLEMENTED_PENDING_PUBLICATION_AND_EXACT_HEAD_CI",
+        "reviewerRequestAuthorization": "NOT_GRANTED",
+        "mergeAuthorization": "NOT_GRANTED",
+        "runtimeNetworkBrowserConnectorTunnelSideEffects": 0
+      },
+      "localVerification": {
+        "status": "PASS_LOCAL_PENDING_EXACT_HEAD_CI",
+        "verificationArtifact": {
+          "id": "D102_OFFLINE_VERIFICATION",
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+          "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+          "sizeBytes": 6040
+        },
+        "changedFilesBeforeEvidencePointerUpdate": [
+          {
+            "path": "docs/STATUS.md",
+            "sha256": "05770363fbea721c104e280536cdf460b73c9357a580818c8da1b523ec5a1f71",
+            "sizeBytes": 7063
+          },
+          {
+            "path": "docs/decisions/0002-bridge-contract.md",
+            "sha256": "9f222bed94ed43a417d1a11d1bc6c7a49972bf65f0aec937c23084167027732a",
+            "sizeBytes": 29673
+          },
+          {
+            "path": "docs/specs/NR-02.md",
+            "sha256": "25a76c36319f040a7325c024b751bf79fa067bdb0ba806ffb2bcd42e854ad147",
+            "sizeBytes": 13245
+          },
+          {
+            "path": "docs/tasks/NR-02.md",
+            "sha256": "c1646bf0959be9a104c95c02944c7032002f17c5db35c1d9a3675cf8289dd5d9",
+            "sizeBytes": 19150
+          },
+          {
+            "path": "scripts/bridge-spike.ts",
+            "sha256": "2d41773f66eff33ec9aa76ed669b06854bc99b10460e5db5f807b7d18df2c6da",
+            "sizeBytes": 97951
+          },
+          {
+            "path": "spikes/bridge/README.md",
+            "sha256": "76862bcb40191bd92da4f5511b8d916dd6d56f6878f8b65d8fd5bb47bb6857ac",
+            "sizeBytes": 20722
+          },
+          {
+            "path": "src/spikes/bridge-sse.ts",
+            "sha256": "4b825111c42f58366112a6873d9163ba4b74989f714d0dd5a45a9cf2423bfcd8",
+            "sizeBytes": 16381
+          },
+          {
+            "path": "tests/bridge-runner.test.ts",
+            "sha256": "53fba30b55b9cf3889f22327fbefb4668f5d194dd1063cf98840b2f1e62015fa",
+            "sizeBytes": 55390
+          },
+          {
+            "path": "tests/bridge-sse.test.ts",
+            "sha256": "239cdadbc88fe83085da2bd1fb3d746f4aa5c756d297e957705bebf8fa77934b",
+            "sizeBytes": 11377
+          }
+        ],
+        "exactHeadCi": "PENDING_PUBLICATION",
+        "fullVerifyExitCode": 0,
+        "focusedExitCode": 0,
+        "diffCheckExitCode": 0,
+        "evidenceJsonParseExitCode": 0
+      },
+      "evidenceRefs": [
+        {
+          "id": "D102_OFFLINE_VERIFICATION",
+          "path": ".nightreviewer/dev/d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0/evidence/d102-f22d03c9/verification.json",
+          "sha256": "74805bda7edea78f65e156824468f4caab4ae9a801cc82bc25e29c6f4071b479",
+          "sizeBytes": 6040
+        }
+      ]
     }
   }
 }

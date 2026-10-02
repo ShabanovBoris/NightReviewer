@@ -73,7 +73,7 @@ interface SanitizedUnavailableHealth {
 }
 
 interface UnavailableProbeEvidence {
-  readonly schemaVersion: "nr02-unavailable-evidence/1";
+  readonly schemaVersion: "nr02-unavailable-evidence/2";
   readonly expectedIsolatedPid: number;
   readonly expectedIsolatedPort: number;
   readonly productionPortGuard: number;
@@ -101,7 +101,8 @@ interface UnavailableProbeEvidence {
     | "incomplete"
     | "cancelled"
     | "stream_error";
-  typedStatus: number | null;
+  observedNumericStatus: number | null;
+  responseStatus: "failed" | "other" | null;
   typedErrorType: "connector_error" | "other" | null;
   typedCode: "connector_not_found" | "other" | null;
   responseFailedObserved: boolean;
@@ -1672,7 +1673,7 @@ function requireCompleted(
   if (outcome.kind !== "completed") {
     const summary =
       outcome.kind === "failed"
-        ? `${outcome.errorType}/${outcome.code} HTTP ${outcome.status}`
+        ? `${outcome.errorType}/${outcome.code} HTTP ${outcome.status ?? "unknown"}`
         : outcome.kind === "incomplete"
           ? outcome.reason
           : "cancelled";
@@ -2483,7 +2484,7 @@ function emptyUnavailableProbeEvidence(
   settings: UnavailableBridgeSettings,
 ): UnavailableProbeEvidence {
   return {
-    schemaVersion: "nr02-unavailable-evidence/1",
+    schemaVersion: "nr02-unavailable-evidence/2",
     expectedIsolatedPid: settings.expectedPid,
     expectedIsolatedPort: settings.expectedPort,
     productionPortGuard: settings.productionPort,
@@ -2500,7 +2501,8 @@ function emptyUnavailableProbeEvidence(
       frames: [],
     },
     terminalOutcomeKind: "not_observed",
-    typedStatus: null,
+    observedNumericStatus: null,
+    responseStatus: null,
     typedErrorType: null,
     typedCode: null,
     responseFailedObserved: false,
@@ -2570,12 +2572,15 @@ function storeUnavailableOutcome(
     "response.incomplete",
   );
   if (outcome.kind === "failed") {
-    evidence.typedStatus =
-      Number.isInteger(outcome.status) &&
-      outcome.status >= 100 &&
-      outcome.status <= 599
+    const responseFailedWasObserved =
+      observedEvents.includes("response.failed");
+    evidence.observedNumericStatus =
+      responseFailedWasObserved && typeof outcome.status === "number"
         ? outcome.status
         : null;
+    evidence.responseStatus = responseFailedWasObserved
+      ? outcome.responseStatus
+      : null;
     evidence.typedErrorType =
       outcome.errorType === "connector_error" ? "connector_error" : "other";
     evidence.typedCode =
@@ -2602,9 +2607,20 @@ function isExactUnavailableOutcome(
   );
   return (
     outcome?.kind === "failed" &&
-    outcome.status === 424 &&
+    outcome.responseStatus === "failed" &&
     outcome.errorType === "connector_error" &&
     outcome.code === "connector_not_found" &&
+    evidence.outerHttpStatus === 200 &&
+    evidence.outerContentTypeClass === "text/event-stream" &&
+    evidence.responseStatus === "failed" &&
+    evidence.preHealth.observed &&
+    evidence.preHealth.service === "codex-chatgpt-web" &&
+    evidence.preHealth.pid === evidence.expectedIsolatedPid &&
+    evidence.preHealth.port === evidence.expectedIsolatedPort &&
+    evidence.preHealth.version === EXPECTED_UPSTREAM_VERSION &&
+    evidence.preHealth.mode === "full" &&
+    evidence.preHealth.acceptingTurns === true &&
+    evidence.preHealth.idle === true &&
     evidence.sanitizedSseTrace.complete &&
     terminalFrames.length === 1 &&
     terminalFrames[0]?.event === "response.failed" &&
@@ -2837,7 +2853,8 @@ export async function runUnavailableConnectorProbe(
       },
       outcome: {
         kind: "failed",
-        status: 424,
+        responseStatus: "failed",
+        observedNumericStatus: evidence.observedNumericStatus,
         errorType: "connector_error",
         code: "connector_not_found",
       },

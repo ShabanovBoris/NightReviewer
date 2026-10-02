@@ -5,7 +5,7 @@
 | Task | Status | PR / evidence |
 |---|---|---|
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
-| NR-02 | IN_PROGRESS — D56 offline ChatGPT-Web route remediation; D53 AC1 is UNVERIFIED after HTTP 400 before tool call; no new LIVE action authorized | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-D53-WEB-ROUTE-CONTRACT-REMEDIATION; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588 |
+| NR-02 | IN_PROGRESS — D102 revises AC2-unavailable to the observable 6.1.3 SSE contract; frozen D100 evidence awaits independent review | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-D102-AC2-OBSERVABLE-CONTRACT-REVISION; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588 |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |
 | NR-05 | PLANNED | — |
@@ -25,7 +25,17 @@
 | NR-19 | PLANNED | — |
 | NR-20 | PLANNED | — |
 
-## NR-02 current cycle 2 — D53–D56
+## NR-02 current cycle 2 — D102
+
+Lead D102 is bound to PR #3 base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`, starting head `323ec1f142b59fe04f2c1b34666c7c2fe08512c3`, and spec hash `e1475e7deffd4063c87bcfdd51f2e05b3e0f001349b39b83334f92baf5bfc6dd`. It formally replaces the numeric `error.status=424` AC2-unavailable gate with the pinned 6.1.3 observable SSE fields `response.failed`, `response.status="failed"`, `error.type=connector_error`, and `error.code=connector_not_found`, while retaining complete-stream, no-tool/no-continuation, exact pre/post identity, and idle-health guards.
+
+D100's sole LIVE request is consumed as `D100_UNAVAILABLE_OUTCOME_MISMATCH` with `acceptanceCredit=NONE`; it will not be retried. D101 shows the old parser's `502` was a local fallback. D102 authorizes an offline parser/runner/test/docs correction, frozen-D100 reevaluation as a candidate for independent review, commit/push to the existing PR #3 branch, PR narrative update, and exact-head CI. It authorizes no runtime, bridge, browser, connector, fixture, tunnel, or credential action.
+
+Current acceptance state: AC1 `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 cancellation `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 unavailable `PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE`; AC2 overall `INCOMPLETE_PENDING_INDEPENDENT_REVIEW`; AC3 `DEFERRED_HARDENING`. Reviewer request is not yet authorized; merge is not authorized.
+
+The preserved D99B isolated broker PID `54713` / port `4181`, authenticated D97 development Electron PID `49134`, and protected PID `11169` are outside D102 scope and must remain unchanged.
+
+## Historical implementation context — D53–D56
 
 Lead D56 requires NR-02 AC1 to traverse the ChatGPT-Web browser adapter on the existing production Codex Web GPT runtime `6.1.3` and unchanged connector `Codex Native2`, selected by production `config.appName`. The runtime version and routed browser model are distinct: the only assigned AC1 route is `chatgpt-web/gpt-5.6-sol` with `high` reasoning. AC1–AC4 are unchanged.
 

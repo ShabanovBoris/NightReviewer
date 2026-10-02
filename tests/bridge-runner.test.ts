@@ -166,13 +166,14 @@ function unavailableProbeFixture(
 
 /** Models the expected streamed missing-connector failure returned inside HTTP 200. */
 function unavailableFailureResponse(
-  status = 424,
+  status: number | undefined = undefined,
   type = "connector_error",
   code = "connector_not_found",
   extraEvents: readonly {
     readonly name: string;
     readonly body: Record<string, unknown>;
   }[] = [],
+  responseStatus: string | null = "failed",
 ): Response {
   return sseResponse([
     {
@@ -181,13 +182,32 @@ function unavailableFailureResponse(
         type: "response.failed",
         response: {
           id: "resp_nr02_unavailable",
-          status: "failed",
-          error: { status, type, code },
+          ...(responseStatus === null ? {} : { status: responseStatus }),
+          error: {
+            ...(status === undefined ? {} : { status }),
+            type,
+            code,
+          },
         },
       },
     },
     ...extraEvents,
   ]);
+}
+
+/** Models D100's sanitized event-count/outcome projection with the pinned 6.1.3 failed-event shape. */
+function frozenD100Response(): Response {
+  const created =
+    'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_frozen_d100"}}\n\n';
+  const heartbeats = Array.from(
+    { length: 9 },
+    () => 'event: response.heartbeat\ndata: {"type":"response.heartbeat"}\n\n',
+  ).join("");
+  const failed =
+    'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_frozen_d100","status":"failed","error":{"type":"connector_error","code":"connector_not_found"}}}\n\n';
+  return new Response(`${created}${heartbeats}${failed}data: [DONE]\n\n`, {
+    headers: { "content-type": "text/event-stream" },
+  });
 }
 
 /** Produces a completed, optionally invalid tool-call turn for host-side callback validation tests. */
@@ -378,7 +398,8 @@ test("unavailable probe accepts only the guarded full-mode failure and writes a 
     status: "pass",
     outcome: {
       kind: "failed",
-      status: 424,
+      responseStatus: "failed",
+      observedNumericStatus: null,
       errorType: "connector_error",
       code: "connector_not_found",
     },
@@ -393,7 +414,7 @@ test("unavailable probe accepts only the guarded full-mode failure and writes a 
   });
   const evidence = readUnavailableEvidence();
   expect(evidence).toMatchObject({
-    schemaVersion: "nr02-unavailable-evidence/1",
+    schemaVersion: "nr02-unavailable-evidence/2",
     expectedIsolatedPid: 24680,
     expectedIsolatedPort: 17841,
     productionPortGuard: 17842,
@@ -402,7 +423,8 @@ test("unavailable probe accepts only the guarded full-mode failure and writes a 
     outerHttpStatus: 200,
     outerContentTypeClass: "text/event-stream",
     terminalOutcomeKind: "failed",
-    typedStatus: 424,
+    observedNumericStatus: null,
+    responseStatus: "failed",
     typedErrorType: "connector_error",
     typedCode: "connector_not_found",
     responseFailedObserved: true,
@@ -431,10 +453,92 @@ test("unavailable probe accepts only the guarded full-mode failure and writes a 
       idle: true,
     },
   });
+  expect(JSON.stringify(evidence)).not.toContain('"observedNumericStatus":502');
   expect(
     statSync(UNAVAILABLE_ENV.BRIDGE_SPIKE_UNAVAILABLE_EVIDENCE_PATH).mode &
       0o777,
   ).toBe(0o600);
+});
+
+test("unavailable route records but does not gate on an optional numeric status", async () => {
+  const fixture = unavailableProbeFixture(unavailableFailureResponse(502));
+  const receipt = await runUnavailableConnectorProbe(
+    UNAVAILABLE_ENV,
+    fixture.fetcher,
+  );
+
+  expect(receipt.status).toBe("pass");
+  expect(receipt.outcome).toMatchObject({
+    kind: "failed",
+    responseStatus: "failed",
+    observedNumericStatus: 502,
+    errorType: "connector_error",
+    code: "connector_not_found",
+  });
+  expect(readUnavailableEvidence()).toMatchObject({
+    observedNumericStatus: 502,
+    responseStatus: "failed",
+    terminalClassification: "PASS",
+  });
+});
+
+test("offline D100 event projection satisfies the revised predicate without numeric status", async () => {
+  const fixture = unavailableProbeFixture(frozenD100Response());
+  const receipt = await runUnavailableConnectorProbe(
+    UNAVAILABLE_ENV,
+    fixture.fetcher,
+  );
+
+  expect(receipt.status).toBe("pass");
+  expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
+    "/healthz",
+    "/v1/responses",
+    "/healthz",
+  ]);
+  expect(readUnavailableEvidence()).toMatchObject({
+    outerHttpStatus: 200,
+    outerContentTypeClass: "text/event-stream",
+    sanitizedSseTrace: { complete: true, frameCount: 12 },
+    terminalOutcomeKind: "failed",
+    responseStatus: "failed",
+    observedNumericStatus: null,
+    typedErrorType: "connector_error",
+    typedCode: "connector_not_found",
+    responseFailedObserved: true,
+    responseCompletedObserved: false,
+    responseIncompleteObserved: false,
+    functionOrToolEvidenceObserved: false,
+    fixtureReadsExecuted: 0,
+    continuationRequests: 0,
+    postHealth: { observed: true, sameProcess: true, idle: true },
+    terminalClassification: "PASS",
+  });
+});
+
+test("unavailable route requires the observable response wrapper status", async () => {
+  for (const responseStatus of [null, "completed"] as const) {
+    const fixture = unavailableProbeFixture(
+      unavailableFailureResponse(
+        undefined,
+        "connector_error",
+        "connector_not_found",
+        [],
+        responseStatus,
+      ),
+    );
+    await expect(
+      runUnavailableConnectorProbe(UNAVAILABLE_ENV, fixture.fetcher),
+    ).rejects.toThrow("typed connector_not_found contract");
+    expect(fixture.requests.map(({ url }) => url.pathname)).toEqual([
+      "/healthz",
+      "/v1/responses",
+      "/healthz",
+    ]);
+    expect(readUnavailableEvidence()).toMatchObject({
+      responseStatus: responseStatus === null ? null : "other",
+      terminalClassification: "FAIL",
+    });
+  }
 });
 
 test("unavailable mode works with API key and client version both absent", async () => {
@@ -593,12 +697,8 @@ test("unavailable route never uses model catalog and persists non-stream HTTP mi
   });
 });
 
-test("unavailable route rejects any typed error mismatch, completion, or incomplete stream", async () => {
+test("unavailable route rejects typed error mismatch, completion, or incomplete stream", async () => {
   const cases = [
-    {
-      response: unavailableFailureResponse(500),
-      expected: "typed connector_not_found contract",
-    },
     {
       response: unavailableFailureResponse(424, "upstream_error"),
       expected: "typed connector_not_found contract",

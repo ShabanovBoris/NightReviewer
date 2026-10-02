@@ -55,11 +55,15 @@ Only after a later Lead decision explicitly authorizes a bounded LIVE attempt, s
 bun run bridge:live
 ```
 
-Only if AC1 passes and post-AC1 health is healthy and idle, and a current Lead decision explicitly authorizes cancellation, may one synthetic cancellation use `--cancel-only`. The unavailable-connector command is not authorized and must not be run.
+Only if AC1 passes and post-AC1 health is healthy and idle, and a current Lead decision explicitly authorizes cancellation, may one synthetic cancellation use `--cancel-only`. The unavailable-connector command is not currently authorized; D102 changes its offline acceptance contract but does not authorize another LIVE request.
 
 ```sh
 bun run bridge:cancel
 ```
+
+## D102 observable 6.1.3 unavailable-connector contract
+
+The pinned 6.1.3 SSE contract is outer HTTP 200 `text/event-stream`, one complete terminal `response.failed`, wrapper `response.status="failed"`, `error.type="connector_error"`, and `error.code="connector_not_found"`. Numeric `error.status=424` may exist internally but is not serialized by this runtime; it is not an acceptance gate. An absent numeric field remains absent, and a local parser fallback such as `502` must not be reported as provider evidence. The runner retains exact pre/post health identity, complete-stream, and no-tool/no-continuation guards. D100 remains consumed with no acceptance credit pending independent review of the D102 contract and frozen evidence.
 
 The AC1 receipt includes generated turn identity, one canary, response/call IDs, argument digest, fixture key/byte length/SHA-256, sanitized SSE traces, final correlation, timestamps and `liveTrace` digest/size. It excludes fixture contents, model output and credentials. Cancellation control tokens remain process-local and never enter evidence. The runner fails closed on unexpected tool calls, malformed continuation, incomplete trace, wrong canary/digest, non-idle bridge or changed process identity.
 

@@ -25,7 +25,8 @@ export type BridgeSseOutcome = (
     }
   | {
       readonly kind: "failed";
-      readonly status: number;
+      readonly status: number | null;
+      readonly responseStatus: "failed" | "other" | null;
       readonly errorType: string;
       readonly code: string;
       readonly events: readonly string[];
@@ -96,6 +97,13 @@ function record(value: unknown): Record<string, unknown> | undefined {
 /** Extracts optional protocol strings without coercing numbers or nested values. */
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/** Keeps the Responses wrapper status allowlisted and distinct from numeric error.status. */
+function responseStatusField(value: unknown): "failed" | "other" | null {
+  const status = stringField(value);
+  if (!status) return null;
+  return status === "failed" ? "failed" : "other";
 }
 
 /** Keeps evidence to known Responses event names instead of retaining provider-controlled payloads. */
@@ -222,6 +230,7 @@ export async function readBridgeSse(
     return withTrace({
       kind: "failed",
       status: response.status,
+      responseStatus: null,
       errorType: stringField(error?.type) ?? "http_error",
       code: stringField(error?.code) ?? `http_${response.status}`,
       events: [],
@@ -289,7 +298,8 @@ export async function readBridgeSse(
       }
       terminal = {
         kind: "failed",
-        status: 502,
+        status: null,
+        responseStatus: null,
         errorType: "bridge_protocol_error",
         code: "invalid_sse_json",
         events: [...events],
@@ -364,7 +374,8 @@ export async function readBridgeSse(
         if (!call.callId || !call.name || !call.complete) {
           terminal = {
             kind: "failed",
-            status: 502,
+            status: null,
+            responseStatus: null,
             errorType: "bridge_protocol_error",
             code: call.complete
               ? "function_call_missing_identity"
@@ -407,7 +418,8 @@ export async function readBridgeSse(
       const error = record(responseBody?.error) ?? record(body.error);
       terminal = {
         kind: "failed",
-        status: typeof error?.status === "number" ? error.status : 502,
+        status: typeof error?.status === "number" ? error.status : null,
+        responseStatus: responseStatusField(responseBody?.status),
         errorType: stringField(error?.type) ?? "upstream_error",
         code: stringField(error?.code) ?? "response_failed",
         events: [...events],

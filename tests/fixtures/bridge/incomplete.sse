@@ -1,0 +1,4 @@
+event: response.incomplete
+data: {"type":"response.incomplete","response":{"id":"resp_partial","status":"incomplete","incomplete_details":{"reason":"adapter_eof"}}}
+
+data: [DONE]

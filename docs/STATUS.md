@@ -1,13 +1,11 @@
 # Реестр реализации
 
-Исходный статус: подготовлены только план и задания; продукт не реализован и не принят.
-
-Источник истины выполнения — GitHub merged state + development receipt ledger, не галочка автора. В task PR обновлять planned/in-progress/evidence refs до финального review. Факт merge отражать в следующем reviewable обновлении либо external ledger, чтобы не менять одобренный SHA ради self-referential отчёта.
+Источник истины выполнения — merged state GitHub и receipt ledger. NR-01…NR-20 остаются отдельными bounded PR; документация сама по себе не означает реализацию или приёмку.
 
 | Task | Status | PR / evidence |
 |---|---|---|
-| NR-01 | IN_PROGRESS | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2); lead assignment `73c55f02-551c-463c-b272-dcaf11a3b695`; implementation branch `nr-01-foundation` |
-| NR-02 | PLANNED | — |
+| NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
+| NR-02 | IN_PROGRESS — D105 corrects acceptance evidence: D66 AC1 and D67 cancellation receipts await independent review; D100 unavailable evidence also awaits review | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-D105-R2-FINDINGS-EVIDENCE-STATUS-REMEDIATION; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588 |
 | NR-03 | PLANNED | — |
 | NR-04 | PLANNED | — |
 | NR-05 | PLANNED | — |
@@ -27,6 +25,42 @@
 | NR-19 | PLANNED | — |
 | NR-20 | PLANNED | — |
 
-Session prerequisites: lead and reviewer returned READY for `main@d7086db6210ed96aedae835a56f9b60546ca3fd3`; ignored local config contains two different chat URLs; Bun 1.4.2 verified on macOS arm64; live model/connector and bridge capabilities NOT_VERIFIED.
+## NR-02 current cycle 2 — D105
 
-Final acceptance: NOT_REQUESTED. Main release SHA: отсутствует. PROJECT_ACCEPTED: отсутствует.
+Lead D105 is bound to PR #3, base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`, starting head `08f0951b0692ebe60deb84b999eaa935b7aa3180`, and the NR-02 spec revision supplied with the assignment. Its offline evidence audit found a qualifying D66 AC1 round-trip receipt and D67 cancellation receipt. Both remain `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; neither is final acceptance. The original D66/D67 receipts and D100 pre-health files remain immutable in the private session evidence store.
+
+Current acceptance state: AC1 `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 cancellation `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 unavailable `PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE`; AC2 overall `INCOMPLETE`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW`. Reviewer bootstrap and one fix review are conditionally authorized after D105 publication, exact-head CI, and final review-context construction. Merge is not authorized. D105 permits no new LIVE, runtime, browser, connector, tunnel, or credential action.
+
+### Operative AC2-unavailable contract from D102
+
+Lead D102 is bound to PR #3 base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`, starting head `323ec1f142b59fe04f2c1b34666c7c2fe08512c3`, and spec hash `e1475e7deffd4063c87bcfdd51f2e05b3e0f001349b39b83334f92baf5bfc6dd`. It formally replaces the numeric `error.status=424` AC2-unavailable gate with the pinned 6.1.3 observable SSE fields `response.failed`, `response.status="failed"`, `error.type=connector_error`, and `error.code=connector_not_found`, while retaining complete-stream, no-tool/no-continuation, exact pre/post identity, and idle-health guards.
+
+D100's sole LIVE request is consumed as `D100_UNAVAILABLE_OUTCOME_MISMATCH` with `acceptanceCredit=NONE`; it will not be retried. D101 shows the old parser's `502` was a local fallback. D102 authorizes an offline parser/runner/test/docs correction, frozen-D100 reevaluation as a candidate for independent review, commit/push to the existing PR #3 branch, PR narrative update, and exact-head CI. It authorizes no runtime, bridge, browser, connector, fixture, tunnel, or credential action.
+
+At the time of D102, AC1 and cancellation were already recorded as pending independent review, AC2 overall was incomplete, and reviewer-request authorization had not been granted. D105 supplies the qualifying D66/D67 receipts and governs the current reviewer step above.
+
+The preserved D99B isolated broker PID `54713` / port `4181`, authenticated D97 development Electron PID `49134`, and protected PID `11169` are outside D102 scope and must remain unchanged.
+
+## Historical implementation context — D53–D56
+
+Lead D56 requires NR-02 AC1 to traverse the ChatGPT-Web browser adapter on the existing production Codex Web GPT runtime `6.1.3` and unchanged connector `Codex Native2`, selected by production `config.appName`. The runtime version and routed browser model are distinct: the only assigned AC1 route is `chatgpt-web/gpt-5.6-sol` with `high` reasoning. AC1–AC4 are unchanged.
+
+Historical state at D53/D56:
+- D53's one AC1 invocation was consumed. Its health and catalog guards passed; its initial `/v1/responses` call returned HTTP 400 before any tool call, fixture read, or continuation. That attempt had no acceptance credit; the later qualifying D66 receipt now sets current AC1 status to `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`.
+- D55 classifies the 400 as `NON_REQUEST_CONTRACT_400`: `gpt-6.1-sol` selects the native passthrough in upstream 6.1.3, not the browser adapter. The exact downstream 400 cause is unknown and is not attributed to the model-routing discrepancy.
+- D56 authorized offline route remediation, deterministic tests, documentation, commit/push to the existing PR #3 branch, PR narrative update, and exact-head CI. It required rejecting every model except `chatgpt-web/gpt-5.6-sol` before network-capable execution, verifying that exact catalog row advertises `high`, and recording the route/effort in sanitized stage evidence.
+- D52 durable evidence capture remains in place. D56 authorizes no production HTTP, connector call, LIVE retry, cancellation, unavailable-connector/tool probe, AC3 matrix, DEV operation, or production/DEV runtime, tunnel, connector, credential, permission, or configuration change.
+- At D56, AC2 cancellation was `NOT_RUN`; D67 later supplied a qualifying cancellation receipt pending independent review. The unavailable connector/tool remains pending review of the D102 contract and frozen D100 evidence. AC3 remains `DEFERRED_HARDENING`; AC4 remains documentation-only and pending independent review.
+- At D56, reviewer request was not authorized and merge authorization had not been granted. D105 now conditionally authorizes one fresh reviewer bootstrap and fix review after publication, exact-head CI, and context finalization; merge remains unauthorized.
+
+D52 requires a stable run ID and exact PR head before any network-capable child stage; synchronously flushed events for attempts before their side effects; distinct request-attempt and response-receipt stages; a terminal success/failure with the last proven stage; exact UTC start/finish and child exit code/signal; and host-native private capture of complete stdout/stderr. The wrapper precreates owner-only artifacts before child spawn, stores raw streams only under ignored `.nightreviewer/`, and returns a sanitized receipt with hashes, byte counts, allowlisted metadata and terminal classification. A missing, malformed, reordered, unsafe or incomplete ledger fails closed.
+
+The D56 offline verification covered route rejection before the first fetch, canonical settings, catalog/high reasoning, simulated request preservation, route evidence, and zero real fetches. Those checks did not establish AC1; the later D66 LIVE receipt is the evidence now pending independent review. D105 supersedes D56's next-step instructions: publish the status/evidence correction, obtain exact-head CI, finalize the new context, and perform only the conditionally authorized reviewer bootstrap and fix review. No new LIVE attempt is authorized.
+
+D49–D56 source receipts and the D53/D55 route findings are recorded in the private session ledger and summarized in `docs/evidence/NR-02.json`. D43's catalog correction and earlier CI remain historical; they do not verify the D56 head.
+
+## Historical decisions and evidence
+
+Lead decisions D1–D40, cycle 1 source-audit material, DEV diagnostics, D3/D5/D6 procedures, and prior reviewer receipts remain preserved in the private session journal and evidence history. Their 6.1.1, shared-runtime handoff, connector `Codex Native2 NR-02`, and three-context acceptance assumptions are historical where they conflict with D40/D41. No earlier LIVE request, tool round-trip, cancellation receipt, or three-context result is promoted to current acceptance.
+
+Финальная приёмка: NOT_REQUESTED. Release main SHA: отсутствует. PROJECT_ACCEPTED: отсутствует.

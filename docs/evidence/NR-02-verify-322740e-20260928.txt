@@ -1,0 +1,37 @@
+$ bun run typecheck && bun run lint && bun run test && bun run build
+$ tsc --noEmit
+$ biome check src tests scripts
+Checked 9 files in 8ms. No fixes applied.
+$ bun test
+bun test v1.4.2 (744846f84)
+
+tests/cancellation-contract.test.ts:
+(pass) D6 window starts at the successful acknowledgement [0.05ms]
+(pass) D6 window includes termination at 10 seconds and rejects later reads
+(pass) D6 window cannot pass without a successful acknowledgement timestamp
+
+tests/session-config.test.ts:
+(pass) accepts the documented sample session config [0.23ms]
+(pass) rejects two role URLs that resolve to the same conversation [0.07ms]
+(pass) rejects non-HTTPS chat URLs without including their value in the error [0.04ms]
+
+tests/bridge-sse.test.ts:
+(pass) reassembles chunked SSE tool calls and preserves the completed response [0.72ms]
+(pass) preserves event names when CRLF is split across stream chunks [0.09ms]
+(pass) keeps connector failures typed instead of treating them as empty output [0.20ms]
+(pass) preserves partial completion as incomplete [0.15ms]
+(pass) treats EOF without a terminal event as incomplete [0.07ms]
+(pass) preserves a response.completed event that follows an earlier terminal [0.06ms]
+(pass) reports a terminal event before the response body closes [0.20ms]
+(pass) does not expose a function call before the item-done event [0.07ms]
+(pass) classifies an aborted stream as cancellation [0.15ms]
+(pass) retains typed HTTP errors from a non-streaming response [0.04ms]
+
+ 16 pass
+ 0 fail
+ 21 expect() calls
+Ran 16 tests across 3 files. [6.00ms]
+$ bun build src/index.ts --outdir dist --target bun
+Bundled 2 modules in 2ms
+
+  index.js  3.39 KB  (entry point)

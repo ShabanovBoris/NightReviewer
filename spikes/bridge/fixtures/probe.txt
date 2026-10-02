@@ -1,0 +1,2 @@
+NightReviewer NR-02 controlled read-only fixture.
+Only the bridge spike harness reads this file.

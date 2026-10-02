@@ -10,7 +10,11 @@
     "lint": "biome check src tests scripts",
     "test": "bun test",
     "build": "bun build src/index.ts --outdir dist --target bun",
-    "verify": "bun run typecheck && bun run lint && bun run test && bun run build"
+    "verify": "bun run typecheck && bun run lint && bun run test && bun run build",
+    "bridge:preflight": "bun run scripts/bridge-spike.ts --live --preflight-only",
+    "bridge:live": "bun run scripts/bridge-live-capture.ts",
+    "bridge:cancel": "bun run scripts/bridge-spike.ts --live --cancel-only",
+    "bridge:unavailable": "bun run scripts/bridge-spike.ts --live --connector-unavailable-only"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

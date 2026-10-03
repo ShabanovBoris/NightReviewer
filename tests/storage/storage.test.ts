@@ -104,10 +104,13 @@ test("persists review state, raw result, finding provenance, and snapshot across
     first = await openStorage({ rootDir: storeDir });
     const review = await createReview(first);
     const manifest = {
+      snapshotId: "snapshot-1",
+      cycleId: review.cycleId,
       objectFormat: "sha1",
       baseSha: review.revisions.baseSha,
       headSha: review.revisions.headSha,
       files: [],
+      coverage: { complete: true },
     } as const;
     const manifestHash = hashCanonicalJson(manifest);
     first.applyCycleCommand("test-caller", review.cycleId, {
@@ -386,10 +389,13 @@ test("submits a fix atomically against the authoritative finding set and state v
     const primaryStore = store;
     const review = await createReview(primaryStore);
     const manifest = {
+      snapshotId: "fix-snapshot-1",
+      cycleId: review.cycleId,
       objectFormat: "sha1",
       baseSha: review.revisions.baseSha,
       headSha: review.revisions.headSha,
       files: [],
+      coverage: { complete: true },
     } as const;
     const manifestHash = hashCanonicalJson(manifest);
     primaryStore.applyCycleCommand("test-caller", review.cycleId, {
@@ -542,6 +548,57 @@ test("submits a fix atomically against the authoritative finding set and state v
         },
       },
     });
+  } finally {
+    await closeStoresAndRemove(root, [store]);
+  }
+});
+
+test("refuses REVIEWING when the pinned snapshot has incomplete coverage", async () => {
+  const root = await temporaryRoot();
+  let store: SqliteStorage | undefined;
+  try {
+    store = await openStorage({ rootDir: path.join(root, "store") });
+    const activeStore = store;
+    const review = await createReview(activeStore);
+    const manifest = {
+      snapshotId: "incomplete-snapshot-1",
+      cycleId: review.cycleId,
+      objectFormat: "sha1",
+      baseSha: review.revisions.baseSha,
+      headSha: review.revisions.headSha,
+      coverage: {
+        complete: false,
+        limitations: ["BINARY_CONTENT"],
+      },
+    } as const;
+    const manifestHash = hashCanonicalJson(manifest);
+    activeStore.applyCycleCommand("test-caller", review.cycleId, {
+      type: "ADVANCE",
+      target: "SNAPSHOTTING",
+      expectedVersion: 0,
+      idempotencyKey: "incomplete-snapshot-start",
+    });
+    activeStore.recordSnapshot({
+      snapshotId: manifest.snapshotId,
+      cycleId: review.cycleId,
+      objectFormat: manifest.objectFormat,
+      baseSha: manifest.baseSha,
+      headSha: manifest.headSha,
+      manifestHash,
+      manifest,
+      createdAtUtc: timestamp,
+    });
+
+    expect(() =>
+      activeStore.applyCycleCommand("test-caller", review.cycleId, {
+        type: "ADVANCE",
+        target: "REVIEWING",
+        expectedVersion: 1,
+        idempotencyKey: "incomplete-snapshot-reviewing",
+        evidence: { durableManifestRecorded: true, manifestHash },
+      }),
+    ).toThrow("complete snapshot content coverage");
+    expect(activeStore.readCycle(review.cycleId).state).toBe("SNAPSHOTTING");
   } finally {
     await closeStoresAndRemove(root, [store]);
   }

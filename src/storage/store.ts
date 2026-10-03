@@ -1830,7 +1830,9 @@ export class SqliteStorage {
     }
     const snapshot = this.db
       .query(
-        `SELECT 1 AS found FROM snapshots
+        `SELECT snapshot_id, object_format, base_sha, head_sha,
+                manifest_hash, manifest_json
+         FROM snapshots
          WHERE cycle_id = ? AND object_format = ? AND base_sha = ? AND head_sha = ?
            AND manifest_hash = ?
          LIMIT 1`,
@@ -1841,10 +1843,53 @@ export class SqliteStorage {
         state.revisions.baseSha,
         state.revisions.headSha,
         state.manifestHash,
-      );
+      ) as {
+      snapshot_id: string;
+      object_format: "sha1" | "sha256";
+      base_sha: string;
+      head_sha: string;
+      manifest_hash: string;
+      manifest_json: string;
+    } | null;
     if (snapshot == null) {
       throw conflict(
         "REVIEWING state requires a stored snapshot with matching pinned revisions and manifest hash.",
+      );
+    }
+    const manifest = parseJson<ProtocolJsonValue>(snapshot.manifest_json);
+    let manifestMatchesStorage = false;
+    try {
+      manifestMatchesStorage =
+        canonicalJson(manifest) === snapshot.manifest_json &&
+        hashCanonicalJson(manifest) === snapshot.manifest_hash;
+    } catch {
+      manifestMatchesStorage = false;
+    }
+    if (!manifestMatchesStorage) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest is not canonical or does not match its immutable hash.",
+      );
+    }
+    if (!isJsonObject(manifest)) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest does not match its pinned snapshot identity.",
+      );
+    }
+    if (
+      manifest.snapshotId !== snapshot.snapshot_id ||
+      manifest.cycleId !== cycleId ||
+      manifest.objectFormat !== snapshot.object_format ||
+      manifest.baseSha !== snapshot.base_sha ||
+      manifest.headSha !== snapshot.head_sha
+    ) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest does not match its pinned snapshot identity.",
+      );
+    }
+    const coverage = manifest.coverage;
+    if (!isJsonObject(coverage) || coverage.complete !== true) {
+      throw conflict(
+        "REVIEWING state requires complete snapshot content coverage.",
       );
     }
   }
@@ -2465,6 +2510,10 @@ function parseJson<T = unknown>(json: string): T {
   } catch {
     throw needsReconciliation("Persisted JSON value is malformed.");
   }
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapProtocolTransitionError(code: string): StorageError {

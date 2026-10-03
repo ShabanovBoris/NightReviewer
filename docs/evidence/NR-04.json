@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-04",
+  "assignmentId": "NR-04-C1-D115-SQLITE-DURABLE-ARTIFACT-STORE",
+  "baseSha": "c0a70dcc6e46e5fec0f37751c7abb0f724e73c93",
+  "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+  "testedTreeSha": "fffaa5113f4c4ed113c5fb6fca30668ce70c3798",
+  "acceptance": [
+    {
+      "acceptanceId": "NR-04-AC1",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "command": "bun test tests/storage/storage.test.ts",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/storage/storage.test.ts#sha256:062142eb6d0b2d0a0974c3a7cde2075fd220f05379e1984165da13041b8c9226"
+      ],
+      "notes": "PASS for real temporary SQLite restart persistence: cycle state/version, snapshot manifest and hash, run status, raw result bytes, canonical finding and source provenance survive close/reopen. Integrity and foreign-key checks are clean. Deterministic contract coverage only; no LIVE product calls."
+    },
+    {
+      "acceptanceId": "NR-04-AC2",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "command": "bun test tests/storage/storage.test.ts",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/storage/storage.test.ts#sha256:062142eb6d0b2d0a0974c3a7cde2075fd220f05379e1984165da13041b8c9226"
+      ],
+      "notes": "PASS for two-connection idempotent submit replay, payload mismatch conflict, expected-version conflict, bounded SQLite writer-lock conflict, event/outbox transaction rollback, and exact finding-set fix submission with atomic VERIFYING_FIX transition."
+    },
+    {
+      "acceptanceId": "NR-04-AC3",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "command": "bun test tests/storage/storage.test.ts",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/storage/storage.test.ts#sha256:062142eb6d0b2d0a0974c3a7cde2075fd220f05379e1984165da13041b8c9226"
+      ],
+      "notes": "PASS for malformed raw byte preservation, injected database failure after atomic artifact publication, no successful result reference after rollback, and detection of orphan, temporary, hash-mismatched, and missing artifacts. Reconciliation does not promote or delete files."
+    },
+    {
+      "acceptanceId": "NR-04-AC4",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "command": "bun test tests/storage/storage.test.ts",
+      "exitCode": 0,
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/storage/storage.test.ts#sha256:062142eb6d0b2d0a0974c3a7cde2075fd220f05379e1984165da13041b8c9226"
+      ],
+      "notes": "PASS for verified backup/restore, exact raw artifact hashes, tampered backup rejection, populated v1 forward-migration backup and data preservation, unknown future schema refusal, and nonempty unversioned database preservation."
+    }
+  ],
+  "checks": [
+    {
+      "id": "macos-bun-verify",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0; TypeScript 7.0.2; Biome 2.5.14",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "testedTreeSha": "fffaa5113f4c4ed113c5fb6fca30668ce70c3798",
+      "summary": "Typecheck, lint, all 90 tests (984 assertions), and bun build passed on the exact commit."
+    },
+    {
+      "id": "storage-focused-tests",
+      "command": "bun test tests/storage/storage.test.ts",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "macOS 26.6.2 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "testedSha": "2bb2cfffb1723c11d3f39e4344cf3baf3ebb0a01",
+      "artifactRefs": [
+        "tests/storage/storage.test.ts#sha256:062142eb6d0b2d0a0974c3a7cde2075fd220f05379e1984165da13041b8c9226"
+      ],
+      "summary": "Eight real temporary-SQLite tests passed with 64 assertions."
+    }
+  ],
+  "liveAcceptance": {
+    "status": "NOT_RUN",
+    "notes": "NR-04 is a local persistence task. No LIVE model, connector, tunnel, production bridge, or network acceptance action was performed."
+  },
+  "review": {
+    "status": "PENDING",
+    "notes": "This evidence covers the implementation commit. Exact final PR head CI and independent reviewer approval are required before requesting lead merge authorization."
+  }
+}

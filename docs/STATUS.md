@@ -7,7 +7,7 @@
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
 | NR-02 | COMPLETE — Lead D109 accepted; AC3 remains deferred non-blocking hardening | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3), merge/resulting main `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
 | NR-03 | COMPLETE — Lead D114 accepted | [PR #4](https://github.com/ShabanovBoris/NightReviewer/pull/4), merge/resulting `main` `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; resulting-main CI 37109137657 succeeded |
-| NR-04 | IN_PROGRESS — D115 assignment | branch `nr-04-sqlite-durable-artifact-store`, base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; local implementation checks pass, review and acceptance pending |
+| NR-04 | IN_PROGRESS — D115 assignment | branch `nr-04-sqlite-durable-artifact-store`, base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; [local evidence](evidence/NR-04.json); review and acceptance pending |
 | NR-05 | PLANNED | — |
 | NR-06 | PLANNED | — |
 | NR-07 | PLANNED | — |
@@ -35,7 +35,7 @@ Lead D114 accepted NR-03 after PR #4 merged to `main` at `c0a70dcc6e46e5fec0f377
 
 ## Current assignment: NR-04 — D115
 
-Assignment `NR-04-C1-D115-SQLITE-DURABLE-ARTIFACT-STORE` starts from exact `main` base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`, on feature branch `nr-04-sqlite-durable-artifact-store`. Spec `docs/specs/NR-04.md` is bound to SHA-256 `9b32b600d5e016a012fa0abe4b5934db366b9f9b3f258a81d2624bbb1e3b8a6d`; task `docs/tasks/NR-04.md` is bound to SHA-256 `2ec0f5413750440a6b930550e2f033f129d2f6daa3ddd7393d1031176d2df295`. Implementation and local deterministic checks passed; reviewer approval and lead merge authorization have not been issued.
+Assignment `NR-04-C1-D115-SQLITE-DURABLE-ARTIFACT-STORE` starts from exact `main` base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`, on feature branch `nr-04-sqlite-durable-artifact-store`. Spec `docs/specs/NR-04.md` is bound to SHA-256 `9b32b600d5e016a012fa0abe4b5934db366b9f9b3f258a81d2624bbb1e3b8a6d`; task `docs/tasks/NR-04.md` is bound to SHA-256 `2ec0f5413750440a6b930550e2f033f129d2f6daa3ddd7393d1031176d2df295`. Implementation and local deterministic checks passed and are recorded in `docs/evidence/NR-04.json`; reviewer approval, lead merge authorization, and merge remain pending.
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

@@ -7,8 +7,8 @@
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
 | NR-02 | COMPLETE — Lead D109 accepted; AC3 remains deferred non-blocking hardening | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3), merge/resulting main `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
 | NR-03 | COMPLETE — Lead D114 accepted | [PR #4](https://github.com/ShabanovBoris/NightReviewer/pull/4), merge/resulting `main` `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; resulting-main CI 37109137657 succeeded |
-| NR-04 | IN_PROGRESS — D115 assignment | branch `nr-04-sqlite-durable-artifact-store`, base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; [local evidence](evidence/NR-04.json); review and acceptance pending |
-| NR-05 | PLANNED | — |
+| NR-04 | COMPLETE — Lead D120 accepted | [PR #5](https://github.com/ShabanovBoris/NightReviewer/pull/5), merged `main` `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37144869002; [local evidence](evidence/NR-04.json) |
+| NR-05 | IN_PROGRESS — D121 assignment | branch `nr-05-git-snapshots-review-manifest`, base `8c38e07a351f81ff602d02f0191bacc9ef77b366`; [evidence index](evidence/NR-05.json); review and acceptance pending |
 | NR-06 | PLANNED | — |
 | NR-07 | PLANNED | — |
 | NR-08 | PLANNED | — |
@@ -33,9 +33,13 @@ Lead decision `NR-02-D109-TASK-COMPLETION-ACCEPTED` accepts PR #3 at reviewed ba
 
 Lead D114 accepted NR-03 after PR #4 merged to `main` at `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`. The resulting-main workflow run `37109137657` completed successfully. This verified dependency enables NR-04.
 
-## Current assignment: NR-04 — D115
+## Accepted dependency: NR-04 — Lead D120
 
-Assignment `NR-04-C1-D115-SQLITE-DURABLE-ARTIFACT-STORE` starts from exact `main` base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`, on feature branch `nr-04-sqlite-durable-artifact-store`. Spec `docs/specs/NR-04.md` is bound to SHA-256 `9b32b600d5e016a012fa0abe4b5934db366b9f9b3f258a81d2624bbb1e3b8a6d`; task `docs/tasks/NR-04.md` is bound to SHA-256 `2ec0f5413750440a6b930550e2f033f129d2f6daa3ddd7393d1031176d2df295`. Implementation and local deterministic checks passed and are recorded in `docs/evidence/NR-04.json`; reviewer approval, lead merge authorization, and merge remain pending.
+Lead D120 accepted NR-04 after PR #5 merged to `main` at `8c38e07a351f81ff602d02f0191bacc9ef77b366`. The resulting-main workflow run `37144869002` succeeded. The original implementation evidence remains at [docs/evidence/NR-04.json](evidence/NR-04.json).
+
+## Current assignment: NR-05 — D121
+
+Assignment `NR-05-C1-D121-GIT-SNAPSHOTS-REVIEW-MANIFEST` starts from exact `main` base `8c38e07a351f81ff602d02f0191bacc9ef77b366`, on feature branch `nr-05-git-snapshots-review-manifest`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-05.md` is bound to SHA-256 `9ad4d32bc6bd27695acf1655f661a6e2438f2bd265eb9ecf05124dfd10c56420`; task `docs/tasks/NR-05.md` is bound to SHA-256 `25493e1ffcfb3a58fc8fef62f4ce859c18f4b0c84d8fa16098837ad954b13cc9`. D121 starts NR-05 after accepted NR-03 and NR-04 dependencies. Implementation, deterministic checks, review, and acceptance are pending; see [docs/evidence/NR-05.json](evidence/NR-05.json).
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

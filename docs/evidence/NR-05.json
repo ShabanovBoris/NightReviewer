@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-05",
+  "assignmentId": "NR-05-C1-D121-GIT-SNAPSHOTS-REVIEW-MANIFEST",
+  "baseSha": "8c38e07a351f81ff602d02f0191bacc9ef77b366",
+  "testedSha": null,
+  "testedTreeSha": null,
+  "acceptance": [
+    {
+      "acceptanceId": "NR-05-AC1",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/snapshot/snapshot.test.ts",
+      "exitCode": null,
+      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
+      ],
+      "notes": "The committed fixture covers exact base-to-head paths and blobs after worktree/index mutation. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+    },
+    {
+      "acceptanceId": "NR-05-AC2",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/snapshot/snapshot.test.ts",
+      "exitCode": null,
+      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
+      ],
+      "notes": "The fixture forces source GC and deletion, then restores NR-04 backup and reads the retained commits, trees, blobs, diff, and manifest. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+    },
+    {
+      "acceptanceId": "NR-05-AC3",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/snapshot/snapshot.test.ts",
+      "exitCode": null,
+      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
+      ],
+      "notes": "The fixture checks option-like file names, rejects traversal and option-like revisions, reads a symlink target as bytes only, and refuses submodule traversal. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+    },
+    {
+      "acceptanceId": "NR-05-AC4",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/snapshot/snapshot.test.ts",
+      "exitCode": null,
+      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
+      ],
+      "notes": "The fixture asserts explicit binary, oversized, LFS-pointer, and submodule coverage gaps. A coverage gap is never marked complete. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+    }
+  ],
+  "checks": [
+    {
+      "id": "typecheck-local",
+      "command": "node ./node_modules/typescript/bin/tsc --noEmit",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin 25.6.0 arm64; Node.js 22.22.2; TypeScript 7.0.2",
+      "testedSha": null,
+      "summary": "Full project TypeScript check passed on the current working tree."
+    },
+    {
+      "id": "lint-local",
+      "command": "node ./node_modules/@biomejs/biome/bin/biome check src tests scripts",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin 25.6.0 arm64; Node.js 22.22.2; Biome 2.5.14",
+      "testedSha": null,
+      "summary": "Biome checked all 38 files under src, tests, and scripts with no findings."
+    },
+    {
+      "id": "diff-check-local",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Git 2.53.0",
+      "testedSha": null,
+      "summary": "No whitespace errors were reported."
+    },
+    {
+      "id": "bun-run-verify",
+      "command": "bun run verify",
+      "exitCode": null,
+      "kind": "CONTRACT",
+      "environment": "Pinned Bun 1.4.2 is unavailable in the local shell; exact-head CI is pending.",
+      "testedSha": null,
+      "summary": "NOT_RUN locally. This aggregate check includes typecheck, lint, all Bun tests, and Bun build."
+    }
+  ],
+  "liveAcceptance": {
+    "status": "NOT_RUN",
+    "notes": "NR-05 is a deterministic local Git snapshot task. No LIVE model, connector, tunnel, runtime, or network acceptance action is in scope."
+  },
+  "review": {
+    "status": "PENDING",
+    "notes": "Exact-head Bun CI, independent reviewer approval, and lead acceptance are pending. This evidence index does not claim task completion."
+  }
+}

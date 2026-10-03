@@ -130,6 +130,14 @@ export interface SnapshotRecord extends SnapshotInput {
   readonly createdAtUtc: string;
 }
 
+export interface SnapshotCycleContext {
+  readonly cycleId: string;
+  readonly repoId: string;
+  readonly task: string;
+  readonly acceptanceCriteria: ReviewSubmitInput["acceptanceCriteria"];
+  readonly cycle: ReviewCycleState;
+}
+
 export interface DirectionRunInput {
   readonly runId: string;
   readonly cycleId: string;

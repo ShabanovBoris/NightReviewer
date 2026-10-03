@@ -6,8 +6,8 @@
 |---|---|---|
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
 | NR-02 | COMPLETE — Lead D109 accepted; AC3 remains deferred non-blocking hardening | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3), merge/resulting main `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
-| NR-03 | IN_PROGRESS — D110 assignment; awaiting implementation and acceptance | branch `nr-03-versioned-protocol-state-machine`, base `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
-| NR-04 | PLANNED | — |
+| NR-03 | COMPLETE — Lead D114 accepted | [PR #4](https://github.com/ShabanovBoris/NightReviewer/pull/4), merge/resulting `main` `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; resulting-main CI 37109137657 succeeded |
+| NR-04 | IN_PROGRESS — D115 assignment | branch `nr-04-sqlite-durable-artifact-store`, base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; [local evidence](evidence/NR-04.json); review and acceptance pending |
 | NR-05 | PLANNED | — |
 | NR-06 | PLANNED | — |
 | NR-07 | PLANNED | — |
@@ -29,9 +29,13 @@
 
 Lead decision `NR-02-D109-TASK-COMPLETION-ACCEPTED` accepts PR #3 at reviewed base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588` and head `18b079e6c5dd930f510fa6bd78647be6d9269533`, bundle `sha256:f55b618473323fdd137387339312d22a28a355cc49cf60388f3b3cd3e1b15323`. The merge commit and resulting `main` are `be3efa9c39e8215a1c984ad9d7d37ce50e38896e`; reviewed-head CI `37055467239` and resulting-main CI `37074470542` succeeded. Lead acceptance records AC1, AC2 cancellation, AC2 unavailable and AC4 as reviewed pass; AC3 remains `DEFERRED_HARDENING_NON_BLOCKING`. This deferred item is not implicitly activated. NR-02 requires no further action.
 
-## Current assignment: NR-03 — D110
+## Accepted dependency: NR-03 — Lead D114
 
-Assignment `NR-03-C1-D110-VERSIONED-SCHEMAS-STATE-MACHINE` starts from exact `main` base `be3efa9c39e8215a1c984ad9d7d37ce50e38896e`, on feature branch `nr-03-versioned-protocol-state-machine`. Spec `docs/specs/NR-03.md` is bound to SHA-256 `f1778155043a22f64c501b8aac7b01724e6179981979fad6431da2bf39c22909`; acceptance remains pending until the implementation is reviewed, authorized for merge, merged, and verified on `main`.
+Lead D114 accepted NR-03 after PR #4 merged to `main` at `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`. The resulting-main workflow run `37109137657` completed successfully. This verified dependency enables NR-04.
+
+## Current assignment: NR-04 — D115
+
+Assignment `NR-04-C1-D115-SQLITE-DURABLE-ARTIFACT-STORE` starts from exact `main` base `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`, on feature branch `nr-04-sqlite-durable-artifact-store`. Spec `docs/specs/NR-04.md` is bound to SHA-256 `9b32b600d5e016a012fa0abe4b5934db366b9f9b3f258a81d2624bbb1e3b8a6d`; task `docs/tasks/NR-04.md` is bound to SHA-256 `2ec0f5413750440a6b930550e2f033f129d2f6daa3ddd7393d1031176d2df295`. Implementation and local deterministic checks passed and are recorded in `docs/evidence/NR-04.json`; reviewer approval, lead merge authorization, and merge remain pending.
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

@@ -16,6 +16,11 @@ const revisionPair = {
   baseSha: protocolExampleSha1,
   headSha: "c".repeat(40),
 } as const;
+const fixRevisionPair = {
+  objectFormat: "sha1",
+  baseSha: revisionPair.headSha,
+  headSha: "e".repeat(40),
+} as const;
 
 const terminalReceipt = {
   idempotencyKey: "terminal-1",
@@ -166,7 +171,10 @@ function transitionEvidence(
             }),
       };
     case "VERIFYING_FIX":
-      return { atomicFixSubmissionValidated: true };
+      return {
+        atomicFixSubmissionValidated: true,
+        fixRevisions: fixRevisionPair,
+      };
     case "REQUIRES_FRESH_REVIEW":
       return { freshReviewRequired: true };
     case "FAILED":
@@ -440,7 +448,10 @@ test("fix and cancellation commands race through the same expected-version fence
       target: "VERIFYING_FIX",
       expectedVersion: 0,
       idempotencyKey: "stale-fix",
-      evidence: { atomicFixSubmissionValidated: true },
+      evidence: {
+        atomicFixSubmissionValidated: true,
+        fixRevisions: fixRevisionPair,
+      },
     });
     expect(staleFix.ok).toBe(false);
     if (!staleFix.ok) expect(staleFix.error.code).toBe("CONFLICT");
@@ -451,7 +462,10 @@ test("fix and cancellation commands race through the same expected-version fence
     target: "VERIFYING_FIX",
     expectedVersion: 0,
     idempotencyKey: "fix-wins",
-    evidence: { atomicFixSubmissionValidated: true },
+    evidence: {
+      atomicFixSubmissionValidated: true,
+      fixRevisions: fixRevisionPair,
+    },
   });
   expect(fixWins.ok).toBe(true);
   if (fixWins.ok) {
@@ -749,7 +763,10 @@ test("fix finding IDs persist across pause and accumulate regression IDs", () =>
     target: "VERIFYING_FIX",
     expectedVersion: 0,
     idempotencyKey: "fix-set-start",
-    evidence: { atomicFixSubmissionValidated: true },
+    evidence: {
+      atomicFixSubmissionValidated: true,
+      fixRevisions: fixRevisionPair,
+    },
   });
   expect(verifying.ok).toBe(true);
   if (!verifying.ok) return;
@@ -809,6 +826,66 @@ test("fix finding IDs persist across pause and accumulate regression IDs", () =>
       ]);
     }
   }
+});
+
+test("fix submission rebinds approval to the new head and rejects unrelated revisions", () => {
+  const needsFix = stateSnapshot("NEEDS_FIX");
+  const verifying = transitionReviewCycle(needsFix, {
+    type: "ADVANCE",
+    target: "VERIFYING_FIX",
+    expectedVersion: 0,
+    idempotencyKey: "fix-revision-binding",
+    evidence: {
+      atomicFixSubmissionValidated: true,
+      fixRevisions: fixRevisionPair,
+    },
+  });
+  expect(verifying.ok).toBe(true);
+  if (!verifying.ok) return;
+  expect(verifying.state.revisions).toEqual({
+    objectFormat: "sha1",
+    baseSha: revisionPair.baseSha,
+    headSha: fixRevisionPair.headSha,
+  });
+
+  const approval = transitionReviewCycle(verifying.state, {
+    type: "ADVANCE",
+    target: "APPROVED",
+    expectedVersion: verifying.state.stateVersion,
+    idempotencyKey: "approve-fix-revision-binding",
+    evidence: {
+      approval: {
+        ...passingApprovalEvidence(),
+        fixOutcomes: requiredFindingIds.map((findingId) =>
+          fixedOutcome(findingId),
+        ),
+      },
+      approvedAt: "2026-10-03T12:00:00Z",
+    },
+  });
+  expect(approval.ok).toBe(true);
+  if (approval.ok && approval.state.state === "APPROVED") {
+    expect(approval.state.approvalReceipt.revisions).toEqual({
+      objectFormat: "sha1",
+      baseSha: revisionPair.baseSha,
+      headSha: fixRevisionPair.headSha,
+    });
+  }
+
+  const unrelatedBase = transitionReviewCycle(needsFix, {
+    type: "ADVANCE",
+    target: "VERIFYING_FIX",
+    expectedVersion: 0,
+    idempotencyKey: "fix-revision-wrong-base",
+    evidence: {
+      atomicFixSubmissionValidated: true,
+      fixRevisions: {
+        ...fixRevisionPair,
+        baseSha: protocolExampleSha1,
+      },
+    },
+  });
+  expect(unrelatedBase.ok).toBe(false);
 });
 
 test("subsequent fix round rejects incomplete and fresh-review outcomes", () => {

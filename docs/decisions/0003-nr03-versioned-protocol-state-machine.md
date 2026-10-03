@@ -1,6 +1,6 @@
 # ADR 0003 — NR-03 versioned protocol and review-cycle state machine
 
-- Status: implemented in NR-03 assignment D110; PR acceptance is still pending.
+- Status: accepted by Lead D114 after PR #4 merged to `main` at `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`.
 - Date: 2026-10-03.
 - Scope: offline protocol contracts, deterministic validation, strict policy, canonical hashing and a pure review-cycle reducer.
 - Authority: Lead assignment `NR-03-C1-D110-VERSIONED-SCHEMAS-STATE-MACHINE`.

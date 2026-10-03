@@ -4,68 +4,68 @@
   "taskId": "NR-05",
   "assignmentId": "NR-05-C1-D121-GIT-SNAPSHOTS-REVIEW-MANIFEST",
   "baseSha": "8c38e07a351f81ff602d02f0191bacc9ef77b366",
-  "testedSha": null,
-  "testedTreeSha": null,
+  "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+  "testedTreeSha": "fd4170ddab7c407d5aada4c4c33e785aff148b2d",
   "acceptance": [
     {
       "acceptanceId": "NR-05-AC1",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": null,
-      "command": "bun test tests/snapshot/snapshot.test.ts",
-      "exitCode": null,
-      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
         "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
       ],
-      "notes": "The committed fixture covers exact base-to-head paths and blobs after worktree/index mutation. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+      "notes": "PASS on exact-head workflow run 37152849005. The NR-05 AC1 test passed, covering exact base-to-head paths and blobs after worktree/index mutation."
     },
     {
       "acceptanceId": "NR-05-AC2",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": null,
-      "command": "bun test tests/snapshot/snapshot.test.ts",
-      "exitCode": null,
-      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
         "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
       ],
-      "notes": "The fixture forces source GC and deletion, then restores NR-04 backup and reads the retained commits, trees, blobs, diff, and manifest. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+      "notes": "PASS on exact-head workflow run 37152849005. The NR-05 AC2 test passed, forcing source GC and deletion, then restoring NR-04 backup and reading retained commits, trees, blobs, diff, and manifest."
     },
     {
       "acceptanceId": "NR-05-AC3",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": null,
-      "command": "bun test tests/snapshot/snapshot.test.ts",
-      "exitCode": null,
-      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
         "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
       ],
-      "notes": "The fixture checks option-like file names, rejects traversal and option-like revisions, reads a symlink target as bytes only, and refuses submodule traversal. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+      "notes": "PASS on exact-head workflow run 37152849005. The NR-05 AC3/AC4 test passed the AC3 checks for option-like names, traversal and option-like revisions, symlink metadata, and submodule refusal."
     },
     {
       "acceptanceId": "NR-05-AC4",
-      "status": "NOT_RUN",
+      "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": null,
-      "command": "bun test tests/snapshot/snapshot.test.ts",
-      "exitCode": null,
-      "environment": "Bun 1.4.2 is not available in the local shell; exact-head CI is pending.",
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "command": "bun run verify",
+      "exitCode": 0,
+      "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
         "tests/snapshot/snapshot.test.ts#sha256:04903e9d104f49423be0dca6938be121195032f7caf88f0e447ce8e230b1b2ca"
       ],
-      "notes": "The fixture asserts explicit binary, oversized, LFS-pointer, and submodule coverage gaps. A coverage gap is never marked complete. Local acceptance credit remains NOT_RUN until the pinned Bun test executes."
+      "notes": "PASS on exact-head workflow run 37152849005. The NR-05 AC3/AC4 test passed the AC4 checks for explicit binary, oversized, LFS-pointer, and submodule coverage gaps; those gaps remain reported as incomplete coverage."
     }
   ],
   "checks": [
@@ -75,7 +75,8 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Darwin 25.6.0 arm64; Node.js 22.22.2; TypeScript 7.0.2",
-      "testedSha": null,
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "testedTreeSha": "fd4170ddab7c407d5aada4c4c33e785aff148b2d",
       "summary": "Full project TypeScript check passed on the current working tree."
     },
     {
@@ -84,7 +85,8 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Darwin 25.6.0 arm64; Node.js 22.22.2; Biome 2.5.14",
-      "testedSha": null,
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "testedTreeSha": "fd4170ddab7c407d5aada4c4c33e785aff148b2d",
       "summary": "Biome checked all 38 files under src, tests, and scripts with no findings."
     },
     {
@@ -93,17 +95,19 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Git 2.53.0",
-      "testedSha": null,
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "testedTreeSha": "fd4170ddab7c407d5aada4c4c33e785aff148b2d",
       "summary": "No whitespace errors were reported."
     },
     {
       "id": "bun-run-verify",
       "command": "bun run verify",
-      "exitCode": null,
+      "exitCode": 0,
       "kind": "CONTRACT",
-      "environment": "Pinned Bun 1.4.2 is unavailable in the local shell; exact-head CI is pending.",
-      "testedSha": null,
-      "summary": "NOT_RUN locally. This aggregate check includes typecheck, lint, all Bun tests, and Bun build."
+      "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
+      "testedSha": "caf704e1ccd8f5246a5ca726b0afa3e451fbd310",
+      "testedTreeSha": "fd4170ddab7c407d5aada4c4c33e785aff148b2d",
+      "summary": "PASS on exact-head PR workflow run 37152849005 (https://github.com/ShabanovBoris/NightReviewer/actions/runs/37152849005): pinned Bun 1.4.2; 95 tests across 10 files; TypeScript, Biome, and bun build completed successfully."
     }
   ],
   "liveAcceptance": {
@@ -112,6 +116,6 @@
   },
   "review": {
     "status": "PENDING",
-    "notes": "Exact-head Bun CI, independent reviewer approval, and lead acceptance are pending. This evidence index does not claim task completion."
+    "notes": "The initial exact-head CI passed on caf704e1ccd8f5246a5ca726b0afa3e451fbd310. Independent reviewer approval and lead acceptance remain pending. This evidence index does not claim task completion."
   }
 }

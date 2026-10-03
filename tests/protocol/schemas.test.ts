@@ -146,6 +146,70 @@ test("submit input rejects short and format-mismatched Git object IDs", () => {
   ).toBe(false);
 });
 
+test("fix-verification states require a nonempty unique finding ID set", () => {
+  const needsFix = clone(validProtocolExamples.reviewCycleState) as Record<
+    string,
+    unknown
+  >;
+  needsFix.state = "NEEDS_FIX";
+  expect(validateProtocolValue("reviewCycleState", needsFix).ok).toBe(false);
+  expect(exportedValidators.reviewCycleState.Check(needsFix)).toBe(false);
+
+  const emptyVerifyingFix = {
+    ...needsFix,
+    state: "VERIFYING_FIX",
+    requiredFindingIds: [],
+  };
+  expect(validateProtocolValue("reviewCycleState", emptyVerifyingFix).ok).toBe(
+    false,
+  );
+  expect(exportedValidators.reviewCycleState.Check(emptyVerifyingFix)).toBe(
+    false,
+  );
+
+  const duplicateIds = {
+    ...needsFix,
+    requiredFindingIds: ["finding-1", "finding-1"],
+  };
+  expect(validateProtocolValue("reviewCycleState", duplicateIds).ok).toBe(
+    false,
+  );
+
+  const pausedWithoutSet: Record<string, unknown> = {
+    ...needsFix,
+    state: "PAUSED",
+    pauseInfo: {
+      reason: { code: "BLOCKED", message: "Waiting for fix verification." },
+      resumeStage: "VERIFYING_FIX",
+    },
+  };
+  delete pausedWithoutSet.requiredFindingIds;
+  expect(validateProtocolValue("reviewCycleState", pausedWithoutSet).ok).toBe(
+    false,
+  );
+
+  const validFixState = {
+    ...needsFix,
+    requiredFindingIds: ["finding-1", "finding-2"],
+  };
+  expect(validateProtocolValue("reviewCycleState", validFixState).ok).toBe(
+    true,
+  );
+});
+
+test("approval evidence cannot carry a caller-selected expected finding set", () => {
+  const withExpectedIds = {
+    ...clone(validProtocolExamples.approvalEvidence),
+    requiredFindingIds: ["finding-1"],
+  };
+  expect(validateProtocolValue("approvalEvidence", withExpectedIds).ok).toBe(
+    false,
+  );
+  expect(exportedValidators.approvalEvidence.Check(withExpectedIds)).toBe(
+    false,
+  );
+});
+
 test("serialized schema documents reject unknown authority-bearing fields", () => {
   for (const name of schemaNames) {
     expect(exportedValidators[name].Check(invalidProtocolExamples[name])).toBe(

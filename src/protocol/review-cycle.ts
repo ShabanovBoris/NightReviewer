@@ -5,6 +5,8 @@ import {
 } from "./idempotency";
 import { evaluateApprovalEvidence } from "./policy";
 import type {
+  ApprovalEvidence,
+  FixVerificationOutcome,
   IdempotencyBinding,
   ProtocolError,
   ReviewCycleState,
@@ -91,6 +93,19 @@ export function transitionReviewCycle(
     );
   }
   const current = currentValidation.value;
+  if (
+    "requiredFindingIds" in current &&
+    !hasCanonicalRequiredFindingIds(current.requiredFindingIds)
+  ) {
+    return failure(
+      protocolError(
+        "SCHEMA_INVALID",
+        "Cycle required finding IDs are not in canonical ASCII order.",
+        current.cycleId,
+      ),
+      current,
+    );
+  }
 
   const commandValidation = validateProtocolValue(
     "reviewTransitionCommand",
@@ -220,6 +235,7 @@ function advance(
 
   const evidence = command.evidence;
   let nextManifestHash = current.manifestHash;
+  let nextRequiredFindingIds: string[] | undefined;
   if (target === "REVIEWING") {
     if (
       evidence?.durableManifestRecorded !== true ||
@@ -248,6 +264,59 @@ function advance(
       "A fix cycle requires complete adjudication and a confirmed blocker.",
     );
   }
+  if (target === "NEEDS_FIX") {
+    if (current.state === "AGGREGATING") {
+      if (
+        evidence === undefined ||
+        evidence.requiredFindingIds === undefined ||
+        evidence.fixOutcomes !== undefined
+      ) {
+        return transitionRejected(
+          current,
+          "A new fix cycle requires the adjudicated finding ID set, not fix outcomes.",
+        );
+      }
+      nextRequiredFindingIds = sortUniqueFindingIds(
+        evidence.requiredFindingIds,
+      );
+    } else if (current.state === "VERIFYING_FIX") {
+      const outcomes = evidence?.fixOutcomes;
+      if (
+        evidence?.requiredFindingIds !== undefined ||
+        !hasCompleteFixOutcomeSet(current.requiredFindingIds, outcomes)
+      ) {
+        return transitionRejected(
+          current,
+          "A subsequent fix cycle requires one result for every authoritative finding ID.",
+        );
+      }
+      if (outcomes.some((outcome) => outcome.requiresFreshReview)) {
+        return transitionRejected(
+          current,
+          "A fix result requiring fresh review cannot change the current finding set.",
+        );
+      }
+      nextRequiredFindingIds = sortUniqueFindingIds([
+        ...current.requiredFindingIds,
+        ...outcomes.flatMap((outcome) =>
+          outcome.status === "REGRESSION" ? [outcome.regressionFindingId] : [],
+        ),
+      ]);
+    } else {
+      return transitionRejected(
+        current,
+        "A fix cycle can only start from adjudication or continue from fix verification.",
+      );
+    }
+  } else if (
+    evidence?.requiredFindingIds !== undefined ||
+    evidence?.fixOutcomes !== undefined
+  ) {
+    return transitionRejected(
+      current,
+      "Finding-set evidence is only valid when entering NEEDS_FIX.",
+    );
+  }
   if (
     target === "VERIFYING_FIX" &&
     evidence?.atomicFixSubmissionValidated !== true
@@ -256,6 +325,15 @@ function advance(
       current,
       "Fix submission must be atomically validated.",
     );
+  }
+  if (target === "VERIFYING_FIX") {
+    if (current.state !== "NEEDS_FIX") {
+      return transitionRejected(
+        current,
+        "Fix verification requires a cycle with an authoritative finding set.",
+      );
+    }
+    nextRequiredFindingIds = [...current.requiredFindingIds];
   }
   if (
     target === "REQUIRES_FRESH_REVIEW" &&
@@ -286,7 +364,10 @@ function advance(
     if (
       !approval.approved ||
       (current.state === "VERIFYING_FIX" &&
-        !hasCompleteFixApprovalEvidence(evidence.approval)) ||
+        !hasCompleteFixApprovalEvidence(
+          current.requiredFindingIds,
+          evidence.approval,
+        )) ||
       !isUtcTimestamp(evidence.approvedAt)
     ) {
       return approvalRejected(current);
@@ -328,6 +409,9 @@ function advance(
 
   return finishState({
     ...cycleFields(current),
+    ...(nextRequiredFindingIds === undefined
+      ? {}
+      : { requiredFindingIds: nextRequiredFindingIds }),
     state: target,
     stateVersion: nextVersion,
     manifestHash: nextManifestHash,
@@ -356,6 +440,7 @@ function pause(
   }
   return finishState({
     ...cycleFields(current),
+    ...fixFindingSetFields(current),
     state: "PAUSED",
     stateVersion: current.stateVersion + 1,
     pauseInfo: { reason: command.reason, resumeStage },
@@ -386,6 +471,7 @@ function resume(
   }
   return finishState({
     ...cycleFields(current),
+    ...fixFindingSetFields(current),
     state: resumeStage,
     stateVersion: current.stateVersion + 1,
     lastCommand: binding,
@@ -665,15 +751,66 @@ function isUtcTimestamp(value: string): boolean {
 }
 
 function hasCompleteFixApprovalEvidence(
-  evidence: NonNullable<
-    Extract<ReviewTransitionCommand, { type: "ADVANCE" }>["evidence"]
-  >["approval"],
+  requiredFindingIds: readonly string[],
+  evidence: ApprovalEvidence | undefined,
 ): boolean {
   return (
-    evidence?.fixOutcomes !== undefined &&
-    evidence.fixOutcomes.length > 0 &&
+    evidence !== undefined &&
+    hasCompleteFixOutcomeSet(requiredFindingIds, evidence.fixOutcomes) &&
     evidence.fixOutcomes.every(
       (outcome) => outcome.status === "FIXED" && !outcome.requiresFreshReview,
     )
   );
+}
+
+function hasCompleteFixOutcomeSet(
+  requiredFindingIds: readonly string[],
+  outcomes: readonly FixVerificationOutcome[] | undefined,
+): outcomes is readonly FixVerificationOutcome[] {
+  if (outcomes === undefined || outcomes.length !== requiredFindingIds.length) {
+    return false;
+  }
+
+  const required = new Set(requiredFindingIds);
+  const observed = new Set<string>();
+  for (const outcome of outcomes) {
+    if (!required.has(outcome.findingId) || observed.has(outcome.findingId)) {
+      return false;
+    }
+    observed.add(outcome.findingId);
+  }
+  return observed.size === required.size;
+}
+
+function sortUniqueFindingIds(findingIds: readonly string[]): string[] {
+  return [...new Set(findingIds)].sort(compareAscii);
+}
+
+function compareAscii(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function hasCanonicalRequiredFindingIds(
+  findingIds: readonly string[],
+): boolean {
+  for (let index = 1; index < findingIds.length; index += 1) {
+    const previous = findingIds[index - 1];
+    const current = findingIds[index];
+    if (
+      previous === undefined ||
+      current === undefined ||
+      compareAscii(previous, current) >= 0
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function fixFindingSetFields(state: ReviewCycleState) {
+  return "requiredFindingIds" in state
+    ? { requiredFindingIds: [...state.requiredFindingIds] }
+    : {};
 }

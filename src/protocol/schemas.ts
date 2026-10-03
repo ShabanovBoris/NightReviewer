@@ -649,6 +649,12 @@ export const ApprovalEvidenceSchema = documentObject("approval-evidence", {
 });
 export type ApprovalEvidence = Type.Static<typeof ApprovalEvidenceSchema>;
 
+const requiredFindingIdsSchema = Type.Array(IdentifierSchema, {
+  minItems: 1,
+  maxItems: 10_000,
+  uniqueItems: true,
+});
+
 export const PauseReasonSchema = closedObject({
   code: stringEnum([
     "BLOCKED",
@@ -702,17 +708,22 @@ const freshCycleCommandProperty = {
 };
 
 function activeCycleStateSchema<
-  const State extends
-    | "QUEUED"
-    | "SNAPSHOTTING"
-    | "REVIEWING"
-    | "AGGREGATING"
-    | "NEEDS_FIX"
-    | "VERIFYING_FIX",
+  const State extends "QUEUED" | "SNAPSHOTTING" | "REVIEWING" | "AGGREGATING",
 >(state: State) {
   return closedObject({
     ...cycleBaseProperties,
     state: Type.Literal(state),
+    ...lastCommandProperty,
+  });
+}
+
+function fixCycleStateSchema<const State extends "NEEDS_FIX" | "VERIFYING_FIX">(
+  state: State,
+) {
+  return closedObject({
+    ...cycleBaseProperties,
+    state: Type.Literal(state),
+    requiredFindingIds: requiredFindingIdsSchema,
     ...lastCommandProperty,
   });
 }
@@ -722,8 +733,8 @@ export const ReviewCycleStateSchema = documentUnion("review-cycle-state", [
   activeCycleStateSchema("SNAPSHOTTING"),
   activeCycleStateSchema("REVIEWING"),
   activeCycleStateSchema("AGGREGATING"),
-  activeCycleStateSchema("NEEDS_FIX"),
-  activeCycleStateSchema("VERIFYING_FIX"),
+  fixCycleStateSchema("NEEDS_FIX"),
+  fixCycleStateSchema("VERIFYING_FIX"),
   closedObject({
     ...cycleBaseProperties,
     state: Type.Literal("REQUIRES_FRESH_REVIEW"),
@@ -740,11 +751,17 @@ export const ReviewCycleStateSchema = documentUnion("review-cycle-state", [
     state: Type.Literal("PAUSED"),
     pauseInfo: closedObject({
       reason: PauseReasonSchema,
-      resumeStage: stringEnum([
-        "REVIEWING",
-        "AGGREGATING",
-        "VERIFYING_FIX",
-      ] as const),
+      resumeStage: stringEnum(["REVIEWING", "AGGREGATING"] as const),
+    }),
+    ...lastCommandProperty,
+  }),
+  closedObject({
+    ...cycleBaseProperties,
+    state: Type.Literal("PAUSED"),
+    requiredFindingIds: requiredFindingIdsSchema,
+    pauseInfo: closedObject({
+      reason: PauseReasonSchema,
+      resumeStage: Type.Literal("VERIFYING_FIX"),
     }),
     ...lastCommandProperty,
   }),
@@ -790,6 +807,13 @@ const transitionEvidenceSchema = closedObject({
   allRequiredRunsSucceeded: Type.Optional(Type.Boolean()),
   allAdjudicationsComplete: Type.Optional(Type.Boolean()),
   hasBlockingFindings: Type.Optional(Type.Boolean()),
+  requiredFindingIds: Type.Optional(requiredFindingIdsSchema),
+  fixOutcomes: Type.Optional(
+    Type.Array(FixVerificationOutcomeSchema, {
+      minItems: 1,
+      maxItems: 10_000,
+    }),
+  ),
   atomicFixSubmissionValidated: Type.Optional(Type.Boolean()),
   freshReviewRequired: Type.Optional(Type.Boolean()),
   failureCode: Type.Optional(ProtocolErrorCodeSchema),

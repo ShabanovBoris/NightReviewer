@@ -21,6 +21,61 @@ const terminalReceipt = {
   idempotencyKey: "terminal-1",
   normalizedPayloadHash: protocolExampleSha256,
 };
+const requiredFindingIds = ["finding-1", "finding-2"];
+
+function fixEvidence() {
+  return [
+    {
+      kind: "test_artifact" as const,
+      artifactSha256: protocolExampleSha256,
+      artifactSizeBytes: 1,
+    },
+  ];
+}
+
+function fixedOutcome(findingId: string) {
+  return {
+    findingId,
+    status: "FIXED" as const,
+    evidence: fixEvidence(),
+    requiresFreshReview: false,
+  };
+}
+
+function notFixedOutcome(findingId: string) {
+  return {
+    findingId,
+    status: "NOT_FIXED" as const,
+    evidence: fixEvidence(),
+    requiresFreshReview: false,
+  };
+}
+
+function uncertainOutcome(findingId: string) {
+  return {
+    findingId,
+    status: "UNCERTAIN" as const,
+    evidence: fixEvidence(),
+    requiresFreshReview: false,
+  };
+}
+
+function regressionOutcome(findingId: string, regressionFindingId: string) {
+  return {
+    findingId,
+    status: "REGRESSION" as const,
+    evidence: fixEvidence(),
+    regressionFindingId,
+    requiresFreshReview: false,
+  };
+}
+
+function freshReviewOutcome(findingId: string) {
+  return {
+    ...fixedOutcome(findingId),
+    requiresFreshReview: true,
+  };
+}
 
 function stateSnapshot(
   state: ReviewState,
@@ -41,6 +96,7 @@ function stateSnapshot(
   if (state === "PAUSED") {
     return {
       ...common,
+      ...(resumeStage === "VERIFYING_FIX" ? { requiredFindingIds } : {}),
       pauseInfo: {
         reason: { code: "BLOCKED", message: "Waiting for a prerequisite." },
         resumeStage,
@@ -49,6 +105,9 @@ function stateSnapshot(
   }
   if (state === "CANCEL_REQUESTED") {
     return { ...common, cancelReason: "Operator requested cancellation." };
+  }
+  if (state === "NEEDS_FIX" || state === "VERIFYING_FIX") {
+    return { ...common, requiredFindingIds };
   }
   if (state === "FAILED") {
     return { ...common, failureCode: "INTERNAL_ERROR", terminalReceipt };
@@ -94,7 +153,18 @@ function transitionEvidence(
     case "AGGREGATING":
       return { allRequiredRunsSucceeded: true };
     case "NEEDS_FIX":
-      return { allAdjudicationsComplete: true, hasBlockingFindings: true };
+      return {
+        allAdjudicationsComplete: true,
+        hasBlockingFindings: true,
+        ...(source === "AGGREGATING"
+          ? { requiredFindingIds: [...requiredFindingIds].reverse() }
+          : {
+              fixOutcomes: [
+                fixedOutcome("finding-1"),
+                notFixedOutcome("finding-2"),
+              ],
+            }),
+      };
     case "VERIFYING_FIX":
       return { atomicFixSubmissionValidated: true };
     case "REQUIRES_FRESH_REVIEW":
@@ -107,20 +177,9 @@ function transitionEvidence(
           ...passingApprovalEvidence(),
           ...(source === "VERIFYING_FIX"
             ? {
-                fixOutcomes: [
-                  {
-                    findingId: "finding-1",
-                    status: "FIXED",
-                    evidence: [
-                      {
-                        kind: "test_artifact",
-                        artifactSha256: protocolExampleSha256,
-                        artifactSizeBytes: 1,
-                      },
-                    ],
-                    requiresFreshReview: false,
-                  },
-                ],
+                fixOutcomes: requiredFindingIds.map((findingId) =>
+                  fixedOutcome(findingId),
+                ),
               }
             : {}),
         },
@@ -239,6 +298,16 @@ test("every normative allowed state transition succeeds through its guarded comm
           target === "CANCELLED" ? "CANCELLED" : target,
         );
         expect(result.state.stateVersion).toBe(1);
+        if (
+          target === "NEEDS_FIX" ||
+          target === "VERIFYING_FIX" ||
+          (source === "VERIFYING_FIX" && target === "PAUSED")
+        ) {
+          expect("requiredFindingIds" in result.state).toBe(true);
+          if ("requiredFindingIds" in result.state) {
+            expect(result.state.requiredFindingIds).toEqual(requiredFindingIds);
+          }
+        }
       }
     }
   }
@@ -519,37 +588,11 @@ test("approval fails closed for missing, failed, uncertain, stale, incomplete an
   const mediumBlocker = { ...base, blockingSeverities: ["medium" as const] };
   const uncertainFix = {
     ...base,
-    fixOutcomes: [
-      {
-        findingId: "finding-1",
-        status: "UNCERTAIN" as const,
-        evidence: [
-          {
-            kind: "test_artifact" as const,
-            artifactSha256: protocolExampleSha256,
-            artifactSizeBytes: 1,
-          },
-        ],
-        requiresFreshReview: false,
-      },
-    ],
+    fixOutcomes: [uncertainOutcome("finding-1"), fixedOutcome("finding-2")],
   };
   const freshReviewRequired = {
     ...base,
-    fixOutcomes: [
-      {
-        findingId: "finding-1",
-        status: "FIXED" as const,
-        evidence: [
-          {
-            kind: "test_artifact" as const,
-            artifactSha256: protocolExampleSha256,
-            artifactSizeBytes: 1,
-          },
-        ],
-        requiresFreshReview: true,
-      },
-    ],
+    fixOutcomes: [freshReviewOutcome("finding-1"), fixedOutcome("finding-2")],
   };
   const malformed = { ...base, requiredRuns: undefined };
   const cases = [
@@ -598,20 +641,7 @@ test("approval fails closed for missing, failed, uncertain, stale, incomplete an
 
   const validFixResults = {
     ...base,
-    fixOutcomes: [
-      {
-        findingId: "finding-1",
-        status: "FIXED" as const,
-        evidence: [
-          {
-            kind: "test_artifact" as const,
-            artifactSha256: protocolExampleSha256,
-            artifactSizeBytes: 1,
-          },
-        ],
-        requiresFreshReview: false,
-      },
-    ],
+    fixOutcomes: requiredFindingIds.map((findingId) => fixedOutcome(findingId)),
   };
   const validApproval = transitionReviewCycle(stateSnapshot("VERIFYING_FIX"), {
     type: "ADVANCE",
@@ -640,6 +670,168 @@ test("approval fails closed for missing, failed, uncertain, stale, incomplete an
         /^[0-9a-f]{64}$/,
       );
     }
+  }
+});
+
+test("fix approval requires exactly one FIXED result per authoritative finding ID", () => {
+  const base = passingApprovalEvidence();
+  const approveWith = (fixOutcomes: unknown[], idempotencyKey: string) =>
+    transitionReviewCycle(stateSnapshot("VERIFYING_FIX"), {
+      type: "ADVANCE",
+      target: "APPROVED",
+      expectedVersion: 0,
+      idempotencyKey,
+      evidence: {
+        approval: { ...base, fixOutcomes },
+        approvedAt: "2026-10-03T12:00:00Z",
+      },
+    });
+
+  const omitted = approveWith(
+    [fixedOutcome("finding-1")],
+    "fix-approval-omitted",
+  );
+  expect(omitted.ok).toBe(false);
+
+  const duplicateAndOmitted = approveWith(
+    [fixedOutcome("finding-1"), fixedOutcome("finding-1")],
+    "fix-approval-duplicate",
+  );
+  expect(duplicateAndOmitted.ok).toBe(false);
+
+  const unexpected = approveWith(
+    [
+      fixedOutcome("finding-1"),
+      fixedOutcome("finding-2"),
+      fixedOutcome("unexpected-finding"),
+    ],
+    "fix-approval-unexpected",
+  );
+  expect(unexpected.ok).toBe(false);
+
+  const notFixed = approveWith(
+    [fixedOutcome("finding-1"), notFixedOutcome("finding-2")],
+    "fix-approval-not-fixed",
+  );
+  expect(notFixed.ok).toBe(false);
+
+  const uncertain = approveWith(
+    [fixedOutcome("finding-1"), uncertainOutcome("finding-2")],
+    "fix-approval-uncertain",
+  );
+  expect(uncertain.ok).toBe(false);
+
+  const regression = approveWith(
+    [fixedOutcome("finding-1"), regressionOutcome("finding-2", "regression-1")],
+    "fix-approval-regression",
+  );
+  expect(regression.ok).toBe(false);
+
+  const freshReview = approveWith(
+    [fixedOutcome("finding-1"), freshReviewOutcome("finding-2")],
+    "fix-approval-fresh-review",
+  );
+  expect(freshReview.ok).toBe(false);
+
+  const completeOutOfOrder = approveWith(
+    [fixedOutcome("finding-2"), fixedOutcome("finding-1")],
+    "fix-approval-complete-out-of-order",
+  );
+  expect(completeOutOfOrder.ok).toBe(true);
+  if (completeOutOfOrder.ok) {
+    expect(completeOutOfOrder.state.state).toBe("APPROVED");
+  }
+});
+
+test("fix finding IDs persist across pause and accumulate regression IDs", () => {
+  const verifying = transitionReviewCycle(stateSnapshot("NEEDS_FIX"), {
+    type: "ADVANCE",
+    target: "VERIFYING_FIX",
+    expectedVersion: 0,
+    idempotencyKey: "fix-set-start",
+    evidence: { atomicFixSubmissionValidated: true },
+  });
+  expect(verifying.ok).toBe(true);
+  if (!verifying.ok) return;
+  expect("requiredFindingIds" in verifying.state).toBe(true);
+  if (!("requiredFindingIds" in verifying.state)) return;
+  expect(verifying.state.requiredFindingIds).toEqual(requiredFindingIds);
+
+  const paused = transitionReviewCycle(verifying.state, {
+    type: "PAUSE",
+    expectedVersion: 1,
+    idempotencyKey: "fix-set-pause",
+    reason: { code: "BLOCKED", message: "Wait for a verification artifact." },
+  });
+  expect(paused.ok).toBe(true);
+  if (!paused.ok) return;
+  expect(paused.state.state).toBe("PAUSED");
+  if (paused.state.state !== "PAUSED") return;
+  expect("requiredFindingIds" in paused.state).toBe(true);
+  if ("requiredFindingIds" in paused.state) {
+    expect(paused.state.requiredFindingIds).toEqual(requiredFindingIds);
+  }
+
+  const resumed = transitionReviewCycle(paused.state, {
+    type: "RESUME",
+    expectedVersion: 2,
+    idempotencyKey: "fix-set-resume",
+    reasonCleared: true,
+  });
+  expect(resumed.ok).toBe(true);
+  if (!resumed.ok) return;
+  expect(resumed.state.state).toBe("VERIFYING_FIX");
+  if (!("requiredFindingIds" in resumed.state)) return;
+  expect(resumed.state.requiredFindingIds).toEqual(requiredFindingIds);
+
+  const nextRound = transitionReviewCycle(resumed.state, {
+    type: "ADVANCE",
+    target: "NEEDS_FIX",
+    expectedVersion: 3,
+    idempotencyKey: "fix-set-regression-round",
+    evidence: {
+      allAdjudicationsComplete: true,
+      hasBlockingFindings: true,
+      fixOutcomes: [
+        fixedOutcome("finding-1"),
+        regressionOutcome("finding-2", "regression-z"),
+      ],
+    },
+  });
+  expect(nextRound.ok).toBe(true);
+  if (nextRound.ok) {
+    expect(nextRound.state.state).toBe("NEEDS_FIX");
+    if ("requiredFindingIds" in nextRound.state) {
+      expect(nextRound.state.requiredFindingIds).toEqual([
+        "finding-1",
+        "finding-2",
+        "regression-z",
+      ]);
+    }
+  }
+});
+
+test("subsequent fix round rejects incomplete and fresh-review outcomes", () => {
+  const current = stateSnapshot("VERIFYING_FIX");
+  for (const [idempotencyKey, fixOutcomes] of [
+    ["fix-round-omitted", [fixedOutcome("finding-1")]],
+    [
+      "fix-round-fresh-review",
+      [fixedOutcome("finding-1"), freshReviewOutcome("finding-2")],
+    ],
+  ] as const) {
+    const result = transitionReviewCycle(current, {
+      type: "ADVANCE",
+      target: "NEEDS_FIX",
+      expectedVersion: 0,
+      idempotencyKey,
+      evidence: {
+        allAdjudicationsComplete: true,
+        hasBlockingFindings: true,
+        fixOutcomes,
+      },
+    });
+    expect(result.ok).toBe(false);
   }
 });
 

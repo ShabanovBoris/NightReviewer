@@ -815,6 +815,7 @@ const transitionEvidenceSchema = closedObject({
     }),
   ),
   atomicFixSubmissionValidated: Type.Optional(Type.Boolean()),
+  fixRevisions: Type.Optional(GitRevisionPairSchema),
   freshReviewRequired: Type.Optional(Type.Boolean()),
   failureCode: Type.Optional(ProtocolErrorCodeSchema),
   approval: Type.Optional(ApprovalEvidenceSchema),

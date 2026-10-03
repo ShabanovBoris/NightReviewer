@@ -236,6 +236,7 @@ function advance(
   const evidence = command.evidence;
   let nextManifestHash = current.manifestHash;
   let nextRequiredFindingIds: string[] | undefined;
+  let nextRevisions: ReviewCycleState["revisions"] = current.revisions;
   if (target === "REVIEWING") {
     if (
       evidence?.durableManifestRecorded !== true ||
@@ -310,7 +311,8 @@ function advance(
     }
   } else if (
     evidence?.requiredFindingIds !== undefined ||
-    evidence?.fixOutcomes !== undefined
+    evidence?.fixOutcomes !== undefined ||
+    (target !== "VERIFYING_FIX" && evidence?.fixRevisions !== undefined)
   ) {
     return transitionRejected(
       current,
@@ -333,6 +335,38 @@ function advance(
         "Fix verification requires a cycle with an authoritative finding set.",
       );
     }
+    const fixRevisions = evidence?.fixRevisions;
+    const revisionsAdvanceCurrentHead =
+      fixRevisions !== undefined &&
+      (current.revisions.objectFormat === "sha1"
+        ? fixRevisions.objectFormat === "sha1" &&
+          fixRevisions.baseSha === current.revisions.headSha &&
+          fixRevisions.headSha !== fixRevisions.baseSha
+        : fixRevisions.objectFormat === "sha256" &&
+          fixRevisions.baseSha === current.revisions.headSha &&
+          fixRevisions.headSha !== fixRevisions.baseSha);
+    if (!revisionsAdvanceCurrentHead || fixRevisions === undefined) {
+      return transitionRejected(
+        current,
+        "Fix revisions must advance the currently bound head using the same object format.",
+      );
+    }
+    nextRevisions =
+      current.revisions.objectFormat === "sha1" &&
+      fixRevisions.objectFormat === "sha1"
+        ? {
+            objectFormat: "sha1",
+            baseSha: current.revisions.baseSha,
+            headSha: fixRevisions.headSha,
+          }
+        : current.revisions.objectFormat === "sha256" &&
+            fixRevisions.objectFormat === "sha256"
+          ? {
+              objectFormat: "sha256",
+              baseSha: current.revisions.baseSha,
+              headSha: fixRevisions.headSha,
+            }
+          : current.revisions;
     nextRequiredFindingIds = [...current.requiredFindingIds];
   }
   if (
@@ -409,6 +443,7 @@ function advance(
 
   return finishState({
     ...cycleFields(current),
+    revisions: nextRevisions,
     ...(nextRequiredFindingIds === undefined
       ? {}
       : { requiredFindingIds: nextRequiredFindingIds }),

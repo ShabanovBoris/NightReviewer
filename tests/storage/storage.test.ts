@@ -13,6 +13,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import {
+  approvalEvidenceExample,
   createInitialReviewCycle,
   hashCanonicalJson,
   protocolExampleSha256,
@@ -475,6 +476,11 @@ test("submits a fix atomically against the authoritative finding set and state v
       state: "VERIFYING_FIX",
       stateVersion: 5,
       requiredFindingIds: ["finding-1"],
+      revisions: {
+        objectFormat: "sha1",
+        baseSha: review.revisions.baseSha,
+        headSha: validInput.headSha,
+      },
     });
     expect(primaryStore.submitFix(validInput)).toEqual(result);
     expect(
@@ -482,6 +488,60 @@ test("submits a fix atomically against the authoritative finding set and state v
         .readOutbox()
         .filter((event) => event.eventType === "review.fix_submitted"),
     ).toHaveLength(1);
+
+    primaryStore.close();
+    const reopenedStore = await openStorage({
+      rootDir: path.join(root, "store"),
+    });
+    store = reopenedStore;
+    expect(reopenedStore.readCycle(review.cycleId)).toMatchObject({
+      state: "VERIFYING_FIX",
+      revisions: {
+        objectFormat: "sha1",
+        baseSha: review.revisions.baseSha,
+        headSha: validInput.headSha,
+      },
+    });
+    const approved = reopenedStore.applyCycleCommand(
+      "test-caller",
+      review.cycleId,
+      {
+        type: "ADVANCE",
+        target: "APPROVED",
+        expectedVersion: 5,
+        idempotencyKey: "approve-fixed-head",
+        evidence: {
+          approval: {
+            ...approvalEvidenceExample,
+            fixOutcomes: [
+              {
+                findingId: "finding-1",
+                status: "FIXED",
+                evidence: [
+                  {
+                    kind: "test_artifact",
+                    artifactSha256: protocolExampleSha256,
+                    artifactSizeBytes: 1,
+                  },
+                ],
+                requiresFreshReview: false,
+              },
+            ],
+          },
+          approvedAt: timestamp,
+        },
+      },
+    );
+    expect(approved.state).toMatchObject({
+      state: "APPROVED",
+      approvalReceipt: {
+        revisions: {
+          objectFormat: "sha1",
+          baseSha: review.revisions.baseSha,
+          headSha: validInput.headSha,
+        },
+      },
+    });
   } finally {
     await closeStoresAndRemove(root, [store]);
   }
@@ -515,12 +575,26 @@ test("uses expiring leases and fencing tokens to reject stale state mutations", 
       "2026-10-03T12:00:02.000Z",
     );
     expect(leaseB.token).toBe(2);
+    const otherReview = await createReview(store, "submit-other-for-fencing");
+    const unrelatedLease = store.acquireLease(
+      `cycle:${otherReview.cycleId}`,
+      "worker-other-cycle",
+      1_000,
+      "2026-10-03T12:00:02.000Z",
+    );
     const command = {
       type: "REQUEST_CANCEL" as const,
       reason: "fencing test",
       expectedVersion: 0,
       idempotencyKey: "fenced-cancel",
     };
+    expect(() =>
+      store?.applyCycleCommand("test-caller", review.cycleId, command, {
+        occurredAtUtc: "2026-10-03T12:00:02.000Z",
+        fencing: unrelatedLease,
+      }),
+    ).toThrow("resource does not match the target cycle");
+    expect(store.readCycle(review.cycleId).state).toBe("QUEUED");
     expect(() =>
       store?.applyCycleCommand("test-caller", review.cycleId, command, {
         occurredAtUtc: "2026-10-03T12:00:02.000Z",
@@ -548,6 +622,13 @@ test("uses expiring leases and fencing tokens to reject stale state mutations", 
       expectedVersion: 1,
       idempotencyKey: "confirm-fenced-cancel",
     };
+    expect(() =>
+      store?.applyCycleCommand("test-caller", review.cycleId, confirmCancel, {
+        occurredAtUtc: "2026-10-03T12:00:02.300Z",
+        fencing: unrelatedLease,
+      }),
+    ).toThrow("resource does not match the target cycle");
+    expect(store.readCycle(review.cycleId).state).toBe("CANCEL_REQUESTED");
     expect(() =>
       store?.applyCycleCommand("test-caller", review.cycleId, confirmCancel, {
         occurredAtUtc: "2026-10-03T12:00:02.300Z",

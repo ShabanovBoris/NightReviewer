@@ -527,7 +527,7 @@ export class SqliteStorage {
 
       const currentRow = this.readCycleRow(cycleId);
       const current = decodeCycle(currentRow.state_json);
-      this.assertFencingToken(options.fencing, occurredAt);
+      this.assertFencingToken(options.fencing, occurredAt, `cycle:${cycleId}`);
       const transition = transitionReviewCycle(current, command);
       if (!transition.ok)
         throw mapProtocolTransitionError(transition.error.code);
@@ -1285,7 +1285,14 @@ export class SqliteStorage {
         target: "VERIFYING_FIX",
         expectedVersion: input.expectedVersion,
         idempotencyKey: fixTransitionKey(input.callerId, input.idempotencyKey),
-        evidence: { atomicFixSubmissionValidated: true },
+        evidence: {
+          atomicFixSubmissionValidated: true,
+          fixRevisions: {
+            objectFormat: cycle.object_format,
+            baseSha: input.previousSha,
+            headSha: input.headSha,
+          },
+        },
       };
       const transition = transitionReviewCycle(state, transitionCommand);
       if (!transition.ok)
@@ -1758,9 +1765,13 @@ export class SqliteStorage {
   private assertFencingToken(
     fencing: FencingToken | undefined,
     now: string,
+    expectedResourceId: string,
   ): void {
     if (fencing === undefined) return;
     validateFencingToken(fencing);
+    if (fencing.resourceId !== expectedResourceId) {
+      throw conflict("Fencing token resource does not match the target cycle.");
+    }
     const current = this.currentLease(fencing.resourceId);
     if (
       current === null ||

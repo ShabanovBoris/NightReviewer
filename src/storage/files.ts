@@ -30,6 +30,15 @@ export function artifactRelativePath(sha256: string): string {
   return path.posix.join(ARTIFACTS_DIRECTORY, sha256.slice(0, 2), sha256);
 }
 
+export function artifactReferenceFor(bytes: Uint8Array): ArtifactReference {
+  const sha256 = sha256Hex(bytes);
+  return {
+    sha256,
+    sizeBytes: bytes.byteLength,
+    relativePath: artifactRelativePath(sha256),
+  };
+}
+
 export async function ensurePrivateDirectory(
   directoryPath: string,
 ): Promise<void> {
@@ -149,9 +158,16 @@ export async function persistArtifactFile(
   rootDir: string,
   bytes: Uint8Array,
 ): Promise<ArtifactReference> {
-  const stableBytes = new Uint8Array(bytes);
-  const sha256 = sha256Hex(stableBytes);
-  const relativePath = artifactRelativePath(sha256);
+  return persistStableArtifactFile(rootDir, new Uint8Array(bytes));
+}
+
+/** Persists bytes already copied into a caller-owned immutable operation buffer. */
+export async function persistStableArtifactFile(
+  rootDir: string,
+  stableBytes: Uint8Array,
+): Promise<ArtifactReference> {
+  const reference = artifactReferenceFor(stableBytes);
+  const { sha256, relativePath } = reference;
   const parent = path.posix.dirname(relativePath);
   const directory = await ensurePrivateChildDirectory(rootDir, parent);
   const finalPath = path.join(directory, sha256);
@@ -204,18 +220,14 @@ export async function persistArtifactFile(
           sha256Hex(existingBytes) === sha256 &&
           existingBytes.byteLength === stableBytes.byteLength
         ) {
-          return {
-            sha256,
-            sizeBytes: stableBytes.byteLength,
-            relativePath,
-          };
+          return reference;
         }
       }
       throw toIoError(writeError);
     }
   }
 
-  return { sha256, sizeBytes: stableBytes.byteLength, relativePath };
+  return reference;
 }
 
 export async function readVerifiedArtifact(

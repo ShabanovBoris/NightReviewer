@@ -28,6 +28,7 @@ import {
   StorageError,
 } from "./errors";
 import {
+  artifactReferenceFor,
   artifactRelativePath,
   DATABASE_FILE_NAME,
   ensureEmptyOwnedDirectory,
@@ -36,6 +37,7 @@ import {
   listArtifactFiles,
   makeUtcTimestamp,
   persistArtifactFile,
+  persistStableArtifactFile,
   readVerifiedArtifact,
   sha256Hex,
   writeAtomicFile,
@@ -64,6 +66,7 @@ import type {
   ReconciliationReport,
   RecordFindingVerificationInput,
   ReviewRecord,
+  SnapshotCycleContext,
   SnapshotInput,
   SnapshotRecord,
   WorkerAttemptInput,
@@ -348,55 +351,56 @@ export class SqliteStorage {
   }
 
   recordSnapshot(input: SnapshotInput): void {
-    validateIdentifier(input.snapshotId, "snapshotId");
-    validateIdentifier(input.cycleId, "cycleId");
-    const manifestHash = requireSha256(input.manifestHash, "manifestHash");
-    if (manifestHash !== hashCanonicalJson(input.manifest)) {
+    const { manifestHash, createdAt } = validateSnapshotInput(input);
+    this.withImmediateTransaction(() => {
+      this.insertSnapshot(input, manifestHash, createdAt);
+    });
+  }
+
+  /** Atomically records the immutable manifest and its owned Git object pack. */
+  async recordSnapshotWithArtifact(
+    input: SnapshotInput,
+    artifactBytes: Uint8Array,
+  ): Promise<ArtifactReference> {
+    const { manifestHash, createdAt } = validateSnapshotInput(input);
+    if (
+      !(artifactBytes instanceof Uint8Array) ||
+      artifactBytes.byteLength === 0
+    ) {
       throw invalidArgument(
-        "Snapshot manifest hash does not match its canonical JSON.",
+        "Snapshot artifact must contain exact non-empty bytes.",
       );
     }
-    const createdAt = makeUtcTimestamp(input.createdAtUtc);
-    this.withImmediateTransaction(() => {
-      const cycle = this.readCycleRow(input.cycleId);
-      if (
-        cycle.object_format !== input.objectFormat ||
-        cycle.base_sha !== input.baseSha ||
-        cycle.head_sha !== input.headSha
-      ) {
-        throw conflict(
-          "Snapshot revisions do not match the pinned review cycle.",
+    const stableBytes = new Uint8Array(artifactBytes);
+    const expectedReference = artifactReferenceFor(stableBytes);
+    const manifestArtifact = snapshotArtifactReference(input.manifest);
+    if (
+      manifestArtifact.sha256 !== expectedReference.sha256 ||
+      manifestArtifact.sizeBytes !== expectedReference.sizeBytes ||
+      manifestArtifact.relativePath !== expectedReference.relativePath
+    ) {
+      throw invalidArgument(
+        "Snapshot manifest artifact identity does not match its exact bytes.",
+      );
+    }
+    return this.withAsyncImmediateTransaction(async () => {
+      const cycle = this.requireSnapshotCycle(input);
+      const reference = await persistStableArtifactFile(
+        this.rootDir,
+        stableBytes,
+      );
+      if (reference.sha256 !== expectedReference.sha256) {
+        throw invariantViolation(
+          "Persisted snapshot artifact identity changed unexpectedly.",
         );
       }
-      this.db
-        .query(
-          `INSERT INTO snapshots
-           (snapshot_id, cycle_id, object_format, base_sha, head_sha, manifest_hash, manifest_json, created_at_utc)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          input.snapshotId,
-          input.cycleId,
-          input.objectFormat,
-          input.baseSha,
-          input.headSha,
-          manifestHash,
-          encodeJson(input.manifest),
-          createdAt,
-        );
-      this.insertEventOutbox({
-        reviewId: cycle.review_id,
-        cycleId: input.cycleId,
-        eventType: "snapshot.recorded",
-        payload: {
-          snapshotId: input.snapshotId,
-          manifestHash,
-          objectFormat: input.objectFormat,
-          baseSha: input.baseSha,
-          headSha: input.headSha,
-        },
-        occurredAtUtc: createdAt,
-      });
+      this.insertArtifactRecord(
+        reference,
+        "application/x-git-packed-objects",
+        createdAt,
+      );
+      this.insertSnapshot(input, manifestHash, createdAt, reference, cycle);
+      return reference;
     });
   }
 
@@ -482,6 +486,35 @@ export class SqliteStorage {
     if (row === null)
       throw new StorageError("NOT_FOUND", "Review cycle was not found.");
     return decodeCycle(row.state_json);
+  }
+
+  readSnapshotCycleContext(cycleId: string): SnapshotCycleContext {
+    validateIdentifier(cycleId, "cycleId");
+    const row = this.db
+      .query(
+        `SELECT r.repo_id, r.task, r.acceptance_criteria_json, c.state_json
+         FROM review_cycles c
+         JOIN reviews r ON r.review_id = c.review_id
+         WHERE c.cycle_id = ?`,
+      )
+      .get(cycleId) as {
+      repo_id: string;
+      task: string;
+      acceptance_criteria_json: string;
+      state_json: string;
+    } | null;
+    if (row === null) {
+      throw new StorageError("NOT_FOUND", "Review cycle was not found.");
+    }
+    return {
+      cycleId,
+      repoId: row.repo_id,
+      task: row.task,
+      acceptanceCriteria: parseJson<ReviewSubmitInput["acceptanceCriteria"]>(
+        row.acceptance_criteria_json,
+      ),
+      cycle: decodeCycle(row.state_json),
+    };
   }
 
   applyCycleCommand(
@@ -1797,7 +1830,9 @@ export class SqliteStorage {
     }
     const snapshot = this.db
       .query(
-        `SELECT 1 AS found FROM snapshots
+        `SELECT snapshot_id, object_format, base_sha, head_sha,
+                manifest_hash, manifest_json
+         FROM snapshots
          WHERE cycle_id = ? AND object_format = ? AND base_sha = ? AND head_sha = ?
            AND manifest_hash = ?
          LIMIT 1`,
@@ -1808,10 +1843,53 @@ export class SqliteStorage {
         state.revisions.baseSha,
         state.revisions.headSha,
         state.manifestHash,
-      );
+      ) as {
+      snapshot_id: string;
+      object_format: "sha1" | "sha256";
+      base_sha: string;
+      head_sha: string;
+      manifest_hash: string;
+      manifest_json: string;
+    } | null;
     if (snapshot == null) {
       throw conflict(
         "REVIEWING state requires a stored snapshot with matching pinned revisions and manifest hash.",
+      );
+    }
+    const manifest = parseJson<ProtocolJsonValue>(snapshot.manifest_json);
+    let manifestMatchesStorage = false;
+    try {
+      manifestMatchesStorage =
+        canonicalJson(manifest) === snapshot.manifest_json &&
+        hashCanonicalJson(manifest) === snapshot.manifest_hash;
+    } catch {
+      manifestMatchesStorage = false;
+    }
+    if (!manifestMatchesStorage) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest is not canonical or does not match its immutable hash.",
+      );
+    }
+    if (!isJsonObject(manifest)) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest does not match its pinned snapshot identity.",
+      );
+    }
+    if (
+      manifest.snapshotId !== snapshot.snapshot_id ||
+      manifest.cycleId !== cycleId ||
+      manifest.objectFormat !== snapshot.object_format ||
+      manifest.baseSha !== snapshot.base_sha ||
+      manifest.headSha !== snapshot.head_sha
+    ) {
+      throw needsReconciliation(
+        "Persisted snapshot manifest does not match its pinned snapshot identity.",
+      );
+    }
+    const coverage = manifest.coverage;
+    if (!isJsonObject(coverage) || coverage.complete !== true) {
+      throw conflict(
+        "REVIEWING state requires complete snapshot content coverage.",
       );
     }
   }
@@ -1874,6 +1952,68 @@ export class SqliteStorage {
         input.occurredAtUtc,
       );
     return eventId;
+  }
+
+  private insertSnapshot(
+    input: SnapshotInput,
+    manifestHash: string,
+    createdAt: string,
+    artifact?: ArtifactReference,
+    pinnedCycle?: CycleRow,
+  ): void {
+    const cycle = pinnedCycle ?? this.requireSnapshotCycle(input);
+    this.assertSnapshotCycleMatches(input, cycle);
+    this.db
+      .query(
+        `INSERT INTO snapshots
+         (snapshot_id, cycle_id, object_format, base_sha, head_sha, manifest_hash, manifest_json, created_at_utc)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.snapshotId,
+        input.cycleId,
+        input.objectFormat,
+        input.baseSha,
+        input.headSha,
+        manifestHash,
+        encodeJson(input.manifest),
+        createdAt,
+      );
+    this.insertEventOutbox({
+      reviewId: cycle.review_id,
+      cycleId: input.cycleId,
+      eventType: "snapshot.recorded",
+      payload: {
+        snapshotId: input.snapshotId,
+        manifestHash,
+        objectFormat: input.objectFormat,
+        baseSha: input.baseSha,
+        headSha: input.headSha,
+        ...(artifact === undefined ? {} : { artifact }),
+      },
+      occurredAtUtc: createdAt,
+    });
+  }
+
+  private requireSnapshotCycle(input: SnapshotInput): CycleRow {
+    const cycle = this.readCycleRow(input.cycleId);
+    this.assertSnapshotCycleMatches(input, cycle);
+    return cycle;
+  }
+
+  private assertSnapshotCycleMatches(
+    input: SnapshotInput,
+    cycle: CycleRow,
+  ): void {
+    if (
+      cycle.object_format !== input.objectFormat ||
+      cycle.base_sha !== input.baseSha ||
+      cycle.head_sha !== input.headSha
+    ) {
+      throw conflict(
+        "Snapshot revisions do not match the pinned review cycle.",
+      );
+    }
   }
 
   private insertArtifactRecord(
@@ -2217,6 +2357,68 @@ function requireIdempotencyBinding(
   return result.binding;
 }
 
+function validateSnapshotInput(input: SnapshotInput): {
+  manifestHash: string;
+  createdAt: string;
+} {
+  validateIdentifier(input.snapshotId, "snapshotId");
+  validateIdentifier(input.cycleId, "cycleId");
+  const oidLength = input.objectFormat === "sha1" ? 40 : 64;
+  const oidPattern = new RegExp(`^[0-9a-f]{${oidLength}}$`);
+  if (
+    (input.objectFormat !== "sha1" && input.objectFormat !== "sha256") ||
+    !oidPattern.test(input.baseSha) ||
+    !oidPattern.test(input.headSha)
+  ) {
+    throw invalidArgument(
+      "Snapshot revisions must be full object IDs in the declared format.",
+    );
+  }
+  const manifestHash = requireSha256(input.manifestHash, "manifestHash");
+  if (manifestHash !== hashCanonicalJson(input.manifest)) {
+    throw invalidArgument(
+      "Snapshot manifest hash does not match its canonical JSON.",
+    );
+  }
+  return { manifestHash, createdAt: makeUtcTimestamp(input.createdAtUtc) };
+}
+
+function snapshotArtifactReference(
+  manifest: ProtocolJsonValue,
+): ArtifactReference {
+  if (
+    typeof manifest !== "object" ||
+    manifest === null ||
+    Array.isArray(manifest)
+  ) {
+    throw invalidArgument(
+      "Snapshot manifest must contain an artifact reference.",
+    );
+  }
+  const artifact = (manifest as { readonly [key: string]: ProtocolJsonValue })
+    .snapshotArtifact;
+  if (
+    typeof artifact !== "object" ||
+    artifact === null ||
+    Array.isArray(artifact)
+  ) {
+    throw invalidArgument(
+      "Snapshot manifest must contain an artifact reference.",
+    );
+  }
+  const { sha256, sizeBytes, relativePath } = artifact as {
+    readonly [key: string]: ProtocolJsonValue;
+  };
+  if (
+    typeof sha256 !== "string" ||
+    typeof sizeBytes !== "number" ||
+    typeof relativePath !== "string"
+  ) {
+    throw invalidArgument("Snapshot manifest artifact reference is malformed.");
+  }
+  return { sha256, sizeBytes, relativePath };
+}
+
 function validateIdentifier(value: string, name: string): void {
   if (!ID_PATTERN.test(value))
     throw invalidArgument(`${name} is not a valid protocol identifier.`);
@@ -2308,6 +2510,10 @@ function parseJson<T = unknown>(json: string): T {
   } catch {
     throw needsReconciliation("Persisted JSON value is malformed.");
   }
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mapProtocolTransitionError(code: string): StorageError {

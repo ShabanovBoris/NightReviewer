@@ -5,8 +5,8 @@
 | Task | Status | PR / evidence |
 |---|---|---|
 | NR-01 | COMPLETE | [PR #2](https://github.com/ShabanovBoris/NightReviewer/pull/2), merged main e9e7812ff4058ce9fc1184e7275be2ebdcd99588; lead acceptance c842056b-9571-4f04-8f42-f3b96863f54d; resulting-main CI 36325969092 |
-| NR-02 | IN_PROGRESS — D105 corrects acceptance evidence: D66 AC1 and D67 cancellation receipts await independent review; D100 unavailable evidence also awaits review | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3); assignment NR-02-C2-D105-R2-FINDINGS-EVIDENCE-STATUS-REMEDIATION; branch nr-02-chatgpt-web-spike; base e9e7812ff4058ce9fc1184e7275be2ebdcd99588 |
-| NR-03 | PLANNED | — |
+| NR-02 | COMPLETE — Lead D109 accepted; AC3 remains deferred non-blocking hardening | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3), merge/resulting main `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
+| NR-03 | IN_PROGRESS — D110 assignment; awaiting implementation and acceptance | branch `nr-03-versioned-protocol-state-machine`, base `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
 | NR-04 | PLANNED | — |
 | NR-05 | PLANNED | — |
 | NR-06 | PLANNED | — |
@@ -25,11 +25,19 @@
 | NR-19 | PLANNED | — |
 | NR-20 | PLANNED | — |
 
-## NR-02 current cycle 2 — D105
+## Accepted completion: NR-02 — Lead D109
 
-Lead D105 is bound to PR #3, base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`, starting head `08f0951b0692ebe60deb84b999eaa935b7aa3180`, and the NR-02 spec revision supplied with the assignment. Its offline evidence audit found a qualifying D66 AC1 round-trip receipt and D67 cancellation receipt. Both remain `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; neither is final acceptance. The original D66/D67 receipts and D100 pre-health files remain immutable in the private session evidence store.
+Lead decision `NR-02-D109-TASK-COMPLETION-ACCEPTED` accepts PR #3 at reviewed base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588` and head `18b079e6c5dd930f510fa6bd78647be6d9269533`, bundle `sha256:f55b618473323fdd137387339312d22a28a355cc49cf60388f3b3cd3e1b15323`. The merge commit and resulting `main` are `be3efa9c39e8215a1c984ad9d7d37ce50e38896e`; reviewed-head CI `37055467239` and resulting-main CI `37074470542` succeeded. Lead acceptance records AC1, AC2 cancellation, AC2 unavailable and AC4 as reviewed pass; AC3 remains `DEFERRED_HARDENING_NON_BLOCKING`. This deferred item is not implicitly activated. NR-02 requires no further action.
 
-Current acceptance state: AC1 `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 cancellation `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 unavailable `PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE`; AC2 overall `INCOMPLETE`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW`. Reviewer bootstrap and one fix review are conditionally authorized after D105 publication, exact-head CI, and final review-context construction. Merge is not authorized. D105 permits no new LIVE, runtime, browser, connector, tunnel, or credential action.
+## Current assignment: NR-03 — D110
+
+Assignment `NR-03-C1-D110-VERSIONED-SCHEMAS-STATE-MACHINE` starts from exact `main` base `be3efa9c39e8215a1c984ad9d7d37ce50e38896e`, on feature branch `nr-03-versioned-protocol-state-machine`. Spec `docs/specs/NR-03.md` is bound to SHA-256 `f1778155043a22f64c501b8aac7b01724e6179981979fad6431da2bf39c22909`; acceptance remains pending until the implementation is reviewed, authorized for merge, merged, and verified on `main`.
+
+## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
+
+Lead D105 was bound to PR #3, base `e9e7812ff4058ce9fc1184e7275be2ebdcd99588`, starting head `08f0951b0692ebe60deb84b999eaa935b7aa3180`, and the NR-02 spec revision supplied with that assignment. Its offline evidence audit found a qualifying D66 AC1 round-trip receipt and D67 cancellation receipt. At that point they remained `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; neither was final acceptance. The original D66/D67 receipts and D100 pre-health files remain immutable in the private session evidence store.
+
+At the D105 snapshot, acceptance state was: AC1 `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 cancellation `PASS_LIVE_PENDING_INDEPENDENT_REVIEW`; AC2 unavailable `PENDING_INDEPENDENT_REVIEW_OF_REVISED_CONTRACT_AND_D100_EVIDENCE`; AC2 overall `INCOMPLETE`; AC3 `DEFERRED_HARDENING`; AC4 `PASS_DOCUMENTATION_ONLY_PENDING_INDEPENDENT_REVIEW`. Reviewer bootstrap and one fix review were conditionally authorized after D105 publication, exact-head CI, and final review-context construction. Merge was not authorized. D105 permitted no new LIVE, runtime, browser, connector, tunnel, or credential action.
 
 ### Operative AC2-unavailable contract from D102
 

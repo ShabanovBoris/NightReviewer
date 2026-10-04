@@ -175,7 +175,13 @@
   "review": {
     "status": "NOT_REQUESTED",
     "mergeAuthorized": false,
-    "exactHeadCi": "PENDING_PUSH"
+    "pullRequest": {
+      "url": "https://github.com/ShabanovBoris/NightReviewer/pull/9",
+      "baseSha": "9f50731fddf106f951e797014586e87a63c7c3b9",
+      "headShaAtRecordedCheck": "b1ce4bc0c1294be26c3b3eaef0cfa47d7fc8b1fe",
+      "workflowRunId": 37233937963,
+      "workflowConclusion": "SUCCESS"
+    }
   },
   "knownLimitations": [
     "The nine slots are logical fake scheduler runs; they do not prove independent fresh reviewer chats or production 3x3 execution (NR-11).",

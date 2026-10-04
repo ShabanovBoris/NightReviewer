@@ -719,8 +719,12 @@ test("cancellation returns when an invocation ignores AbortSignal", async () => 
           ).length > priorObsoleteEvents,
     );
     expect(
-      fixture.store.readSchedulerSelectedRuns(current.cycleId),
-    ).toHaveLength(0);
+      hasSelectedWorkerResult(
+        fixture.store,
+        current.cycleId,
+        invocation.claim.attemptId,
+      ),
+    ).toBe(false);
   } finally {
     await closeFixture(fixture, scheduler);
   }
@@ -783,9 +787,11 @@ test("timed-out invocation releases the scheduler slot for queued work", async (
         ),
     );
     expect(
-      fixture.store
-        .readSchedulerSelectedRuns(fixture.context.cycleId)
-        .some((run) => run.runId === invocation.claim.runId),
+      hasSelectedWorkerResult(
+        fixture.store,
+        invocation.claim.cycleId,
+        invocation.claim.attemptId,
+      ),
     ).toBe(false);
   } finally {
     await closeFixture(fixture, scheduler);
@@ -1057,9 +1063,11 @@ test("timed-out reconciliation releases the slot and fences its late result", as
         ),
     );
     expect(
-      fixture.store
-        .readSchedulerSelectedRuns(fixture.context.cycleId)
-        .some((run) => run.runId === unknownRunId),
+      hasSelectedWorkerResult(
+        fixture.store,
+        reconciliation.claim.cycleId,
+        reconciliation.claim.attemptId,
+      ),
     ).toBe(false);
   } finally {
     await closeFixture(fixture, scheduler);
@@ -1260,6 +1268,22 @@ async function waitFor(
       throw new Error("Timed out waiting for scheduler test condition.");
     await new Promise<void>((resolve) => setTimeout(resolve, 1));
   }
+}
+
+function hasSelectedWorkerResult(
+  store: SqliteStorage,
+  cycleId: string,
+  attemptId: string,
+): boolean {
+  return store
+    .readEventPage(cycleId)
+    .events.some(
+      (event) =>
+        event.eventType === "worker.result_recorded" &&
+        (event.payload as { attemptId?: string; selected?: boolean })
+          .attemptId === attemptId &&
+        (event.payload as { selected?: boolean }).selected === true,
+    );
 }
 
 async function completesWithin(

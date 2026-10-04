@@ -45,6 +45,10 @@ import {
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const REPO_ID = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/;
+const MAX_LFS_POINTER_BYTES = 1_024;
+const MIN_LFS_POINTER_BYTES = Buffer.byteLength(
+  `version https://git-lfs.github.com/spec/v1\noid sha256:${"0".repeat(64)}\nsize 0\n`,
+);
 
 interface BuiltChange {
   readonly pathBytes: Uint8Array;
@@ -405,7 +409,18 @@ class SnapshotServiceImpl implements SnapshotService {
   async openSnapshot(
     cycleId: string,
     snapshotId: string,
+    requestedDeadlineAt?: number,
   ): Promise<SnapshotReader> {
+    if (
+      requestedDeadlineAt !== undefined &&
+      (!Number.isSafeInteger(requestedDeadlineAt) ||
+        requestedDeadlineAt <= Date.now())
+    ) {
+      throw new SnapshotError(
+        "LIMIT_EXCEEDED",
+        "Snapshot reader deadline has expired.",
+      );
+    }
     const record = this.store
       .readSnapshots(cycleId)
       .find((snapshot) => snapshot.snapshotId === snapshotId);
@@ -424,6 +439,15 @@ class SnapshotServiceImpl implements SnapshotService {
       );
     }
     const pack = await this.store.readRawArtifact(manifest.snapshotArtifact);
+    if (
+      requestedDeadlineAt !== undefined &&
+      requestedDeadlineAt <= Date.now()
+    ) {
+      throw new SnapshotError(
+        "LIMIT_EXCEEDED",
+        "Snapshot reader deadline has expired.",
+      );
+    }
     if (pack.byteLength !== manifest.snapshotArtifact.sizeBytes) {
       throw new SnapshotError(
         "CONTENT_UNAVAILABLE",
@@ -433,7 +457,21 @@ class SnapshotServiceImpl implements SnapshotService {
     const workspace = await createGitWorkspace();
     let closed = false;
     try {
-      const openDeadlineAt = Date.now() + this.limits.maxCreationTimeMs;
+      const now = Date.now();
+      if (
+        requestedDeadlineAt !== undefined &&
+        (!Number.isSafeInteger(requestedDeadlineAt) ||
+          requestedDeadlineAt <= now)
+      ) {
+        throw new SnapshotError(
+          "LIMIT_EXCEEDED",
+          "Snapshot reader deadline has expired.",
+        );
+      }
+      const openDeadlineAt = Math.min(
+        requestedDeadlineAt ?? now + this.limits.maxCreationTimeMs,
+        now + this.limits.maxCreationTimeMs,
+      );
       const bareDir = path.join(workspace.rootDir, "snapshot.git");
       await createBareObjectStore(
         workspace,
@@ -483,24 +521,155 @@ class SnapshotServiceImpl implements SnapshotService {
           );
         }
       }
+      const changedBase = new Map<string, SnapshotFileDescriptor>();
+      const changedHead = new Map<string, SnapshotFileDescriptor>();
+      for (const change of manifest.changes) {
+        if (change.base !== undefined) {
+          changedBase.set(change.base.pathBytesBase64, change.base);
+        }
+        if (change.head !== undefined) {
+          changedHead.set(change.head.pathBytesBase64, change.head);
+        }
+      }
+      let snapshotTrees:
+        | {
+            readonly base: ReadonlyMap<string, SnapshotFileDescriptor>;
+            readonly head: ReadonlyMap<string, SnapshotFileDescriptor>;
+          }
+        | undefined;
+
+      async function readSnapshotTrees(deadlineAt?: number): Promise<{
+        readonly base: ReadonlyMap<string, SnapshotFileDescriptor>;
+        readonly head: ReadonlyMap<string, SnapshotFileDescriptor>;
+      }> {
+        if (closed) {
+          throw new SnapshotError("CLOSED", "Snapshot reader is closed.");
+        }
+        if (snapshotTrees !== undefined) return snapshotTrees;
+        const currentTime = Date.now();
+        if (
+          deadlineAt !== undefined &&
+          (!Number.isSafeInteger(deadlineAt) || deadlineAt <= currentTime)
+        ) {
+          throw new SnapshotError(
+            "LIMIT_EXCEEDED",
+            "Snapshot tree read deadline has expired.",
+          );
+        }
+        const treeDeadlineAt = Math.min(
+          deadlineAt ?? currentTime + manifest.limits.maxCreationTimeMs,
+          currentTime + manifest.limits.maxCreationTimeMs,
+        );
+        const baseTree = await readTreeEntries(
+          workspace,
+          bareDir,
+          manifest.baseSha,
+          manifest.objectFormat,
+          manifest.limits,
+          treeDeadlineAt,
+        );
+        const headTree = await readTreeEntries(
+          workspace,
+          bareDir,
+          manifest.headSha,
+          manifest.objectFormat,
+          manifest.limits,
+          treeDeadlineAt,
+        );
+        if (
+          baseTree.allEntries.length + headTree.allEntries.length !==
+          manifest.treeEntryCount
+        ) {
+          throw new SnapshotError(
+            "CONTENT_UNAVAILABLE",
+            "Pinned snapshot trees do not match the immutable manifest count.",
+          );
+        }
+        const lfsInspection = selectUnchangedLfsBlobs(
+          baseTree.entries,
+          headTree.entries,
+          changedBase,
+          changedHead,
+          manifest.limits,
+        );
+        const inspectedLfs = await readBlobBatch(
+          workspace,
+          bareDir,
+          lfsInspection.selected,
+          manifest.limits,
+          treeDeadlineAt,
+        );
+        snapshotTrees = {
+          base: describeSnapshotTree(
+            baseTree.entries,
+            changedBase,
+            manifest,
+            inspectedLfs,
+            lfsInspection.skippedOids,
+          ),
+          head: describeSnapshotTree(
+            headTree.entries,
+            changedHead,
+            manifest,
+            inspectedLfs,
+            lfsInspection.skippedOids,
+          ),
+        };
+        return snapshotTrees;
+      }
+
       return {
         manifest,
         diff: manifest.changes,
-        async readFile(filePath, side) {
+        async listFiles(side, deadlineAt) {
+          if (side !== "base" && side !== "head") {
+            throw new SnapshotError(
+              "INVALID_ARGUMENT",
+              "Snapshot side must be base or head.",
+            );
+          }
+          const trees = await readSnapshotTrees(deadlineAt);
+          const entries = [...trees[side].values()];
+          entries.sort((left, right) =>
+            comparePathBytes(
+              Buffer.from(left.pathBytesBase64, "base64"),
+              Buffer.from(right.pathBytesBase64, "base64"),
+            ),
+          );
+          return entries;
+        },
+        async readFile(filePath, side, requestedReadDeadlineAt) {
           if (closed)
             throw new SnapshotError("CLOSED", "Snapshot reader is closed.");
+          if (side !== "base" && side !== "head") {
+            throw new SnapshotError(
+              "INVALID_ARGUMENT",
+              "Snapshot side must be base or head.",
+            );
+          }
           validateReadPath(filePath);
+          const currentTime = Date.now();
+          if (
+            requestedReadDeadlineAt !== undefined &&
+            (!Number.isSafeInteger(requestedReadDeadlineAt) ||
+              requestedReadDeadlineAt <= currentTime)
+          ) {
+            throw new SnapshotError(
+              "LIMIT_EXCEEDED",
+              "Snapshot file read deadline has expired.",
+            );
+          }
+          const readDeadlineAt = Math.min(
+            requestedReadDeadlineAt ??
+              currentTime + manifest.limits.maxCreationTimeMs,
+            currentTime + manifest.limits.maxCreationTimeMs,
+          );
           const pathBytesBase64 = Buffer.from(filePath, "utf8").toString(
             "base64",
           );
-          let descriptor: SnapshotFileDescriptor | undefined;
-          for (const change of manifest.changes) {
-            const candidate = side === "base" ? change.base : change.head;
-            if (candidate?.pathBytesBase64 === pathBytesBase64) {
-              descriptor = candidate;
-              break;
-            }
-          }
+          const descriptor = (await readSnapshotTrees(readDeadlineAt))[
+            side
+          ].get(pathBytesBase64);
           if (descriptor === undefined) {
             throw new SnapshotError(
               "NOT_FOUND",
@@ -531,7 +700,7 @@ class SnapshotServiceImpl implements SnapshotService {
             ["cat-file", "blob", descriptor.oid],
             {
               limits: manifest.limits,
-              deadlineAt: Date.now() + manifest.limits.maxCreationTimeMs,
+              deadlineAt: readDeadlineAt,
               maxStdoutBytes: descriptor.sizeBytes,
             },
           );
@@ -545,6 +714,7 @@ class SnapshotServiceImpl implements SnapshotService {
             path: descriptor.path,
             mode: descriptor.mode,
             oid: descriptor.oid,
+            sizeBytes: descriptor.sizeBytes,
             contentState: descriptor.contentState,
             bytes,
           };
@@ -747,6 +917,114 @@ function buildFileDescriptor(
   };
 }
 
+function selectUnchangedLfsBlobs(
+  baseEntries: ReadonlyMap<string, GitTreeEntry>,
+  headEntries: ReadonlyMap<string, GitTreeEntry>,
+  changedBase: ReadonlyMap<string, SnapshotFileDescriptor>,
+  changedHead: ReadonlyMap<string, SnapshotFileDescriptor>,
+  limits: SnapshotLimits,
+): {
+  readonly selected: ReadonlyMap<string, number>;
+  readonly skippedOids: ReadonlySet<string>;
+} {
+  const selected = new Map<string, number>();
+  const skippedOids = new Set<string>();
+  let availableBytes = limits.maxContentInspectionBytes;
+  for (const [entries, changed] of [
+    [baseEntries, changedBase],
+    [headEntries, changedHead],
+  ] as const) {
+    for (const [pathBytesBase64, entry] of entries) {
+      if (
+        changed.has(pathBytesBase64) ||
+        entry.objectType !== "blob" ||
+        entry.mode === "120000" ||
+        !entry.pathUtf8Valid ||
+        entry.sizeBytes === undefined ||
+        entry.sizeBytes === 0 ||
+        entry.sizeBytes < MIN_LFS_POINTER_BYTES ||
+        entry.sizeBytes > MAX_LFS_POINTER_BYTES ||
+        entry.sizeBytes > limits.maxBlobReadBytes ||
+        selected.has(entry.oid) ||
+        skippedOids.has(entry.oid)
+      ) {
+        continue;
+      }
+      if (entry.sizeBytes > availableBytes) {
+        skippedOids.add(entry.oid);
+        continue;
+      }
+      selected.set(entry.oid, entry.sizeBytes);
+      availableBytes -= entry.sizeBytes;
+    }
+  }
+  return { selected, skippedOids };
+}
+
+function describeSnapshotTree(
+  entries: ReadonlyMap<string, GitTreeEntry>,
+  changedDescriptors: ReadonlyMap<string, SnapshotFileDescriptor>,
+  manifest: SnapshotManifest,
+  inspectedLfs: ReadonlyMap<string, Uint8Array>,
+  skippedLfsOids: ReadonlySet<string>,
+): ReadonlyMap<string, SnapshotFileDescriptor> {
+  const result = new Map<string, SnapshotFileDescriptor>();
+  for (const [pathBytesBase64, changed] of changedDescriptors) {
+    const entry = entries.get(pathBytesBase64);
+    if (
+      entry === undefined ||
+      changed.path !== entry.path ||
+      changed.mode !== entry.mode ||
+      changed.objectType !== entry.objectType ||
+      changed.oid !== entry.oid ||
+      changed.sizeBytes !== entry.sizeBytes
+    ) {
+      throw new SnapshotError(
+        "CONTENT_UNAVAILABLE",
+        "Changed-file metadata does not match its pinned Git tree entry.",
+      );
+    }
+  }
+  for (const [pathBytesBase64, entry] of entries) {
+    if (entry.objectType === "tree") continue;
+    const changed = changedDescriptors.get(pathBytesBase64);
+    if (changed !== undefined) {
+      result.set(pathBytesBase64, changed);
+      continue;
+    }
+    const inspected =
+      entry.objectType === "blob" ? inspectedLfs.get(entry.oid) : undefined;
+    const contentState: SnapshotFileDescriptor["contentState"] =
+      !entry.pathUtf8Valid
+        ? "PATH_ENCODING_UNSUPPORTED"
+        : entry.objectType === "commit"
+          ? "SUBMODULE_METADATA"
+          : entry.sizeBytes === undefined ||
+              entry.sizeBytes > manifest.limits.maxBlobReadBytes
+            ? "TOO_LARGE"
+            : entry.mode === "120000"
+              ? "SYMLINK_METADATA"
+              : skippedLfsOids.has(entry.oid)
+                ? "INSPECTION_LIMIT"
+                : inspected !== undefined && isLfsPointer(inspected)
+                  ? "LFS_POINTER"
+                  : "AVAILABLE";
+    result.set(pathBytesBase64, {
+      path: entry.path,
+      pathBytesBase64,
+      mode: entry.mode,
+      objectType: entry.objectType,
+      oid: entry.oid,
+      ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes }),
+      contentState,
+      ...(contentState === "LFS_POINTER" && inspected !== undefined
+        ? { lfs: parseLfsPointer(inspected) }
+        : {}),
+    });
+  }
+  return result;
+}
+
 function coverageLimitations(changes: readonly SnapshotChange[]): string[] {
   const limitations = new Set<string>();
   for (const change of changes) {
@@ -797,7 +1075,8 @@ function parseLfsPointer(bytes: Uint8Array): {
 function parseLfsPointerOrUndefined(
   bytes: Uint8Array,
 ): { oid: string; sizeBytes: number } | undefined {
-  if (bytes.byteLength > 1_024 || bytes.includes(0)) return undefined;
+  if (bytes.byteLength > MAX_LFS_POINTER_BYTES || bytes.includes(0))
+    return undefined;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

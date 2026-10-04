@@ -52,6 +52,7 @@ import type {
   CanonicalFindingRecord,
   CreatedReview,
   CreateReviewInput,
+  DirectionRunBinding,
   DirectionRunInput,
   DirectionRunStatus,
   FencingToken,
@@ -492,12 +493,13 @@ export class SqliteStorage {
     validateIdentifier(cycleId, "cycleId");
     const row = this.db
       .query(
-        `SELECT r.repo_id, r.task, r.acceptance_criteria_json, c.state_json
+        `SELECT r.review_id, r.repo_id, r.task, r.acceptance_criteria_json, c.state_json
          FROM review_cycles c
          JOIN reviews r ON r.review_id = c.review_id
          WHERE c.cycle_id = ?`,
       )
       .get(cycleId) as {
+      review_id: string;
       repo_id: string;
       task: string;
       acceptance_criteria_json: string;
@@ -507,6 +509,7 @@ export class SqliteStorage {
       throw new StorageError("NOT_FOUND", "Review cycle was not found.");
     }
     return {
+      reviewId: row.review_id,
       cycleId,
       repoId: row.repo_id,
       task: row.task,
@@ -931,6 +934,46 @@ export class SqliteStorage {
       throw new StorageError("NOT_FOUND", "Direction run was not found.");
     }
     return row.status;
+  }
+
+  readDirectionRunBinding(
+    runId: string,
+    attemptId: string,
+  ): DirectionRunBinding {
+    validateIdentifier(runId, "runId");
+    validateIdentifier(attemptId, "attemptId");
+    const row = this.db
+      .query(
+        `SELECT r.review_id, c.cycle_id, dr.direction_run_id,
+                dr.direction, dr.role, wa.attempt_id
+         FROM direction_runs dr
+         JOIN worker_attempts wa ON wa.direction_run_id = dr.direction_run_id
+         JOIN review_cycles c ON c.cycle_id = dr.cycle_id
+         JOIN reviews r ON r.review_id = c.review_id
+         WHERE dr.direction_run_id = ? AND wa.attempt_id = ?`,
+      )
+      .get(runId, attemptId) as {
+      review_id: string;
+      cycle_id: string;
+      direction_run_id: string;
+      direction: DirectionRunBinding["direction"];
+      role: DirectionRunBinding["role"];
+      attempt_id: string;
+    } | null;
+    if (row === null) {
+      throw new StorageError(
+        "NOT_FOUND",
+        "Direction run attempt binding was not found.",
+      );
+    }
+    return {
+      reviewId: row.review_id,
+      cycleId: row.cycle_id,
+      runId: row.direction_run_id,
+      attemptId: row.attempt_id,
+      direction: row.direction,
+      role: row.role,
+    };
   }
 
   appendWorkerAttempt(input: WorkerAttemptInput): void {

@@ -8,8 +8,8 @@
 | NR-02 | COMPLETE — Lead D109 accepted; AC3 remains deferred non-blocking hardening | [PR #3](https://github.com/ShabanovBoris/NightReviewer/pull/3), merge/resulting main `be3efa9c39e8215a1c984ad9d7d37ce50e38896e` |
 | NR-03 | COMPLETE — Lead D114 accepted | [PR #4](https://github.com/ShabanovBoris/NightReviewer/pull/4), merge/resulting `main` `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; resulting-main CI 37109137657 succeeded |
 | NR-04 | COMPLETE — Lead D120 accepted | [PR #5](https://github.com/ShabanovBoris/NightReviewer/pull/5), merged `main` `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37144869002; [local evidence](evidence/NR-04.json) |
-| NR-05 | IN_PROGRESS — D121 assignment | branch `nr-05-git-snapshots-review-manifest`, base `8c38e07a351f81ff602d02f0191bacc9ef77b366`; [evidence index](evidence/NR-05.json); review and acceptance pending |
-| NR-06 | PLANNED | — |
+| NR-05 | COMPLETE — Lead D123 accepted | [PR #6](https://github.com/ShabanovBoris/NightReviewer/pull/6), merged `main` `bac217d5f96f0fe47f222f45acb643a9b05206a7`; resulting-main CI 37161382656; [evidence index](evidence/NR-05.json) |
+| NR-06 | IN_PROGRESS — D124 assignment; reviewer finding R1-F1 fixed, exact-head fix review pending | [PR #7](https://github.com/ShabanovBoris/NightReviewer/pull/7), branch `nr-06-bounded-readonly-review-context`, base `bac217d5f96f0fe47f222f45acb643a9b05206a7`; LFS-pointer fix commit `a535c6adb8d8033e922f6c0a24318f6c7b1d8003` passed exact-head CI 37196325348 |
 | NR-07 | PLANNED | — |
 | NR-08 | PLANNED | — |
 | NR-09 | PLANNED | — |
@@ -37,9 +37,13 @@ Lead D114 accepted NR-03 after PR #4 merged to `main` at `c0a70dcc6e46e5fec0f377
 
 Lead D120 accepted NR-04 after PR #5 merged to `main` at `8c38e07a351f81ff602d02f0191bacc9ef77b366`. The resulting-main workflow run `37144869002` succeeded. The original implementation evidence remains at [docs/evidence/NR-04.json](evidence/NR-04.json).
 
-## Current assignment: NR-05 — D121
+## Accepted dependency: NR-05 — Lead D123
 
-Assignment `NR-05-C1-D121-GIT-SNAPSHOTS-REVIEW-MANIFEST` starts from exact `main` base `8c38e07a351f81ff602d02f0191bacc9ef77b366`, on feature branch `nr-05-git-snapshots-review-manifest`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-05.md` is bound to SHA-256 `9ad4d32bc6bd27695acf1655f661a6e2438f2bd265eb9ecf05124dfd10c56420`; task `docs/tasks/NR-05.md` is bound to SHA-256 `25493e1ffcfb3a58fc8fef62f4ce859c18f4b0c84d8fa16098837ad954b13cc9`. D121 starts NR-05 after accepted NR-03 and NR-04 dependencies. Implementation, deterministic checks, review, and acceptance are pending; see [docs/evidence/NR-05.json](evidence/NR-05.json).
+Lead D123 accepted NR-05 after PR #6 merged to `main` at `bac217d5f96f0fe47f222f45acb643a9b05206a7`. The merged PR head was `f83f129427709a60e64b39e8fddbcd5384d99a93` on base `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37161382656 succeeded. The acceptance receipt and implementation evidence are indexed in [docs/evidence/NR-05.json](evidence/NR-05.json).
+
+## Current assignment: NR-06 — D124
+
+Assignment `NR-06-C1-D124-BOUNDED-READONLY-REVIEW-CONTEXT` starts from exact `main` base `bac217d5f96f0fe47f222f45acb643a9b05206a7`, on feature branch `nr-06-bounded-readonly-review-context`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-06.md` is bound to SHA-256 `b7abaeb94377063a2477dbaf608ea44a5f5408592df2e802b67a992bf68d92c5`; task `docs/tasks/NR-06.md` is bound to SHA-256 `18c8088c4b008291d05e55b7c1ec559b411e37727d4b27b30620258639d816a2`. D124 starts NR-06 after accepted NR-05. The initial correlated review returned `NEEDS_FIX` for `NR-06-R1-F1`: unchanged LFS pointer blobs could appear as available text. The fix in `a535c6adb8d8033e922f6c0a24318f6c7b1d8003` classifies pointers explicitly, reports inspection-budget skips, and adds list/read/search regression coverage; exact-head CI run 37196325348 succeeded on Bun 1.4.2. Fresh readiness and reviewer fix verification for the changed revision are pending. No final reviewer approval, merge authorization, or task completion is claimed. See [docs/evidence/NR-06.json](evidence/NR-06.json).
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

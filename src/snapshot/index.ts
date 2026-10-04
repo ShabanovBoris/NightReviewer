@@ -14,4 +14,5 @@ export {
   type SnapshotReadResult,
   type SnapshotService,
   type SnapshotServiceOptions,
+  type SnapshotSide,
 } from "./types";

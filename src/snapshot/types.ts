@@ -128,18 +128,33 @@ export interface SnapshotReadResult {
   readonly path: string;
   readonly mode: string;
   readonly oid: string;
+  readonly sizeBytes: number;
   readonly contentState: SnapshotContentState;
   readonly bytes: Uint8Array;
 }
 
+export type SnapshotSide = "base" | "head";
+
 export interface SnapshotReader {
   readonly manifest: SnapshotManifest;
   readonly diff: readonly SnapshotChange[];
-  readFile(path: string, side: "base" | "head"): Promise<SnapshotReadResult>;
+  listFiles(
+    side: SnapshotSide,
+    deadlineAt?: number,
+  ): Promise<readonly SnapshotFileDescriptor[]>;
+  readFile(
+    path: string,
+    side: SnapshotSide,
+    deadlineAt?: number,
+  ): Promise<SnapshotReadResult>;
   close(): Promise<void>;
 }
 
 export interface SnapshotService {
   createSnapshot(input: CreateSnapshotInput): Promise<SnapshotManifest>;
-  openSnapshot(cycleId: string, snapshotId: string): Promise<SnapshotReader>;
+  openSnapshot(
+    cycleId: string,
+    snapshotId: string,
+    deadlineAt?: number,
+  ): Promise<SnapshotReader>;
 }

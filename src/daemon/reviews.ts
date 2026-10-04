@@ -138,19 +138,10 @@ export class DaemonReviewRuntime {
 
   async drain(timeoutMs = this.drainTimeoutMs): Promise<void> {
     this.draining = true;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const settled = this.waitForQuiescence();
-    const didSettle = await Promise.race([
-      settled.then(() => true),
-      new Promise<boolean>((resolve) => {
-        timeout = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-    if (timeout !== undefined) clearTimeout(timeout);
+    const didSettle = await this.waitForQuiescence(timeoutMs);
     if (!didSettle) {
       for (const entry of this.activeSnapshots.values())
         entry.controller.abort();
-      await this.waitForQuiescence();
     }
   }
 
@@ -302,6 +293,48 @@ export class DaemonReviewRuntime {
         correlationId,
       );
     }
+    const cycle = review.cycle;
+    if (cycle.state !== "NEEDS_FIX") {
+      throw failure(
+        "CONFLICT",
+        "Fix request does not match the current review cycle.",
+        false,
+        correlationId,
+      );
+    }
+    const submittedFindingIds = input.resolutions.map(
+      ({ findingId }) => findingId,
+    );
+    if (new Set(submittedFindingIds).size !== submittedFindingIds.length) {
+      throw failure(
+        "INVALID_ARGUMENT",
+        "Fix submission contains duplicate finding IDs.",
+        false,
+        correlationId,
+      );
+    }
+    if (input.resolutions.some(({ note }) => note.trim().length === 0)) {
+      throw failure(
+        "INVALID_ARGUMENT",
+        "Fix resolution note cannot be empty.",
+        false,
+        correlationId,
+      );
+    }
+    const requiredFindingIds = new Set(cycle.requiredFindingIds);
+    if (
+      submittedFindingIds.length !== requiredFindingIds.size ||
+      submittedFindingIds.some(
+        (findingId) => !requiredFindingIds.has(findingId),
+      )
+    ) {
+      throw failure(
+        "INVALID_ARGUMENT",
+        "Fix resolutions must cover exactly the authoritative finding IDs.",
+        false,
+        correlationId,
+      );
+    }
     throw failure(
       "BACKEND_UNAVAILABLE",
       "Fix processing is not available before the assigned backend phase.",
@@ -340,6 +373,11 @@ export class DaemonReviewRuntime {
     }
 
     if (review.state !== "CANCEL_REQUESTED") {
+      const requestTransitionKey = `cancel-request-${hashCanonicalJson({
+        reviewId: review.reviewId,
+        cycleId: review.cycleId,
+        idempotencyKey: input.idempotencyKey,
+      })}`;
       try {
         this.options.store.applyCycleCommand(
           CALLER_ID,
@@ -348,7 +386,7 @@ export class DaemonReviewRuntime {
             type: "REQUEST_CANCEL",
             reason: input.reason,
             expectedVersion: review.stateVersion,
-            idempotencyKey: input.idempotencyKey,
+            idempotencyKey: requestTransitionKey,
           },
           { ownerFencing: this.currentFence(correlationId) },
         );
@@ -364,7 +402,7 @@ export class DaemonReviewRuntime {
               type: "REQUEST_CANCEL",
               reason: input.reason,
               expectedVersion: review.stateVersion,
-              idempotencyKey: input.idempotencyKey,
+              idempotencyKey: requestTransitionKey,
             },
             { ownerFencing: this.currentFence(correlationId) },
           );
@@ -591,11 +629,21 @@ export class DaemonReviewRuntime {
     }
   }
 
-  private waitForQuiescence(): Promise<void> {
+  private waitForQuiescence(timeoutMs: number): Promise<boolean> {
     if (this.activeMutations === 0 && this.activeSnapshots.size === 0) {
-      return Promise.resolve();
+      return Promise.resolve(true);
     }
-    return new Promise((resolve) => this.quiescenceWaiters.add(resolve));
+    return new Promise((resolve) => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const finish = (settled: boolean) => {
+        if (timeout !== undefined) clearTimeout(timeout);
+        this.quiescenceWaiters.delete(onQuiescence);
+        resolve(settled);
+      };
+      const onQuiescence = () => finish(true);
+      this.quiescenceWaiters.add(onQuiescence);
+      timeout = setTimeout(() => finish(false), timeoutMs);
+    });
   }
 
   private signalQuiescence(): void {

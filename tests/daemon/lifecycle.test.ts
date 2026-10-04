@@ -14,7 +14,7 @@ import {
   validProtocolExamples,
   versionHashBindingExample,
 } from "../../src/protocol";
-import type { SnapshotService } from "../../src/snapshot";
+import type { SnapshotManifest, SnapshotService } from "../../src/snapshot";
 import { openStorage, type SqliteStorage } from "../../src/storage";
 
 const timestamp = "2026-10-04T12:00:00.000Z";
@@ -64,6 +64,110 @@ test("queued review cancellation follows durable state transitions", async () =>
         (event) => (event.payload as { state: { state: string } }).state.state,
       ),
     ).toEqual(["CANCEL_REQUESTED", "CANCELLED"]);
+    await reviews.drain();
+  } finally {
+    owner?.release();
+    store?.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("cancel idempotency keys are scoped to their review cycle", async () => {
+  const temporary = await mkdtemp(
+    path.join(os.tmpdir(), "nr07-cancel-idempotency-scope-"),
+  );
+  let store: SqliteStorage | undefined;
+  let owner: DaemonOwner | undefined;
+  try {
+    store = await openStorage({ rootDir: path.join(temporary, "store") });
+    owner = DaemonOwner.acquire(store);
+    const reviews = new DaemonReviewRuntime({
+      store,
+      owner,
+      trustedRepositoryIds: new Set([trustedRepoId]),
+      snapshotService: blockingSnapshotService(() => undefined),
+      bindingProvider: () => versionHashBindingExample,
+    });
+    const first = (await reviews.invoke(
+      "review_submit",
+      submission("cancel-idempotency-review-one"),
+      "submit-one",
+    )) as { reviewId: string; cycleId: string };
+    const second = (await reviews.invoke(
+      "review_submit",
+      submission("cancel-idempotency-review-two"),
+      "submit-two",
+    )) as { reviewId: string; cycleId: string };
+
+    const cancel = (reviewId: string) =>
+      reviews.invoke(
+        "review_cancel",
+        {
+          reviewId,
+          reason: "Cancel both independent queued reviews.",
+          idempotencyKey: "shared-public-cancel-key",
+        },
+        `cancel-${reviewId}`,
+      );
+    const firstCancelled = (await cancel(first.reviewId)) as {
+      state: string;
+    };
+    const secondCancelled = (await cancel(second.reviewId)) as {
+      state: string;
+    };
+
+    expect(firstCancelled.state).toBe("CANCELLED");
+    expect(secondCancelled.state).toBe("CANCELLED");
+    expect(store.readCycle(first.cycleId).state).toBe("CANCELLED");
+    expect(store.readCycle(second.cycleId).state).toBe("CANCELLED");
+    await reviews.drain();
+  } finally {
+    owner?.release();
+    store?.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test("public cancel keys cannot collide with daemon transition keys", async () => {
+  const temporary = await mkdtemp(
+    path.join(os.tmpdir(), "nr07-cancel-internal-key-collision-"),
+  );
+  let store: SqliteStorage | undefined;
+  let owner: DaemonOwner | undefined;
+  try {
+    store = await openStorage({ rootDir: path.join(temporary, "store") });
+    owner = DaemonOwner.acquire(store);
+    let notifyStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const reviews = new DaemonReviewRuntime({
+      store,
+      owner,
+      trustedRepositoryIds: new Set([trustedRepoId]),
+      snapshotService: blockingSnapshotService(notifyStarted),
+      bindingProvider: () => versionHashBindingExample,
+    });
+    reviews.start();
+    const accepted = (await reviews.invoke(
+      "review_submit",
+      submission("cancel-internal-key-collision"),
+      "submit-internal-key-collision",
+    )) as { reviewId: string; cycleId: string };
+    await started;
+
+    const cancelled = (await reviews.invoke(
+      "review_cancel",
+      {
+        reviewId: accepted.reviewId,
+        reason: "Cancel after snapshot preparation starts.",
+        idempotencyKey: `snapshot-start-${accepted.cycleId}-0`,
+      },
+      "cancel-internal-key-collision",
+    )) as { state: string };
+
+    expect(cancelled.state).toBe("CANCELLED");
+    expect(store.readCycle(accepted.cycleId).state).toBe("CANCELLED");
     await reviews.drain();
   } finally {
     owner?.release();
@@ -191,6 +295,77 @@ test("shutdown aborts snapshot work but preserves the accepted resumable cycle",
   }
 });
 
+test("drain timeout releases ownership while a snapshot ignores abort", async () => {
+  const temporary = await mkdtemp(
+    path.join(os.tmpdir(), "nr07-drain-noncooperative-snapshot-"),
+  );
+  let store: SqliteStorage | undefined;
+  let reopened: SqliteStorage | undefined;
+  let owner: DaemonOwner | undefined;
+  let replacementOwner: DaemonOwner | undefined;
+  let resolveSnapshot: ((manifest: SnapshotManifest) => void) | undefined;
+  try {
+    const storageRoot = path.join(temporary, "store");
+    store = await openStorage({ rootDir: storageRoot });
+    owner = DaemonOwner.acquire(store);
+    let notifyStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const snapshotService: SnapshotService = {
+      createSnapshot() {
+        notifyStarted();
+        return new Promise<SnapshotManifest>((resolve) => {
+          resolveSnapshot = resolve;
+        });
+      },
+      async openSnapshot() {
+        throw new Error("Unexpected test snapshot read.");
+      },
+    };
+    const reviews = new DaemonReviewRuntime({
+      store,
+      owner,
+      trustedRepositoryIds: new Set([trustedRepoId]),
+      snapshotService,
+      bindingProvider: () => versionHashBindingExample,
+    });
+    reviews.start();
+    const accepted = (await reviews.invoke(
+      "review_submit",
+      submission("drain-noncooperative-snapshot"),
+      "submit-noncooperative-snapshot",
+    )) as { reviewId: string; cycleId: string };
+    await started;
+
+    const drainCompleted = await Promise.race([
+      reviews.drain(10).then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 250)),
+    ]);
+    expect(drainCompleted).toBe(true);
+    expect(store.readCycle(accepted.cycleId).state).toBe("SNAPSHOTTING");
+
+    owner.release();
+    owner = undefined;
+    store.close();
+    store = undefined;
+    reopened = await openStorage({ rootDir: storageRoot });
+    replacementOwner = DaemonOwner.acquire(reopened);
+    expect(replacementOwner.isCurrent()).toBe(true);
+
+    resolveSnapshot?.({ snapshotId: "late-snapshot" } as SnapshotManifest);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(reopened.readSnapshots(accepted.cycleId)).toHaveLength(0);
+    expect(reopened.readReview(accepted.reviewId).state).toBe("SNAPSHOTTING");
+  } finally {
+    replacementOwner?.release();
+    reopened?.close();
+    owner?.release();
+    store?.close();
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test("admissible fix requests report backend unavailable without mutation", async () => {
   const temporary = await mkdtemp(
     path.join(os.tmpdir(), "nr07-fix-unavailable-"),
@@ -277,7 +452,7 @@ test("admissible fix requests report backend unavailable without mutation", asyn
         evidence: {
           allAdjudicationsComplete: true,
           hasBlockingFindings: true,
-          requiredFindingIds: ["finding-1"],
+          requiredFindingIds: ["finding-1", "finding-2"],
         },
       },
       { occurredAtUtc: timestamp },
@@ -292,7 +467,50 @@ test("admissible fix requests report backend unavailable without mutation", asyn
     });
     const before = store.readCycle(cycleId);
     const beforeEvents = store.readEventPage(cycleId).events.length;
-    let submitFixError: unknown;
+    const invalidFixes = [
+      { id: "missing", findingIds: ["finding-1"] },
+      {
+        id: "extra",
+        findingIds: ["finding-1", "finding-2", "unexpected-finding"],
+      },
+      { id: "duplicate", findingIds: ["finding-1", "finding-1"] },
+      { id: "incorrect", findingIds: ["finding-1", "unexpected-finding"] },
+      {
+        id: "blank-note",
+        findingIds: ["finding-1", "finding-2"],
+        note: "   ",
+      },
+    ];
+    for (const invalidFix of invalidFixes) {
+      let submitFixError: unknown;
+      try {
+        await reviews.invoke(
+          "review_submit_fix",
+          {
+            reviewId: created.reviewId,
+            objectFormat: "sha1",
+            previousSha: cycle.revisions.headSha,
+            headSha: "e".repeat(40),
+            resolutions: invalidFix.findingIds.map((findingId) => ({
+              findingId,
+              note: invalidFix.note ?? "Address the blocker.",
+            })),
+            idempotencyKey: `invalid-fix-${invalidFix.id}`,
+          },
+          `fix-${invalidFix.id}`,
+        );
+      } catch (error) {
+        submitFixError = error;
+      }
+      expect(submitFixError).toBeInstanceOf(ReviewRuntimeError);
+      expect(
+        (submitFixError as ReviewRuntimeError).protocolError,
+      ).toMatchObject({ code: "INVALID_ARGUMENT", retryable: false });
+      expect(store.readCycle(cycleId)).toEqual(before);
+      expect(store.readEventPage(cycleId).events).toHaveLength(beforeEvents);
+    }
+
+    let admissibleFixError: unknown;
     try {
       await reviews.invoke(
         "review_submit_fix",
@@ -302,17 +520,20 @@ test("admissible fix requests report backend unavailable without mutation", asyn
           previousSha: cycle.revisions.headSha,
           headSha: "e".repeat(40),
           resolutions: [
-            { findingId: "finding-1", note: "Address the blocker." },
+            { findingId: "finding-1", note: "Address the first blocker." },
+            { findingId: "finding-2", note: "Address the second blocker." },
           ],
           idempotencyKey: "admissible-fix",
         },
-        "fix-1",
+        "fix-admissible",
       );
     } catch (error) {
-      submitFixError = error;
+      admissibleFixError = error;
     }
-    expect(submitFixError).toBeInstanceOf(ReviewRuntimeError);
-    expect((submitFixError as ReviewRuntimeError).protocolError).toMatchObject({
+    expect(admissibleFixError).toBeInstanceOf(ReviewRuntimeError);
+    expect(
+      (admissibleFixError as ReviewRuntimeError).protocolError,
+    ).toMatchObject({
       code: "BACKEND_UNAVAILABLE",
       retryable: false,
     });

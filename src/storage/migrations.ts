@@ -331,6 +331,114 @@ CREATE TRIGGER schema_migrations_no_delete BEFORE DELETE ON schema_migrations
 BEGIN SELECT RAISE(ABORT, 'migration records are immutable'); END;
 `;
 
+const migrationThreeSql = `
+CREATE TABLE scheduler_control (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  last_review_id TEXT
+);
+INSERT INTO scheduler_control (singleton_id, last_review_id) VALUES (1, NULL);
+
+CREATE TABLE scheduler_jobs (
+  run_id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL REFERENCES reviews(review_id),
+  cycle_id TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK (direction IN ('correctness', 'tests', 'design')),
+  replica_index INTEGER NOT NULL CHECK (replica_index BETWEEN 1 AND 3),
+  state TEXT NOT NULL CHECK (state IN (
+    'QUEUED', 'LEASED', 'RETRY_WAIT', 'RECONCILIATION_REQUIRED',
+    'COMPLETE', 'FAILED', 'CANCELLED', 'OBSOLETE'
+  )),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  reconciliation_count INTEGER NOT NULL DEFAULT 0 CHECK (reconciliation_count BETWEEN 0 AND 3),
+  max_attempts INTEGER NOT NULL CHECK (max_attempts BETWEEN 1 AND 10),
+  next_attempt_at_utc TEXT NOT NULL,
+  deadline_at_utc TEXT NOT NULL,
+  active_attempt_id TEXT,
+  active_work_kind TEXT CHECK (active_work_kind IN ('TURN', 'RECONCILIATION')),
+  lease_owner_id TEXT,
+  lease_token INTEGER NOT NULL DEFAULT 0 CHECK (lease_token >= 0),
+  lease_expires_at_utc TEXT,
+  latest_error_class TEXT,
+  created_at_utc TEXT NOT NULL,
+  updated_at_utc TEXT NOT NULL,
+  UNIQUE (cycle_id, run_id),
+  UNIQUE (cycle_id, direction, replica_index),
+  FOREIGN KEY (cycle_id, run_id)
+    REFERENCES direction_runs(cycle_id, direction_run_id),
+  CHECK ((state = 'LEASED' AND active_attempt_id IS NOT NULL
+          AND active_work_kind IS NOT NULL AND lease_owner_id IS NOT NULL
+          AND lease_expires_at_utc IS NOT NULL)
+      OR (state <> 'LEASED' AND active_attempt_id IS NULL
+          AND active_work_kind IS NULL AND lease_owner_id IS NULL
+          AND lease_expires_at_utc IS NULL))
+);
+CREATE INDEX scheduler_jobs_eligible
+  ON scheduler_jobs(state, next_attempt_at_utc, deadline_at_utc, review_id);
+CREATE INDEX scheduler_jobs_by_cycle
+  ON scheduler_jobs(cycle_id, state, direction, replica_index);
+
+CREATE TABLE scheduler_attempts (
+  attempt_id TEXT PRIMARY KEY REFERENCES worker_attempts(attempt_id),
+  run_id TEXT NOT NULL REFERENCES scheduler_jobs(run_id),
+  attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
+  state TEXT NOT NULL CHECK (state IN (
+    'RUNNING', 'SUCCEEDED', 'RETRYABLE_FAILURE', 'PERMANENT_FAILURE',
+    'MALFORMED', 'UNKNOWN_SEND', 'RECONCILED_UNSENT',
+    'RECONCILED_ACCEPTED', 'RECONCILIATION_UNKNOWN', 'OBSOLETE', 'CANCELLED'
+  )),
+  lease_token INTEGER NOT NULL CHECK (lease_token > 0),
+  deadline_at_utc TEXT NOT NULL,
+  raw_artifact_sha256 TEXT REFERENCES raw_artifacts(sha256),
+  error_class TEXT,
+  reconciliation_outcome TEXT CHECK (reconciliation_outcome IN (
+    'PROVEN_UNSENT', 'PROVEN_ACCEPTED_WITH_RESULT', 'STILL_UNKNOWN'
+  )),
+  started_at_utc TEXT NOT NULL,
+  finished_at_utc TEXT,
+  UNIQUE (run_id, attempt_number)
+);
+CREATE INDEX scheduler_attempts_by_run
+  ON scheduler_attempts(run_id, attempt_number);
+
+CREATE TABLE scheduler_aggregations (
+  cycle_id TEXT PRIMARY KEY REFERENCES review_cycles(cycle_id),
+  backend TEXT NOT NULL CHECK (backend = 'FAKE'),
+  qualification TEXT NOT NULL CHECK (qualification = 'OFFLINE_ONLY'),
+  state TEXT NOT NULL CHECK (state IN ('NO_FINDINGS', 'PROVISIONAL_FINDINGS')),
+  report_json TEXT NOT NULL,
+  raw_artifact_sha256 TEXT NOT NULL REFERENCES raw_artifacts(sha256),
+  created_at_utc TEXT NOT NULL
+);
+
+CREATE TRIGGER scheduler_jobs_identity_guard BEFORE UPDATE ON scheduler_jobs
+WHEN
+  NEW.run_id <> OLD.run_id OR NEW.review_id <> OLD.review_id OR
+  NEW.cycle_id <> OLD.cycle_id OR NEW.direction <> OLD.direction OR
+  NEW.replica_index <> OLD.replica_index OR NEW.max_attempts <> OLD.max_attempts OR
+  NEW.deadline_at_utc <> OLD.deadline_at_utc OR NEW.created_at_utc <> OLD.created_at_utc OR
+  NOT (
+    (OLD.state = 'QUEUED' AND NEW.state IN ('LEASED', 'FAILED', 'CANCELLED', 'OBSOLETE')) OR
+    (OLD.state = 'LEASED' AND NEW.state IN (
+      'LEASED', 'RETRY_WAIT', 'RECONCILIATION_REQUIRED', 'COMPLETE', 'FAILED', 'CANCELLED', 'OBSOLETE'
+    )) OR
+    (OLD.state = 'RETRY_WAIT' AND NEW.state IN ('LEASED', 'FAILED', 'CANCELLED', 'OBSOLETE')) OR
+    (OLD.state = 'RECONCILIATION_REQUIRED' AND NEW.state IN (
+      'LEASED', 'RETRY_WAIT', 'COMPLETE', 'FAILED', 'CANCELLED', 'OBSOLETE'
+    )) OR
+    OLD.state = NEW.state
+  )
+BEGIN SELECT RAISE(ABORT, 'invalid scheduler job transition'); END;
+
+CREATE TRIGGER scheduler_jobs_no_delete BEFORE DELETE ON scheduler_jobs
+BEGIN SELECT RAISE(ABORT, 'scheduler jobs are durable'); END;
+CREATE TRIGGER scheduler_attempts_no_delete BEFORE DELETE ON scheduler_attempts
+BEGIN SELECT RAISE(ABORT, 'scheduler attempts are durable'); END;
+CREATE TRIGGER scheduler_aggregations_no_update BEFORE UPDATE ON scheduler_aggregations
+BEGIN SELECT RAISE(ABORT, 'scheduler aggregations are immutable'); END;
+CREATE TRIGGER scheduler_aggregations_no_delete BEFORE DELETE ON scheduler_aggregations
+BEGIN SELECT RAISE(ABORT, 'scheduler aggregations are immutable'); END;
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql, "utf8").digest("hex");
 }
@@ -347,6 +455,12 @@ export const STORAGE_MIGRATIONS: readonly Migration[] = [
     name: "immutable-results-and-fencing",
     sql: migrationTwoSql,
     checksum: checksum(migrationTwoSql),
+  },
+  {
+    version: 3,
+    name: "durable-scheduler-fake-backend",
+    sql: migrationThreeSql,
+    checksum: checksum(migrationThreeSql),
   },
 ];
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, lstat } from "node:fs/promises";
 import type { ProtocolError } from "../protocol";
 import { RUNTIME_PROTOCOL_VERSION } from "../protocol";
+import { DurableScheduler } from "../scheduler";
 import { createSnapshotService } from "../snapshot";
 import type { SqliteStorage } from "../storage";
 import { DaemonOwner, type DaemonOwnerOptions } from "./owner";
@@ -61,10 +62,15 @@ export class DaemonRuntime {
         repositoryPaths: options.repositoryPaths,
         fencingProvider: () => owner.fencingToken(),
       });
+      const scheduler = new DurableScheduler({
+        store: options.store,
+        owner,
+      });
       const reviews = new DaemonReviewRuntime({
         store: options.store,
         owner,
         snapshotService,
+        scheduler,
         trustedRepositoryIds: repositoryIds(options.repositoryPaths),
         ...(options.drainTimeoutMs === undefined
           ? {}
@@ -106,6 +112,7 @@ export class DaemonRuntime {
         rpc,
         instanceId,
       );
+      await scheduler.start();
       reviews.start();
       return runtime;
     } catch (error) {

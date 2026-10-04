@@ -350,6 +350,41 @@ const WorkerFindingSchema = closedObject({
 });
 export type WorkerFinding = Type.Static<typeof WorkerFindingSchema>;
 
+export const SchedulerProvisionalFindingSchema = closedObject({
+  runId: IdentifierSchema,
+  direction: WorkerDirectionSchema,
+  replicaIndex: Type.Integer({ minimum: 1, maximum: 3 }),
+  localId: IdentifierSchema,
+  finding: WorkerFindingSchema,
+});
+
+export const SchedulerStatusSchema = closedObject({
+  backend: Type.Literal("FAKE"),
+  qualification: Type.Literal("OFFLINE_ONLY"),
+  state: stringEnum([
+    "QUEUED",
+    "RUNNING",
+    "RECONCILIATION_REQUIRED",
+    "AGGREGATING",
+    "COMPLETE",
+    "FAILED",
+    "CANCELLED",
+  ] as const),
+  retryWaitingRuns: Type.Integer({
+    minimum: 0,
+    maximum: Number.MAX_SAFE_INTEGER,
+  }),
+  reconciliationRequiredRuns: Type.Integer({
+    minimum: 0,
+    maximum: Number.MAX_SAFE_INTEGER,
+  }),
+  failedRuns: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  provisionalFindings: Type.Array(SchedulerProvisionalFindingSchema, {
+    maxItems: 100_000,
+  }),
+});
+export type SchedulerStatus = Type.Static<typeof SchedulerStatusSchema>;
+
 const workerOutputCommon = {
   schemaVersion: Type.Literal(RUNTIME_PROTOCOL_VERSION),
   reviewId: IdentifierSchema,
@@ -487,6 +522,7 @@ export const ReviewStatusResultSchema = documentObject("review-status-result", {
   state: ReviewStateSchema,
   stateVersion: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
   progress: ReviewProgressSchema,
+  scheduler: Type.Optional(SchedulerStatusSchema),
   findings: Type.Array(CanonicalFindingSchema, { maxItems: 100_000 }),
   coverage: CoverageSchema,
   nextAction: ReviewNextActionSchema,

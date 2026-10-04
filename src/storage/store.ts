@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -66,10 +66,12 @@ import type {
   RawFindingInput,
   ReconciliationReport,
   RecordFindingVerificationInput,
+  ReviewEventPage,
   ReviewRecord,
   SnapshotCycleContext,
   SnapshotInput,
   SnapshotRecord,
+  StoredReviewEvent,
   WorkerAttemptInput,
   WorkerResultInput,
   WorkerResultRecord,
@@ -80,6 +82,12 @@ const MIN_BUSY_TIMEOUT_MS = 0;
 const MAX_BUSY_TIMEOUT_MS = 30_000;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export function daemonOwnershipResourceId(storageRootDir: string): string {
+  const canonicalRoot = path.resolve(storageRootDir);
+  const digest = createHash("sha256").update(canonicalRoot).digest("hex");
+  return `daemon:${digest}`;
+}
 
 interface CycleRow {
   cycle_id: string;
@@ -281,6 +289,7 @@ export class SqliteStorage {
     const now = makeUtcTimestamp(input.createdAtUtc);
 
     return this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.fencing, now);
       const replay = this.lookupWithinTransaction(
         input.callerId,
         "review_submit",
@@ -362,6 +371,7 @@ export class SqliteStorage {
   async recordSnapshotWithArtifact(
     input: SnapshotInput,
     artifactBytes: Uint8Array,
+    fencing?: FencingToken,
   ): Promise<ArtifactReference> {
     const { manifestHash, createdAt } = validateSnapshotInput(input);
     if (
@@ -385,7 +395,11 @@ export class SqliteStorage {
       );
     }
     return this.withAsyncImmediateTransaction(async () => {
+      this.assertDaemonFencingToken(fencing, createdAt);
       const cycle = this.requireSnapshotCycle(input);
+      if (decodeCycle(cycle.state_json).state !== "SNAPSHOTTING") {
+        throw conflict("Snapshot work no longer owns a SNAPSHOTTING cycle.");
+      }
       const reference = await persistStableArtifactFile(
         this.rootDir,
         stableBytes,
@@ -489,6 +503,83 @@ export class SqliteStorage {
     return decodeCycle(row.state_json);
   }
 
+  readDaemonPendingCycles(limit = 100): SnapshotCycleContext[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw invalidArgument("Pending cycle limit must be between 1 and 1000.");
+    }
+    const rows = this.db
+      .query(
+        `SELECT r.review_id, r.repo_id, r.task, r.acceptance_criteria_json,
+                c.cycle_id, c.state_json
+         FROM review_cycles c
+         JOIN reviews r ON r.review_id = c.review_id
+         WHERE c.state IN ('QUEUED', 'SNAPSHOTTING', 'CANCEL_REQUESTED')
+           AND c.cycle_number = (
+             SELECT MAX(latest.cycle_number) FROM review_cycles latest
+             WHERE latest.review_id = c.review_id
+           )
+         ORDER BY c.created_at_utc, c.cycle_id
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      review_id: string;
+      repo_id: string;
+      task: string;
+      acceptance_criteria_json: string;
+      cycle_id: string;
+      state_json: string;
+    }>;
+    return rows.map((row) => ({
+      reviewId: row.review_id,
+      cycleId: row.cycle_id,
+      repoId: row.repo_id,
+      task: row.task,
+      acceptanceCriteria: parseJson<ReviewSubmitInput["acceptanceCriteria"]>(
+        row.acceptance_criteria_json,
+      ),
+      cycle: decodeCycle(row.state_json),
+    }));
+  }
+
+  readEventPage(
+    cycleId: string,
+    afterEventSeq = 0,
+    pageSize = 100,
+  ): ReviewEventPage {
+    validateIdentifier(cycleId, "cycleId");
+    this.readCycle(cycleId);
+    if (!Number.isSafeInteger(afterEventSeq) || afterEventSeq < 0) {
+      throw invalidArgument(
+        "Event cursor sequence must be a non-negative integer.",
+      );
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
+      throw invalidArgument("Event page size must be between 1 and 100.");
+    }
+    const rows = this.db
+      .query(
+        `SELECT event_id, event_seq, event_type, payload_json, occurred_at_utc
+         FROM events WHERE cycle_id = ? AND event_seq > ?
+         ORDER BY event_seq LIMIT ?`,
+      )
+      .all(cycleId, afterEventSeq, pageSize + 1) as Array<{
+      event_id: string;
+      event_seq: number;
+      event_type: string;
+      payload_json: string;
+      occurred_at_utc: string;
+    }>;
+    const hasMore = rows.length > pageSize;
+    const events: StoredReviewEvent[] = rows.slice(0, pageSize).map((row) => ({
+      eventId: row.event_id,
+      eventSeq: row.event_seq,
+      eventType: row.event_type,
+      payload: parseJson(row.payload_json),
+      occurredAtUtc: row.occurred_at_utc,
+    }));
+    return { events, hasMore };
+  }
+
   readSnapshotCycleContext(cycleId: string): SnapshotCycleContext {
     validateIdentifier(cycleId, "cycleId");
     const row = this.db
@@ -527,6 +618,7 @@ export class SqliteStorage {
     options: {
       readonly occurredAtUtc?: string;
       readonly fencing?: FencingToken;
+      readonly ownerFencing?: FencingToken;
     } = {},
   ): {
     readonly state: ReviewCycleState;
@@ -542,6 +634,7 @@ export class SqliteStorage {
     const occurredAt = makeUtcTimestamp(options.occurredAtUtc);
 
     return this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(options.ownerFencing, occurredAt);
       const replay = this.lookupWithinTransaction(
         callerId,
         "cycle_transition",
@@ -555,7 +648,11 @@ export class SqliteStorage {
         };
       }
 
-      if (command.type === "CONFIRM_CANCEL" && options.fencing === undefined) {
+      if (
+        command.type === "CONFIRM_CANCEL" &&
+        options.fencing === undefined &&
+        options.ownerFencing === undefined
+      ) {
         throw invalidArgument(
           "Final cancellation requires an active fencing token.",
         );
@@ -1765,6 +1862,19 @@ export class SqliteStorage {
     });
   }
 
+  hasLeaseOwnership(fencing: FencingToken, nowUtc?: string): boolean {
+    validateFencingToken(fencing);
+    const now = makeUtcTimestamp(nowUtc);
+    const current = this.currentLease(fencing.resourceId);
+    return (
+      current !== null &&
+      current.owner_id === fencing.ownerId &&
+      current.fencing_token === fencing.token &&
+      current.expires_at_utc !== null &&
+      current.expires_at_utc > now
+    );
+  }
+
   lookupIdempotency(
     input: IdempotencyLookup,
   ): PersistedIdempotencyRecord | undefined {
@@ -1860,6 +1970,18 @@ export class SqliteStorage {
         "Mutation supplied a stale, expired, or non-current fencing token.",
       );
     }
+  }
+
+  private assertDaemonFencingToken(
+    fencing: FencingToken | undefined,
+    now: string,
+  ): void {
+    if (fencing === undefined) return;
+    this.assertFencingToken(
+      fencing,
+      now,
+      daemonOwnershipResourceId(this.rootDir),
+    );
   }
 
   private assertSnapshotManifestRecorded(
@@ -2005,6 +2127,7 @@ export class SqliteStorage {
     pinnedCycle?: CycleRow,
   ): void {
     const cycle = pinnedCycle ?? this.requireSnapshotCycle(input);
+    const state = decodeCycle(cycle.state_json);
     this.assertSnapshotCycleMatches(input, cycle);
     this.db
       .query(
@@ -2032,6 +2155,8 @@ export class SqliteStorage {
         objectFormat: input.objectFormat,
         baseSha: input.baseSha,
         headSha: input.headSha,
+        state: state.state,
+        stateVersion: state.stateVersion,
         ...(artifact === undefined ? {} : { artifact }),
       },
       occurredAtUtc: createdAt,

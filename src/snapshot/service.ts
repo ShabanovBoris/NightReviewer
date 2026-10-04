@@ -75,6 +75,7 @@ export async function createSnapshotService(
     repositoryPaths,
     limits,
     callerId,
+    options.fencingProvider,
   );
 }
 
@@ -84,11 +85,13 @@ class SnapshotServiceImpl implements SnapshotService {
     private readonly repositoryPaths: ReadonlyMap<string, string>,
     private readonly limits: SnapshotLimits,
     private readonly callerId: string,
+    private readonly fencingProvider: SnapshotServiceOptions["fencingProvider"],
   ) {}
 
   async createSnapshot(input: {
     readonly cycleId: string;
     readonly specSha256?: string;
+    readonly signal?: AbortSignal;
   }): Promise<SnapshotManifest> {
     if (
       typeof input.cycleId !== "string" ||
@@ -98,6 +101,12 @@ class SnapshotServiceImpl implements SnapshotService {
     }
     if (input.specSha256 !== undefined && !SHA256.test(input.specSha256)) {
       throw new SnapshotError("INVALID_ARGUMENT", "specSha256 is invalid.");
+    }
+    if (input.signal?.aborted) {
+      throw new SnapshotError(
+        "GIT_FAILED",
+        "Snapshot preparation was aborted.",
+      );
     }
     const context = this.store.readSnapshotCycleContext(input.cycleId);
     if (context.cycle.state !== "SNAPSHOTTING") {
@@ -117,7 +126,7 @@ class SnapshotServiceImpl implements SnapshotService {
           "Review repository is not in the trusted local allowlist.",
         );
       }
-      workspace = await createGitWorkspace();
+      workspace = await createGitWorkspace(input.signal);
       const repositoryRoot = await resolveAllowedRepository(
         configuredPath,
         workspace,
@@ -377,20 +386,40 @@ class SnapshotServiceImpl implements SnapshotService {
         manifest: persistedManifest,
         createdAtUtc,
       };
-      await this.store.recordSnapshotWithArtifact(snapshotInput, pack);
+      if (input.signal?.aborted) {
+        throw new SnapshotError(
+          "GIT_FAILED",
+          "Snapshot preparation was aborted.",
+        );
+      }
+      await this.store.recordSnapshotWithArtifact(
+        snapshotInput,
+        pack,
+        this.fencingProvider?.(),
+      );
       return manifest;
     } catch (error) {
       try {
-        this.store.applyCycleCommand(this.callerId, context.cycleId, {
-          type: "ADVANCE",
-          target: "FAILED",
-          expectedVersion: context.cycle.stateVersion,
-          idempotencyKey: snapshotFailureKey(
-            context.cycleId,
-            context.cycle.stateVersion,
-          ),
-          evidence: { failureCode: snapshotFailureCode(error) },
-        });
+        if (input.signal?.aborted) throw error;
+        if (this.store.readCycle(context.cycleId).state !== "SNAPSHOTTING") {
+          throw error;
+        }
+        const ownerFencing = this.fencingProvider?.();
+        this.store.applyCycleCommand(
+          this.callerId,
+          context.cycleId,
+          {
+            type: "ADVANCE",
+            target: "FAILED",
+            expectedVersion: context.cycle.stateVersion,
+            idempotencyKey: snapshotFailureKey(
+              context.cycleId,
+              context.cycle.stateVersion,
+            ),
+            evidence: { failureCode: snapshotFailureCode(error) },
+          },
+          ownerFencing === undefined ? {} : { ownerFencing },
+        );
       } catch (transitionError) {
         throw new SnapshotError(
           "GIT_FAILED",

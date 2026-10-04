@@ -22,6 +22,7 @@ export interface GitWorkspace {
   readonly hooksDir: string;
   readonly globalConfigPath: string;
   readonly emptyAttributesPath: string;
+  readonly abortSignal?: AbortSignal;
   close(): Promise<void>;
 }
 
@@ -54,7 +55,9 @@ export interface GitObjectInventory {
   readonly rawBytes: number;
 }
 
-export async function createGitWorkspace(): Promise<GitWorkspace> {
+export async function createGitWorkspace(
+  abortSignal?: AbortSignal,
+): Promise<GitWorkspace> {
   let rootDir: string | undefined;
   try {
     rootDir = await mkdtemp(path.join(os.tmpdir(), "nightreviewer-snapshot-"));
@@ -72,6 +75,7 @@ export async function createGitWorkspace(): Promise<GitWorkspace> {
       hooksDir,
       globalConfigPath,
       emptyAttributesPath,
+      ...(abortSignal === undefined ? {} : { abortSignal }),
       async close() {
         await rm(rootDir as string, { recursive: true, force: true });
       },
@@ -96,6 +100,9 @@ export async function runGit(
   args: readonly string[],
   options: GitCommandOptions,
 ): Promise<Uint8Array> {
+  if (workspace.abortSignal?.aborted) {
+    throw new SnapshotError("GIT_FAILED", "Snapshot preparation was aborted.");
+  }
   const remainingMs = Math.floor(options.deadlineAt - Date.now());
   if (remainingMs <= 0) {
     throw new SnapshotError(
@@ -140,6 +147,8 @@ export async function runGit(
   ];
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let timedOut = false;
+  let aborted = false;
+  let abortListener: (() => void) | undefined;
   const timeout = Math.min(remainingMs, options.limits.maxCreationTimeMs);
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -151,6 +160,14 @@ export async function runGit(
       stderr: "pipe",
     });
     const activeChild = child;
+    abortListener = () => {
+      aborted = true;
+      activeChild.kill("SIGKILL");
+    };
+    workspace.abortSignal?.addEventListener("abort", abortListener, {
+      once: true,
+    });
+    if (workspace.abortSignal?.aborted) abortListener();
     timer = setTimeout(() => {
       timedOut = true;
       activeChild.kill("SIGKILL");
@@ -183,6 +200,12 @@ export async function runGit(
         "Snapshot creation exceeded its time budget.",
       );
     }
+    if (aborted || workspace.abortSignal?.aborted) {
+      throw new SnapshotError(
+        "GIT_FAILED",
+        "Snapshot preparation was aborted.",
+      );
+    }
     if (exitCode !== 0) {
       throw new SnapshotError(
         "GIT_FAILED",
@@ -205,6 +228,9 @@ export async function runGit(
     );
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    if (abortListener !== undefined) {
+      workspace.abortSignal?.removeEventListener("abort", abortListener);
+    }
   }
 }
 

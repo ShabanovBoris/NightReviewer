@@ -5,6 +5,8 @@
   "type": "module",
   "packageManager": "bun@1.4.2",
   "scripts": {
+    "daemon": "bun run src/daemon/main.ts",
+    "mcp": "bun run src/mcp/main.ts",
     "config:doctor": "bun run scripts/session-config-doctor.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src tests scripts",

@@ -781,7 +781,7 @@ test("timed-out invocation releases the scheduler slot for queued work", async (
     backend.resolveHungInvocation(invocation);
     await waitFor(() =>
       fixture.store
-        .readEventPage(fixture.context.cycleId)
+        .readEventPage(invocation.claim.cycleId)
         .events.some(
           (event) => event.eventType === "scheduler.late_result_obsolete",
         ),

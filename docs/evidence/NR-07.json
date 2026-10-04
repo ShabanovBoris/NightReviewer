@@ -1,0 +1,349 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-07",
+  "assignmentId": "NR-07-C1-D127-DAEMON-MCP-LIFECYCLE",
+  "baseSha": "6e78304c78d5833d7902bcf8c955ee9be4bfdd07",
+  "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+  "testedTreeSha": "4a4cdabc790e82a7de2bf8acea1bbbf1a9af83f3",
+  "classification": "OFFLINE_DAEMON_MCP",
+  "assignment": {
+    "decisionId": "NR-07-D127-START-DURABLE-LOCAL-DAEMON-RPC-MCP",
+    "rawReceipt": {
+      "messageId": "d4fc08e6-73a0-4aa1-ab40-8e73eab8d40c",
+      "sha256": "64868f17197ce110ec1f09723a0c0514b4b2efe2989554114f66c6fb0c64ea46",
+      "sizeBytes": 21387,
+      "exactPrivateCaptureVerified": true
+    },
+    "inputs": [
+      {
+        "path": "docs/ROADMAP.md",
+        "sha256": "54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15",
+        "sizeBytes": 5939
+      },
+      {
+        "path": "docs/specs/NR-07.md",
+        "sha256": "c7f3191ea32c188c4d48817b27df5456c4a7641da12a15608c4cdbe58765bfb3",
+        "sizeBytes": 4129
+      },
+      {
+        "path": "docs/tasks/NR-07.md",
+        "sha256": "3083f668eb314770d1969549c7fe548172e43cc42fcf0d8064aed474792d16ab",
+        "sizeBytes": 3991
+      },
+      {
+        "path": "docs/ARCHITECTURE.md",
+        "sha256": "3c2335a660d48b947106bc36b33510c6ab12d697bc01ba409a26f7ab2d5b5184",
+        "sizeBytes": 8908
+      },
+      {
+        "path": "docs/protocols/RUNTIME.md",
+        "sha256": "61ce9bf66d2b9355ffbb13e5fca31746688214d3141f208d2cf52e4e7cd2963e",
+        "sizeBytes": 8908
+      },
+      {
+        "path": "docs/DEFINITION_OF_DONE.md",
+        "sha256": "92c359983eca395dec32484a9b2f7c12a1327087485d9fb441df254c33ad4268",
+        "sizeBytes": 4964
+      },
+      {
+        "path": "docs/protocols/DEVELOPMENT.md",
+        "sha256": "c9db6de4500d182cacfef6a087b8400a07ca7cd410a2cc7e272009d59c3be415",
+        "sizeBytes": 21073
+      }
+    ],
+    "dependencies": [
+      {
+        "taskId": "NR-04",
+        "leadDecision": "NR-04-D120-TASK-COMPLETION-ACCEPTED",
+        "resultingMainSha": "8c38e07a351f81ff602d02f0191bacc9ef77b366",
+        "evidence": {
+          "path": "docs/evidence/NR-04.json",
+          "sha256": "1933bcaaefa36813b4db763a82d27862a50918460b2761c78523fbaceff4cf5b",
+          "sizeBytes": 4935
+        }
+      },
+      {
+        "taskId": "NR-05",
+        "leadDecision": "NR-05-D123-TASK-COMPLETION-ACCEPTED",
+        "resultingMainSha": "bac217d5f96f0fe47f222f45acb643a9b05206a7",
+        "evidence": {
+          "path": "docs/evidence/NR-05.json",
+          "sha256": "a1b1a938c105df7baa24f18f7b7c7d8edcf82b9d600d761ea777e79b124155d5",
+          "sizeBytes": 8065
+        }
+      },
+      {
+        "taskId": "NR-06",
+        "leadDecision": "NR-06-D126-TASK-COMPLETION-ACCEPTED",
+        "resultingMainSha": "6e78304c78d5833d7902bcf8c955ee9be4bfdd07",
+        "evidence": {
+          "path": "docs/evidence/NR-06.json",
+          "sha256": "8cda236b3ed1f03b025369e0c9128745101f06ef5246da6db4e6a5a13e37bba9",
+          "sizeBytes": 11242
+        }
+      }
+    ]
+  },
+  "environment": {
+    "os": "Darwin 25.6.0 arm64",
+    "bunVersion": "1.4.2",
+    "sqliteVersion": "3.51.0",
+    "daemonRpcProtocolVersion": "nr-daemon-rpc/1",
+    "runtimeProtocolVersion": "nr-review/1",
+    "mcpSdk": null
+  },
+  "acceptance": [
+    {
+      "acceptanceId": "NR-07-AC1",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "command": "bun test --timeout=15000",
+      "exitCode": 0,
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "artifactRefs": [
+        "tests/mcp/stdio.integration.test.ts#sha256:652c40297073277b7f5e981238e513ebcd061687d33988719cfbf4ffa44489d8#size:18135",
+        "src/mcp/stdio.ts#sha256:c28e4cd2bdc9943ed9cf2dfc2d0e9844e2f5825274685b943225a64b0128d65d#size:8498",
+        "src/daemon/rpc.ts#sha256:73184f66b271d96b73315837a0ce935e0014039d33b15bd84a93ed3ee35439eb#size:11563"
+      ],
+      "notes": "Spawned-daemon/stdio MCP integration exercised initialize, notifications/initialized, tools/list, submit, status, cancel, idempotent replay and changed-payload conflict."
+    },
+    {
+      "acceptanceId": "NR-07-AC2",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "command": "bun test --timeout=15000",
+      "exitCode": 0,
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "artifactRefs": [
+        "tests/mcp/stdio.integration.test.ts#sha256:652c40297073277b7f5e981238e513ebcd061687d33988719cfbf4ffa44489d8#size:18135",
+        "src/daemon/runtime.ts#sha256:f41d61e635c925ddd8d7d22bd4c17b2275a2a8b74dbd254cdb753edb10020bc2#size:6612",
+        "tests/daemon/lifecycle.test.ts#sha256:e161925251764d10f13983641ef518047ba1e1430a0786169708f196a08c3e78#size:11018"
+      ],
+      "notes": "Client A exited and client B read the same review ID/state. A separate accepted review survived daemon SIGTERM; a fresh daemon and MCP client resumed it to REVIEWING."
+    },
+    {
+      "acceptanceId": "NR-07-AC3",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "command": "bun test --timeout=15000",
+      "exitCode": 0,
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "artifactRefs": [
+        "tests/mcp/stdio.integration.test.ts#sha256:652c40297073277b7f5e981238e513ebcd061687d33988719cfbf4ffa44489d8#size:18135",
+        "tests/daemon/lifecycle.test.ts#sha256:e161925251764d10f13983641ef518047ba1e1430a0786169708f196a08c3e78#size:11018",
+        "src/daemon/rpc.ts#sha256:73184f66b271d96b73315837a0ce935e0014039d33b15bd84a93ed3ee35439eb#size:11563"
+      ],
+      "notes": "Invalid lifecycle token returned AUTH_REQUIRED; unknown repo returned FORBIDDEN; stale fix returned CONFLICT; an otherwise admissible fix returned BACKEND_UNAVAILABLE with retryable=false and no state/event mutation."
+    },
+    {
+      "acceptanceId": "NR-07-AC4",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "command": "bun test --timeout=15000",
+      "exitCode": 0,
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "artifactRefs": [
+        "tests/mcp/stdio.integration.test.ts#sha256:652c40297073277b7f5e981238e513ebcd061687d33988719cfbf4ffa44489d8#size:18135",
+        "tests/daemon/lifecycle.test.ts#sha256:e161925251764d10f13983641ef518047ba1e1430a0786169708f196a08c3e78#size:11018",
+        "tests/storage/daemon-storage.test.ts#sha256:1ef2385c79af12c43fae58752fd65eac5c1317974418f79d80c093d3121770fc#size:3674"
+      ],
+      "notes": "A second daemon failed to acquire the same storage-root lease; stale fencing was rejected; queued and in-flight cancellation, bounded drain, process shutdown and restart preservation passed."
+    }
+  ],
+  "checks": [
+    {
+      "id": "full-local-verification-timeout-override",
+      "command": "bun run typecheck && bun run lint && bun test --timeout=15000 && bun run build",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2; SQLite 3.51.0",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "testedTreeSha": "4a4cdabc790e82a7de2bf8acea1bbbf1a9af83f3",
+      "testSummary": {
+        "passed": 110,
+        "failed": 0,
+        "expectations": 1179,
+        "testFiles": 14
+      },
+      "logArtifact": {
+        "artifactId": "NR07_FULL_VERIFICATION_LOG",
+        "sha256": "0e69853a798be0033c54f2517c4fe93c3ee58b18291dbfcf89c270f0161cce6b",
+        "sizeBytes": 12919,
+        "storage": "Private local session journal; raw log is not published.",
+        "permissions": "0600"
+      }
+    },
+    {
+      "id": "bun-run-verify-local-default",
+      "command": "bun run verify",
+      "exitCode": 1,
+      "kind": "CONTRACT",
+      "environment": "Darwin 25.6.0 arm64; Bun 1.4.2",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "summary": "The unchanged NR-06 AC3 context test exceeds Bun's default 5000ms per-test timeout on this Mac (about 5.4s); the complete suite passed with a 15000ms test timeout. No NR-06 source/test files were changed."
+    },
+    {
+      "id": "git-diff-check",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Git 2.53.0",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "summary": "No whitespace errors before commit."
+    },
+    {
+      "id": "git-show-check",
+      "command": "git show --check HEAD",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Git 2.53.0",
+      "testedSha": "eb29ea8ff11df5b41af85405fce553de80d6af9d",
+      "summary": "Implementation commit contains no whitespace errors."
+    }
+  ],
+  "changedFiles": [
+    {
+      "path": "docs/STATUS.md",
+      "sha256": "962902c3f5b4a1c0090eb182e5f38378b960f7a7ef4a006c3cd85add2687adc2",
+      "sizeBytes": 12532
+    },
+    {
+      "path": "docs/decisions/0007-daemon-mcp-lifecycle.md",
+      "sha256": "290e328d5230eb0b96ba358fc21ed6fdf641a6a38cd1a2fcd7fd2977a6b7a11b",
+      "sizeBytes": 4986
+    },
+    {
+      "path": "package.json",
+      "sha256": "06f99c583da83f806e3f62e1f0a20542febb5edac9892049cd7f3699b129426a",
+      "sizeBytes": 1022
+    },
+    {
+      "path": "src/index.ts",
+      "sha256": "92a365a0b534e38bc7fbbbbc0d3c5efe50815e77fb305b517362aca370add507",
+      "sizeBytes": 269
+    },
+    {
+      "path": "src/daemon/client.ts",
+      "sha256": "4f65eed58e62f6205e9bb8ae666053df284e6a3826c97d2a541c7a4d4b9580f4",
+      "sizeBytes": 3669
+    },
+    {
+      "path": "src/daemon/index.ts",
+      "sha256": "cdd8d2e3a3dd3385e467228abc31112ec634c8265b66d490e3b4f2393bb28a6c",
+      "sizeBytes": 498
+    },
+    {
+      "path": "src/daemon/main.ts",
+      "sha256": "320a47e2e8c80471c105e0a29ffcb6a29532a775dd9e9f8131bf0e828ce86322",
+      "sizeBytes": 2594
+    },
+    {
+      "path": "src/daemon/owner.ts",
+      "sha256": "74fbc7e5c6d3d635116e703445135c4671a8b8fbf947187b1b6e65c227a35480",
+      "sizeBytes": 3546
+    },
+    {
+      "path": "src/daemon/reviews.ts",
+      "sha256": "f26081289224333a449c734c1ea9bce699f319fb3b5b08b06ac1ce48746eb24c",
+      "sizeBytes": 25323
+    },
+    {
+      "path": "src/daemon/rpc.ts",
+      "sha256": "73184f66b271d96b73315837a0ce935e0014039d33b15bd84a93ed3ee35439eb",
+      "sizeBytes": 11563
+    },
+    {
+      "path": "src/daemon/runtime-files.ts",
+      "sha256": "a3552c29727cc0c2740b8d734f430adf9a31e896b05bc1ccb26c6bcd4d0e691a",
+      "sizeBytes": 4883
+    },
+    {
+      "path": "src/daemon/runtime.ts",
+      "sha256": "f41d61e635c925ddd8d7d22bd4c17b2275a2a8b74dbd254cdb753edb10020bc2",
+      "sizeBytes": 6612
+    },
+    {
+      "path": "src/daemon/types.ts",
+      "sha256": "421cb02b23637cb0c43a0b87e33e9304c8afafe519471842be6c121e54a65170",
+      "sizeBytes": 1282
+    },
+    {
+      "path": "src/mcp/index.ts",
+      "sha256": "c87dfa357324699a1ec341d488d3db21fb3c1d68caa7c920dc83b55e34bc134d",
+      "sizeBytes": 41
+    },
+    {
+      "path": "src/mcp/main.ts",
+      "sha256": "1495519b23d4eeda1dab0772246fbd6c6c841ac1e68cd62d06753697deefd1fe",
+      "sizeBytes": 847
+    },
+    {
+      "path": "src/mcp/stdio.ts",
+      "sha256": "c28e4cd2bdc9943ed9cf2dfc2d0e9844e2f5825274685b943225a64b0128d65d",
+      "sizeBytes": 8498
+    },
+    {
+      "path": "src/snapshot/git.ts",
+      "sha256": "edb57eb24b6408c4d5e6971bb225e768c6bf91a5542def9f9cd8fb1de1c0f4eb",
+      "sizeBytes": 25258
+    },
+    {
+      "path": "src/snapshot/service.ts",
+      "sha256": "c5a3e595ccf3ad27bcf4d9d888ddcf8bad16b50280a0ebb06bccccc8e211232a",
+      "sizeBytes": 50193
+    },
+    {
+      "path": "src/snapshot/types.ts",
+      "sha256": "00198336bdf0a26f37a7ec641453d1c05021cf29d25ab54aab2e318d956c6cd4",
+      "sizeBytes": 4604
+    },
+    {
+      "path": "src/storage/index.ts",
+      "sha256": "8741b9f395edb5f963b6dee273327cd94600fc319ac391287e565c7e14c6ebfb",
+      "sizeBytes": 429
+    },
+    {
+      "path": "src/storage/store.ts",
+      "sha256": "1186de1c5d08b5945e117938de12f62135cdbc43f68f1e4fcc5f58dcc84a6a93",
+      "sizeBytes": 88246
+    },
+    {
+      "path": "src/storage/types.ts",
+      "sha256": "b332863d0024802a30f8fc277dc4b4006cd88f87e727ed3264b81cf06089d374",
+      "sizeBytes": 8334
+    },
+    {
+      "path": "tests/daemon/lifecycle.test.ts",
+      "sha256": "e161925251764d10f13983641ef518047ba1e1430a0786169708f196a08c3e78",
+      "sizeBytes": 11018
+    },
+    {
+      "path": "tests/mcp/stdio.integration.test.ts",
+      "sha256": "652c40297073277b7f5e981238e513ebcd061687d33988719cfbf4ffa44489d8",
+      "sizeBytes": 18135
+    },
+    {
+      "path": "tests/storage/daemon-storage.test.ts",
+      "sha256": "1ef2385c79af12c43fae58752fd65eac5c1317974418f79d80c093d3121770fc",
+      "sizeBytes": 3674
+    }
+  ],
+  "liveAcceptance": {
+    "status": "NOT_RUN",
+    "notes": "NR-07 is a deterministic local daemon/MCP lifecycle task. No LIVE model, ChatGPT connector, tunnel, production runtime, or target-repository command action was performed."
+  },
+  "review": {
+    "status": "PENDING_REVIEW",
+    "mergeAuthorized": false,
+    "notes": "This file records implementation evidence only; reviewer approval, lead merge authorization, merge, resulting-main CI and TASK_COMPLETED remain pending."
+  },
+  "knownLimitations": [
+    "NR-07 intentionally stops at REVIEWING with 0/9 runs; worker scheduling/backend execution is NR-08+.",
+    "The standard local bun run verify uses Bun's default 5000ms per-test timeout; the unchanged NR-06 AC3 pagination/search test runs in about 5.4s on this Mac. Exact-head GitHub CI remains required."
+  ]
+}

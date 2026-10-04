@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "repository": "ShabanovBoris/NightReviewer",
+  "taskId": "NR-06",
+  "assignmentId": "NR-06-C1-D124-BOUNDED-READONLY-REVIEW-CONTEXT",
+  "baseSha": "bac217d5f96f0fe47f222f45acb643a9b05206a7",
+  "testedSha": null,
+  "testedTreeSha": null,
+  "assignment": {
+    "decisionId": "NR-06-D124-START-CAPABILITY-BOUND-CONTEXT-CORE",
+    "rawSha256": "4afcf1f213ba20eda7a73cb0abe3c7cc02a9b68264165887fbc553fa1f4e4abb",
+    "rawSizeBytes": 25667,
+    "inputs": {
+      "roadmapSha256": "54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15",
+      "specSha256": "b7abaeb94377063a2477dbaf608ea44a5f5408592df2e802b67a992bf68d92c5",
+      "taskSha256": "18c8088c4b008291d05e55b7c1ec559b411e37727d4b27b30620258639d816a2",
+      "statusBeforeSha256": "45e18011e7dc6840c7f48956e30e17de74250440ae9609453ce0954d06bb6c58"
+    }
+  },
+  "acceptance": [
+    {
+      "acceptanceId": "NR-06-AC1",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/context/context.test.ts",
+      "exitCode": null,
+      "environment": "Local Darwin arm64; Bun 1.4.2 unavailable",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
+      ],
+      "notes": "Test source covers parallel reviews, exact run/snapshot binding, deleted/base reads, and foreign test-artifact rejection. Bun test execution remains NOT_RUN; do not treat these fixtures as a pass."
+    },
+    {
+      "acceptanceId": "NR-06-AC2",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/context/context.test.ts",
+      "exitCode": null,
+      "environment": "Local Darwin arm64; Bun 1.4.2 unavailable",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "src/context/security.ts#sha256:8f66440117f981c43a12be08055b6dc2ec356fa07210ac3c2bd86d5be3ef8ab6"
+      ],
+      "notes": "Test source exercises forged, expired, revoked, run-revoked, and closed capability rejection across all six tools and test-result ingestion. Execution remains NOT_RUN."
+    },
+    {
+      "acceptanceId": "NR-06-AC3",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/context/context.test.ts",
+      "exitCode": null,
+      "environment": "Local Darwin arm64; Bun 1.4.2 unavailable",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
+      ],
+      "notes": "Test source pages manifest, diff, files, literal search, and explicitly bound test results using request-bound cursors. Execution remains NOT_RUN."
+    },
+    {
+      "acceptanceId": "NR-06-AC4",
+      "status": "NOT_RUN",
+      "kind": "CONTRACT",
+      "testedSha": null,
+      "command": "bun test tests/context/context.test.ts tests/snapshot/snapshot.test.ts",
+      "exitCode": null,
+      "environment": "Local Darwin arm64; Bun 1.4.2 unavailable",
+      "startedAt": null,
+      "finishedAt": null,
+      "artifactRefs": [
+        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "tests/snapshot/snapshot.test.ts#sha256:3c761cee6eab95731c106cabd913bfd9fe4d16f7c78965deadbdb5d117b2c664",
+        "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
+      ],
+      "notes": "Test source covers empty and deleted files, UTF-8 chunks, binary and invalid UTF-8, invalid paths, literal-only search, response/search bounds, and exact snapshot-tree reads. Execution remains NOT_RUN."
+    }
+  ],
+  "checks": [
+    {
+      "id": "typecheck-local",
+      "command": "node_modules/.bin/tsc --noEmit",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Node.js 22.22.2; TypeScript 7.0.2",
+      "testedSha": null,
+      "testedTreeSha": null,
+      "summary": "Full project TypeScript check passed on the current worktree."
+    },
+    {
+      "id": "lint-local",
+      "command": "node_modules/.bin/biome check src tests scripts",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Node.js 22.22.2; Biome 2.5.14",
+      "testedSha": null,
+      "testedTreeSha": null,
+      "summary": "Biome checked all 44 files under src, tests, and scripts with no findings."
+    },
+    {
+      "id": "diff-check-local",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Git 2.53.0",
+      "testedSha": null,
+      "testedTreeSha": null,
+      "summary": "No whitespace errors were reported on the current worktree."
+    },
+    {
+      "id": "bun-run-verify-local",
+      "command": "bun run verify",
+      "exitCode": 127,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Bun executable unavailable",
+      "testedSha": null,
+      "testedTreeSha": null,
+      "summary": "The command could not start because `bun` is not installed in this environment. Tests and build were not executed; exact Bun 1.4.2 CI remains required."
+    }
+  ],
+  "liveAcceptance": {
+    "status": "NOT_RUN",
+    "notes": "NR-06 is a local bounded-context contract task. No live model, connector, tunnel, or external runtime call is in scope."
+  },
+  "review": {
+    "status": "CONTEXT_REQUIRED",
+    "notes": "The one authorized reviewer bootstrap request returned CONTEXT_REQUIRED because the exact D124 assignment payload was not available in the repository or GitHub evidence. No substantive code review or approval is claimed."
+  }
+}

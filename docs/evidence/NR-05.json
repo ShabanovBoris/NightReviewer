@@ -159,8 +159,15 @@
     "status": "NOT_RUN",
     "notes": "NR-05 is a deterministic local Git snapshot task. No LIVE model, connector, tunnel, runtime, or network acceptance action is in scope."
   },
+  "pullRequest": {
+    "url": "https://github.com/ShabanovBoris/NightReviewer/pull/6",
+    "baseSha": "8c38e07a351f81ff602d02f0191bacc9ef77b366",
+    "headSha": "f83f129427709a60e64b39e8fddbcd5384d99a93",
+    "mergeSha": "bac217d5f96f0fe47f222f45acb643a9b05206a7",
+    "mergeMethod": "merge"
+  },
   "review": {
-    "status": "PENDING",
-    "notes": "Initial reviewer result NEEDS_FIX for NR-05-R1-F1 at head 90af3f456fd07a83348684877781390100002bef. The storage transition guard and regression test were added in 0979fa1f7c82967c0bbda9c0fbc3575eac38efbe; exact-head workflow run 37156609623 succeeded. Reviewer fix verification and Lead acceptance remain pending; no approval or task completion is claimed."
+    "status": "APPROVED",
+    "notes": "The initial reviewer finding NR-05-R1-F1 at head 90af3f456fd07a83348684877781390100002bef was addressed by the storage transition guard and regression test in 0979fa1f7c82967c0bbda9c0fbc3575eac38efbe. PR #6 was reviewed on base 8c38e07a351f81ff602d02f0191bacc9ef77b366 and head f83f129427709a60e64b39e8fddbcd5384d99a93, then merged with Lead D122 authorization. Lead D123 accepted the merged task. Resulting-main CI 37161382656 succeeded."
   }
 }

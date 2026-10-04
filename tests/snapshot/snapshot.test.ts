@@ -91,6 +91,14 @@ test("NR-05 AC1 records an immutable base-to-head diff and safely reads Git obje
           await readGitBlob(reader, "rename-old.txt", "base"),
         ),
       ).toBe("rename payload\n");
+      expect(
+        (await reader.listFiles("head")).map((entry) => entry.path),
+      ).toContain("steady.txt");
+      expect(
+        new TextDecoder().decode(
+          (await reader.readFile("steady.txt", "head")).bytes,
+        ),
+      ).toBe("unchanged snapshot file\n");
     } finally {
       await reader.close();
     }
@@ -272,6 +280,7 @@ async function createFixture(): Promise<Fixture> {
   await writeFile(path.join(repo, "delete.txt"), "delete me\n");
   await writeFile(path.join(repo, "modify.txt"), "before\n");
   await writeFile(path.join(repo, "type-change"), "was a regular file\n");
+  await writeFile(path.join(repo, "steady.txt"), "unchanged snapshot file\n");
   await git(repo, ["add", "--all", "--", "."], hooksDir);
   await git(
     repo,

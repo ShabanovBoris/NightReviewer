@@ -647,6 +647,151 @@ test("in-flight late output is retained as obsolete after cancellation", async (
   }
 });
 
+test("cancellation returns when an invocation ignores AbortSignal", async () => {
+  const clock = new VirtualClock(Date.now());
+  const fixture = await createFixture(clock);
+  const backend = new NonCooperativeFakeBackend(
+    new FakeReviewerBackend({ clock }),
+    { hangFirstInvocation: true },
+  );
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+    concurrency: 1,
+    attemptTimeoutMs: 1_000,
+    leaseTtlMs: 2_000,
+    reviewDeadlineMs: 5_000,
+    clock,
+  });
+  try {
+    scheduler.activateCycle(fixture.context);
+    await scheduler.start();
+    const invocation = await backend.hangingInvocation;
+    const current = fixture.store.readReview(fixture.context.reviewId);
+    fixture.store.applyCycleCommand(
+      "test-caller",
+      current.cycleId,
+      {
+        type: "REQUEST_CANCEL",
+        reason: "Cancel a non-cooperative fake backend turn.",
+        expectedVersion: current.stateVersion,
+        idempotencyKey: "cancel-non-cooperative",
+      },
+      {
+        ownerFencing: fixture.owner.fencingToken(),
+        occurredAtUtc: new Date(clock.nowMs()).toISOString(),
+      },
+    );
+
+    expect(
+      await completesWithin(scheduler.cancelCycle(current.cycleId), 250),
+    ).toBe(true);
+    const cancelRequested = fixture.store.readReview(current.reviewId);
+    fixture.store.applyCycleCommand(
+      "test-caller",
+      current.cycleId,
+      {
+        type: "CONFIRM_CANCEL",
+        fencingAndRevocationConfirmed: true,
+        expectedVersion: cancelRequested.stateVersion,
+        idempotencyKey: "confirm-cancel-non-cooperative",
+      },
+      {
+        ownerFencing: fixture.owner.fencingToken(),
+        occurredAtUtc: new Date(clock.nowMs()).toISOString(),
+      },
+    );
+    expect(fixture.store.readCycle(current.cycleId).state).toBe("CANCELLED");
+
+    const priorObsoleteEvents = fixture.store
+      .readEventPage(current.cycleId)
+      .events.filter(
+        (event) => event.eventType === "scheduler.late_result_obsolete",
+      ).length;
+    backend.resolveHungInvocation(invocation);
+    await waitFor(
+      () =>
+        fixture.store
+          .readEventPage(current.cycleId)
+          .events.filter(
+            (event) => event.eventType === "scheduler.late_result_obsolete",
+          ).length > priorObsoleteEvents,
+    );
+    expect(
+      fixture.store.readSchedulerSelectedRuns(current.cycleId),
+    ).toHaveLength(0);
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
+test("timed-out invocation releases the scheduler slot for queued work", async () => {
+  const clock = new VirtualClock(Date.now());
+  const fixture = await createFixture(clock);
+  const second = await createReviewingCycle(
+    fixture.store,
+    fixture.owner,
+    "deadline-fairness-second",
+    clock,
+  );
+  const backend = new NonCooperativeFakeBackend(
+    new FakeReviewerBackend({ clock }),
+    { hangFirstInvocation: true },
+  );
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+    concurrency: 1,
+    maxAttempts: 1,
+    attemptTimeoutMs: 5,
+    leaseTtlMs: 1_000,
+    reviewDeadlineMs: 10_000,
+    maxBackoffMs: 1,
+    jitter: () => 1,
+    clock,
+  });
+  try {
+    scheduler.activateCycle(fixture.context);
+    scheduler.activateCycle(second);
+    await scheduler.start();
+    const invocation = await backend.hangingInvocation;
+    clock.advanceBy(5);
+    await waitFor(() =>
+      backend.delegatedInvocations.some(
+        (input) => input.claim.cycleId !== invocation.claim.cycleId,
+      ),
+    );
+
+    expect(scheduler.maxObservedConcurrency).toBe(1);
+    expect(
+      fixture.store.readSchedulerCycleStatus(invocation.claim.cycleId)
+        .reconciliationRequiredRuns,
+    ).toBeGreaterThan(0);
+    expect(
+      backend.delegatedInvocations.some(
+        (input) => input.claim.cycleId === second.cycleId,
+      ) || invocation.claim.cycleId === second.cycleId,
+    ).toBe(true);
+    backend.resolveHungInvocation(invocation);
+    await waitFor(() =>
+      fixture.store
+        .readEventPage(fixture.context.cycleId)
+        .events.some(
+          (event) => event.eventType === "scheduler.late_result_obsolete",
+        ),
+    );
+    expect(
+      fixture.store
+        .readSchedulerSelectedRuns(fixture.context.cycleId)
+        .some((run) => run.runId === invocation.claim.runId),
+    ).toBe(false);
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
 test("late duplicate output cannot mutate an approved cycle", async () => {
   const fixture = await createFixture();
   const backend = new FakeReviewerBackend();
@@ -868,6 +1013,98 @@ test("deadline uses an injected clock and ends in explicit reconciliation/failur
   }
 });
 
+test("timed-out reconciliation releases the slot and fences its late result", async () => {
+  const clock = new VirtualClock(Date.now());
+  const fixture = await createFixture(clock);
+  const unknownRunId = stableRunId(fixture.context.cycleId, "correctness", 1);
+  const delegate = new FakeReviewerBackend({
+    clock,
+    plans: new Map([[unknownRunId, { scenario: "UNKNOWN_SEND" }]]),
+  });
+  const backend = new NonCooperativeFakeBackend(delegate, {
+    hangFirstReconciliation: true,
+  });
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+    concurrency: 1,
+    maxAttempts: 1,
+    attemptTimeoutMs: 5,
+    leaseTtlMs: 1_000,
+    reviewDeadlineMs: 10_000,
+    maxBackoffMs: 1,
+    jitter: () => 1,
+    clock,
+  });
+  try {
+    scheduler.activateCycle(fixture.context);
+    await scheduler.start();
+    const reconciliation = await backend.hangingReconciliation;
+    clock.advanceBy(5);
+    await waitFor(() => backend.invocationCount >= 2);
+
+    expect(scheduler.maxObservedConcurrency).toBe(1);
+    backend.resolveHungReconciliation(reconciliation);
+    await waitFor(() =>
+      fixture.store
+        .readEventPage(fixture.context.cycleId)
+        .events.some(
+          (event) =>
+            event.eventType === "scheduler.late_result_obsolete" &&
+            (event.payload as { reconciliationOutcome?: string })
+              .reconciliationOutcome === "PROVEN_ACCEPTED_WITH_RESULT",
+        ),
+    );
+    expect(
+      fixture.store
+        .readSchedulerSelectedRuns(fixture.context.cycleId)
+        .some((run) => run.runId === unknownRunId),
+    ).toBe(false);
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
+test("drain returns within its deadline when an invocation ignores abort", async () => {
+  const clock = new VirtualClock(Date.now());
+  const fixture = await createFixture(clock);
+  const backend = new NonCooperativeFakeBackend(
+    new FakeReviewerBackend({ clock }),
+    { hangFirstInvocation: true },
+  );
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+    concurrency: 1,
+    attemptTimeoutMs: 1_000,
+    leaseTtlMs: 2_000,
+    reviewDeadlineMs: 5_000,
+    drainTimeoutMs: 5,
+    clock,
+  });
+  try {
+    scheduler.activateCycle(fixture.context);
+    await scheduler.start();
+    const invocation = await backend.hangingInvocation;
+    const drain = scheduler.drain(5);
+    clock.advanceBy(5);
+    expect(await completesWithin(drain, 250)).toBe(true);
+
+    backend.resolveHungInvocation(invocation);
+    await waitFor(() =>
+      fixture.store
+        .readEventPage(fixture.context.cycleId)
+        .events.some(
+          (event) => event.eventType === "scheduler.late_result_obsolete",
+        ),
+    );
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
 test("policy classification retries only known-unsent transient failures", () => {
   expect(classifyBackendFailure("AUTHENTICATION", "UNSENT")).toBe("FAIL");
   expect(classifyBackendFailure("POLICY", "UNSENT")).toBe("FAIL");
@@ -1025,6 +1262,27 @@ async function waitFor(
   }
 }
 
+async function completesWithin(
+  promise: Promise<unknown>,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      promise.then(
+        () => true,
+        () => true,
+      ),
+      timeout,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 function stableRunId(
   cycleId: string,
   direction: WorkerDirection,
@@ -1137,6 +1395,109 @@ class DeferredFakeBackend implements ReviewerBackend {
       ),
     });
   }
+}
+
+class NonCooperativeFakeBackend implements ReviewerBackend {
+  readonly backend = "FAKE" as const;
+  readonly hangingInvocation: Promise<BackendInvocationInput>;
+  readonly hangingReconciliation: Promise<BackendInvocationInput>;
+  readonly delegatedInvocations: BackendInvocationInput[] = [];
+  invocationCount = 0;
+  delegatedInvocationCount = 0;
+  reconciliationCount = 0;
+  private notifyHangingInvocation!: (input: BackendInvocationInput) => void;
+  private notifyHangingReconciliation!: (input: BackendInvocationInput) => void;
+  private resolveInvocation:
+    | ((result: BackendInvocationResult) => void)
+    | undefined;
+  private resolveReconciliation:
+    | ((result: BackendReconciliationResult) => void)
+    | undefined;
+
+  constructor(
+    private readonly delegate: FakeReviewerBackend,
+    private readonly options: {
+      readonly hangFirstInvocation?: boolean;
+      readonly hangFirstReconciliation?: boolean;
+    } = {},
+  ) {
+    this.hangingInvocation = new Promise((resolve) => {
+      this.notifyHangingInvocation = resolve;
+    });
+    this.hangingReconciliation = new Promise((resolve) => {
+      this.notifyHangingReconciliation = resolve;
+    });
+  }
+
+  invoke(input: BackendInvocationInput): Promise<BackendInvocationResult> {
+    this.invocationCount += 1;
+    if (this.options.hangFirstInvocation && this.invocationCount === 1) {
+      this.notifyHangingInvocation(input);
+      return new Promise((resolve) => {
+        this.resolveInvocation = resolve;
+      });
+    }
+    this.delegatedInvocationCount += 1;
+    this.delegatedInvocations.push(input);
+    return this.delegate.invoke(input);
+  }
+
+  reconcile(
+    input: BackendInvocationInput,
+  ): Promise<BackendReconciliationResult> {
+    this.reconciliationCount += 1;
+    if (
+      this.options.hangFirstReconciliation &&
+      this.reconciliationCount === 1
+    ) {
+      this.notifyHangingReconciliation(input);
+      return new Promise((resolve) => {
+        this.resolveReconciliation = resolve;
+      });
+    }
+    return this.delegate.reconcile(input);
+  }
+
+  resolveHungInvocation(input: BackendInvocationInput): void {
+    if (this.resolveInvocation === undefined) {
+      throw new Error("No hanging fake invocation is available to resolve.");
+    }
+    const output = fakeWorkerOutput(input.context, input.claim);
+    this.resolveInvocation({
+      kind: "SUCCESS",
+      output,
+      rawBytes: markedFakeOutput(output),
+    });
+    this.resolveInvocation = undefined;
+  }
+
+  resolveHungReconciliation(input: BackendInvocationInput): void {
+    if (this.resolveReconciliation === undefined) {
+      throw new Error(
+        "No hanging fake reconciliation is available to resolve.",
+      );
+    }
+    const output = fakeWorkerOutput(input.context, input.claim);
+    this.resolveReconciliation({
+      kind: "PROVEN_ACCEPTED_WITH_RESULT",
+      output,
+      rawBytes: markedFakeOutput(output),
+    });
+    this.resolveReconciliation = undefined;
+  }
+}
+
+function markedFakeOutput(
+  output: ReturnType<typeof fakeWorkerOutput>,
+): Uint8Array {
+  return Buffer.from(
+    JSON.stringify({
+      backend: "FAKE",
+      qualification: "OFFLINE_ONLY",
+      output,
+    }),
+    "utf8",
+  );
 }
 
 function emptySnapshotService() {

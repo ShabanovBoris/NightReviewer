@@ -47,6 +47,12 @@ interface ActiveClaim {
   readonly promise: Promise<void>;
 }
 
+type BackendRaceResult<T> =
+  | { readonly kind: "RESULT"; readonly value: T }
+  | { readonly kind: "TIMEOUT" }
+  | { readonly kind: "ABORTED" }
+  | { readonly kind: "ERROR"; readonly error: unknown };
+
 export interface SchedulerRuntimeOptions {
   readonly store: SqliteStorage;
   readonly owner: DaemonOwner;
@@ -169,27 +175,47 @@ export class DurableScheduler {
       (entry) => entry.cycleId === cycleId,
     );
     for (const entry of active) entry.controller.abort();
-    await Promise.allSettled(active.map((entry) => entry.promise));
+    await this.waitForClaims(active, this.drainTimeoutMs);
   }
 
   async drain(timeoutMs = this.drainTimeoutMs): Promise<void> {
     this.draining = true;
     this.cancelWakeTimer();
+    const deadlineMs = this.clock.nowMs() + timeoutMs;
     const active = [...this.active.values()];
     if (active.length === 0) return;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      Promise.allSettled(active.map((entry) => entry.promise)),
-      new Promise<void>((resolve) => {
-        timeout = setTimeout(resolve, timeoutMs);
-      }),
-    ]);
-    if (timeout !== undefined) clearTimeout(timeout);
-    if (this.active.size > 0) {
-      for (const entry of this.active.values()) entry.controller.abort();
-      await Promise.allSettled(
-        [...this.active.values()].map((entry) => entry.promise),
+    const didSettle = await this.waitForClaims(
+      active,
+      Math.max(0, deadlineMs - this.clock.nowMs()),
+    );
+    if (didSettle) return;
+    const remaining = [...this.active.values()];
+    for (const entry of remaining) entry.controller.abort();
+    await this.waitForClaims(
+      remaining,
+      Math.max(0, deadlineMs - this.clock.nowMs()),
+    );
+  }
+
+  private async waitForClaims(
+    claims: readonly ActiveClaim[],
+    timeoutMs: number,
+  ): Promise<boolean> {
+    if (claims.length === 0) return true;
+    const timerController = new AbortController();
+    const allSettled = Promise.allSettled(
+      claims.map((entry) => entry.promise),
+    ).then(() => true);
+    const timeout = this.clock
+      .sleep(Math.max(0, timeoutMs), timerController.signal)
+      .then(
+        () => false,
+        () => false,
       );
+    try {
+      return await Promise.race([allSettled, timeout]);
+    } finally {
+      timerController.abort();
     }
   }
 
@@ -324,43 +350,37 @@ export class DurableScheduler {
   }
 
   private async runTurn(input: BackendInvocationInput): Promise<void> {
-    const timerController = new AbortController();
-    const remainingMs = Math.max(
-      0,
-      Date.parse(input.claim.attemptDeadlineAtUtc) - this.clock.nowMs(),
-    );
-    const backendPromise = this.backend.invoke(input);
-    const outcome = await Promise.race([
-      backendPromise.then((value) => ({ kind: "RESULT" as const, value })),
-      this.clock
-        .sleep(remainingMs, timerController.signal)
-        .then(() => ({ kind: "TIMEOUT" as const })),
-    ]).catch((error: unknown) => ({
-      kind: "ERROR" as const,
-      error,
-    }));
-    timerController.abort();
-    if (outcome.kind === "TIMEOUT") {
-      this.active.get(input.claim.attemptId)?.controller.abort();
+    if (input.signal.aborted) return;
+    const backendPromise = Promise.resolve().then(() => {
+      if (input.signal.aborted) {
+        throw new Error("Backend invocation was cancelled before start.");
+      }
+      return this.backend.invoke(input);
+    });
+    const outcome = await this.raceBackend(input, backendPromise);
+    if (outcome.kind === "TIMEOUT" || outcome.kind === "ABORTED") {
+      if (outcome.kind === "TIMEOUT") {
+        this.active.get(input.claim.attemptId)?.controller.abort();
+      }
       const bytes = markedBytes({
         backend: "FAKE",
         qualification: "OFFLINE_ONLY",
         runId: input.claim.runId,
         attemptId: input.claim.attemptId,
         outcome: "UNKNOWN_SEND",
-        reason: "ATTEMPT_DEADLINE_EXCEEDED",
+        reason:
+          outcome.kind === "TIMEOUT"
+            ? "ATTEMPT_DEADLINE_EXCEEDED"
+            : "ATTEMPT_ABORTED",
       });
       await this.finishAttempt(input, {
         kind: "UNKNOWN_SEND",
         errorClass: "UNKNOWN_SEND",
         rawBytes: bytes,
       });
-      try {
-        const late = await backendPromise;
-        await this.finishAttempt(input, late);
-      } catch {
-        // The timeout result is already durably classified as unknown-send.
-      }
+      this.observeLateResult(backendPromise, (late) =>
+        this.finishAttempt(input, late),
+      );
       return;
     }
     if (outcome.kind === "ERROR") {
@@ -381,6 +401,48 @@ export class DurableScheduler {
       return;
     }
     await this.finishAttempt(input, outcome.value);
+  }
+
+  private async raceBackend<T>(
+    input: BackendInvocationInput,
+    operation: Promise<T>,
+  ): Promise<BackendRaceResult<T>> {
+    const timerController = new AbortController();
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<BackendRaceResult<T>>((resolve) => {
+      onAbort = () => resolve({ kind: "ABORTED" });
+      input.signal.addEventListener("abort", onAbort, { once: true });
+      if (input.signal.aborted) onAbort();
+    });
+    const operationResult: Promise<BackendRaceResult<T>> = operation.then(
+      (value) => ({ kind: "RESULT", value }),
+      (error: unknown) => ({ kind: "ERROR", error }),
+    );
+    const remainingMs = Math.max(
+      0,
+      Date.parse(input.claim.attemptDeadlineAtUtc) - this.clock.nowMs(),
+    );
+    const timeout: Promise<BackendRaceResult<T>> = this.clock
+      .sleep(remainingMs, timerController.signal)
+      .then(
+        () => ({ kind: "TIMEOUT" }),
+        (error: unknown) => ({ kind: "ERROR", error }),
+      );
+    try {
+      return await Promise.race([operationResult, timeout, aborted]);
+    } finally {
+      timerController.abort();
+      if (onAbort !== undefined) {
+        input.signal.removeEventListener("abort", onAbort);
+      }
+    }
+  }
+
+  private observeLateResult<T>(
+    operation: Promise<T>,
+    record: (result: T) => Promise<unknown>,
+  ): void {
+    void operation.then(record).catch(() => undefined);
   }
 
   private async finishAttempt(
@@ -439,12 +501,33 @@ export class DurableScheduler {
   private async runReconciliation(
     input: BackendInvocationInput,
   ): Promise<void> {
-    let result: BackendReconciliationResult;
-    try {
-      result = await this.backend.reconcile(input);
-    } catch {
-      result = { kind: "STILL_UNKNOWN" };
+    if (input.signal.aborted) return;
+    const backendPromise = Promise.resolve().then(() => {
+      if (input.signal.aborted) {
+        throw new Error("Backend reconciliation was cancelled before start.");
+      }
+      return this.backend.reconcile(input);
+    });
+    const outcome = await this.raceBackend(input, backendPromise);
+    const result =
+      outcome.kind === "RESULT"
+        ? outcome.value
+        : { kind: "STILL_UNKNOWN" as const };
+    if (outcome.kind === "TIMEOUT") {
+      this.active.get(input.claim.attemptId)?.controller.abort();
     }
+    await this.finishReconciliation(input, result);
+    if (outcome.kind === "TIMEOUT" || outcome.kind === "ABORTED") {
+      this.observeLateResult(backendPromise, (late) =>
+        this.finishReconciliation(input, late),
+      );
+    }
+  }
+
+  private async finishReconciliation(
+    input: BackendInvocationInput,
+    result: BackendReconciliationResult,
+  ): Promise<void> {
     const writeBase = {
       runId: input.claim.runId,
       attemptId: input.claim.attemptId,

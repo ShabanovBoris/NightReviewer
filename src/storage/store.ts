@@ -2065,7 +2065,30 @@ export class SqliteStorage {
           "REVIEWING" &&
         job.active_work_kind === "RECONCILIATION" &&
         this.isCurrentSchedulerClaim(job, input.attemptId, input.lease, now);
-      if (!current) return false;
+      if (!current) {
+        if (acceptedArtifact !== undefined) {
+          this.insertArtifactRecord(acceptedArtifact, "application/json", now);
+        }
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.late_result_obsolete",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            reconciliationOutcome: input.outcome,
+            selected: false,
+            previousAttemptState: attempt.state,
+            ...(acceptedArtifact === undefined
+              ? {}
+              : { rawArtifact: acceptedArtifact }),
+          },
+          occurredAtUtc: now,
+        });
+        return false;
+      }
 
       if (input.outcome === "STILL_UNKNOWN") {
         this.db

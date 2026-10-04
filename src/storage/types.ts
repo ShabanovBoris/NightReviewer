@@ -22,6 +22,7 @@ export interface CreateReviewInput {
   readonly reviewContextHash: string;
   readonly versionBinding: VersionHashBinding;
   readonly createdAtUtc?: string;
+  readonly fencing?: FencingToken;
 }
 
 export interface CreatedReview {
@@ -137,6 +138,19 @@ export interface SnapshotCycleContext {
   readonly task: string;
   readonly acceptanceCriteria: ReviewSubmitInput["acceptanceCriteria"];
   readonly cycle: ReviewCycleState;
+}
+
+export interface StoredReviewEvent {
+  readonly eventId: string;
+  readonly eventSeq: number;
+  readonly eventType: string;
+  readonly payload: unknown;
+  readonly occurredAtUtc: string;
+}
+
+export interface ReviewEventPage {
+  readonly events: readonly StoredReviewEvent[];
+  readonly hasMore: boolean;
 }
 
 export interface DirectionRunBinding {

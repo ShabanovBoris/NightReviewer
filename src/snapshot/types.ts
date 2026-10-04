@@ -1,4 +1,8 @@
-import type { ArtifactReference, SqliteStorage } from "../storage";
+import type {
+  ArtifactReference,
+  FencingToken,
+  SqliteStorage,
+} from "../storage";
 
 export interface SnapshotLimits {
   readonly maxChangedPaths: number;
@@ -112,6 +116,7 @@ export interface SnapshotManifest {
 export interface CreateSnapshotInput {
   readonly cycleId: string;
   readonly specSha256?: string;
+  readonly signal?: AbortSignal;
 }
 
 export interface SnapshotServiceOptions {
@@ -122,6 +127,7 @@ export interface SnapshotServiceOptions {
     | ReadonlyMap<string, string>
     | Readonly<Record<string, string>>;
   readonly limits?: Partial<SnapshotLimits>;
+  readonly fencingProvider?: () => FencingToken;
 }
 
 export interface SnapshotReadResult {

@@ -9,8 +9,8 @@
 | NR-03 | COMPLETE — Lead D114 accepted | [PR #4](https://github.com/ShabanovBoris/NightReviewer/pull/4), merge/resulting `main` `c0a70dcc6e46e5fec0f37751c7abb0f724e73c93`; resulting-main CI 37109137657 succeeded |
 | NR-04 | COMPLETE — Lead D120 accepted | [PR #5](https://github.com/ShabanovBoris/NightReviewer/pull/5), merged `main` `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37144869002; [local evidence](evidence/NR-04.json) |
 | NR-05 | COMPLETE — Lead D123 accepted | [PR #6](https://github.com/ShabanovBoris/NightReviewer/pull/6), merged `main` `bac217d5f96f0fe47f222f45acb643a9b05206a7`; resulting-main CI 37161382656; [evidence index](evidence/NR-05.json) |
-| NR-06 | IN_PROGRESS — D124 assignment; reviewer finding R1-F1 fixed, exact-head fix review pending | [PR #7](https://github.com/ShabanovBoris/NightReviewer/pull/7), branch `nr-06-bounded-readonly-review-context`, base `bac217d5f96f0fe47f222f45acb643a9b05206a7`; LFS-pointer fix commit `a535c6adb8d8033e922f6c0a24318f6c7b1d8003` passed exact-head CI 37196325348 |
-| NR-07 | PLANNED | — |
+| NR-06 | COMPLETE — Lead D126 accepted | [PR #7](https://github.com/ShabanovBoris/NightReviewer/pull/7), merged main `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`; resulting-main CI 37206494469 succeeded; [evidence index](evidence/NR-06.json) |
+| NR-07 | IN_PROGRESS — Lead D127 assignment | branch `nr-07-daemon-mcp-lifecycle`, exact base `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`; [spec](specs/NR-07.md), [evidence](evidence/NR-07.json) |
 | NR-08 | PLANNED | — |
 | NR-09 | PLANNED | — |
 | NR-10 | PLANNED | — |
@@ -41,9 +41,13 @@ Lead D120 accepted NR-04 after PR #5 merged to `main` at `8c38e07a351f81ff602d02
 
 Lead D123 accepted NR-05 after PR #6 merged to `main` at `bac217d5f96f0fe47f222f45acb643a9b05206a7`. The merged PR head was `f83f129427709a60e64b39e8fddbcd5384d99a93` on base `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37161382656 succeeded. The acceptance receipt and implementation evidence are indexed in [docs/evidence/NR-05.json](evidence/NR-05.json).
 
-## Current assignment: NR-06 — D124
+## Accepted dependency: NR-06 — Lead D126
 
-Assignment `NR-06-C1-D124-BOUNDED-READONLY-REVIEW-CONTEXT` starts from exact `main` base `bac217d5f96f0fe47f222f45acb643a9b05206a7`, on feature branch `nr-06-bounded-readonly-review-context`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-06.md` is bound to SHA-256 `b7abaeb94377063a2477dbaf608ea44a5f5408592df2e802b67a992bf68d92c5`; task `docs/tasks/NR-06.md` is bound to SHA-256 `18c8088c4b008291d05e55b7c1ec559b411e37727d4b27b30620258639d816a2`. D124 starts NR-06 after accepted NR-05. The initial correlated review returned `NEEDS_FIX` for `NR-06-R1-F1`: unchanged LFS pointer blobs could appear as available text. The fix in `a535c6adb8d8033e922f6c0a24318f6c7b1d8003` classifies pointers explicitly, reports inspection-budget skips, and adds list/read/search regression coverage; exact-head CI run 37196325348 succeeded on Bun 1.4.2. Fresh readiness and reviewer fix verification for the changed revision are pending. No final reviewer approval, merge authorization, or task completion is claimed. See [docs/evidence/NR-06.json](evidence/NR-06.json).
+Lead D126 accepted NR-06 after PR #7 merged at `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`. The exact implementation head passed CI run `37197015131`; the resulting-main workflow run `37206494469` also succeeded. The reviewer completed the assigned AC1–AC4 review, including the LFS-pointer fix. Lead D126 records the task complete and assigns NR-07 next. Project acceptance remains unrequested; see the linked NR-06 evidence index and private receipt journal for the original receipts.
+
+## Current assignment: NR-07 — D127
+
+Assignment `NR-07-C1-D127-DAEMON-MCP-LIFECYCLE` starts from exact `main` base `6e78304c78d5833d7902bcf8c955ee9be4bfdd07` on fresh branch `nr-07-daemon-mcp-lifecycle`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-07.md` is bound to `c7f3191ea32c188c4d48817b27df5456c4a7641da12a15608c4cdbe58765bfb3`; task `docs/tasks/NR-07.md` is bound to `3083f668eb314770d1969549c7fe548172e43cc42fcf0d8064aed474792d16ab`. D127 confirms NR-04, NR-05, and NR-06 dependencies complete. Scope is a single-owner local daemon, authenticated Unix-domain RPC, thin stdio MCP tools, durable status/events, async snapshot boundary, disconnect independence, and bounded drain. Worker scheduling, live ChatGPT/runtime access, TCP, and automatic merge are out of scope. Reviewer cycle 1 returned `NEEDS_FIX` for head `64cae6cef698224d3d9480abb6e4e3990859ab23`; its three blocking findings are addressed in fix commit `4623ace14d2e9ec136c11a6e020f5d09a22a30db`. Local checks pass and fix verification is pending. Merge is not authorized.
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

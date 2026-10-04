@@ -10,8 +10,8 @@
 | NR-04 | COMPLETE — Lead D120 accepted | [PR #5](https://github.com/ShabanovBoris/NightReviewer/pull/5), merged `main` `8c38e07a351f81ff602d02f0191bacc9ef77b366`; resulting-main CI 37144869002; [local evidence](evidence/NR-04.json) |
 | NR-05 | COMPLETE — Lead D123 accepted | [PR #6](https://github.com/ShabanovBoris/NightReviewer/pull/6), merged `main` `bac217d5f96f0fe47f222f45acb643a9b05206a7`; resulting-main CI 37161382656; [evidence index](evidence/NR-05.json) |
 | NR-06 | COMPLETE — Lead D126 accepted | [PR #7](https://github.com/ShabanovBoris/NightReviewer/pull/7), merged main `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`; resulting-main CI 37206494469 succeeded; [evidence index](evidence/NR-06.json) |
-| NR-07 | IN_PROGRESS — Lead D127 assignment | branch `nr-07-daemon-mcp-lifecycle`, exact base `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`; [spec](specs/NR-07.md), [evidence](evidence/NR-07.json) |
-| NR-08 | PLANNED | — |
+| NR-07 | COMPLETE — Lead D129 accepted | [PR #8](https://github.com/ShabanovBoris/NightReviewer/pull/8), resulting main `9f50731fddf106f951e797014586e87a63c7c3b9`; resulting-main CI 37224778533 succeeded; [evidence](evidence/NR-07.json) |
+| NR-08 | IN_PROGRESS — Lead D130 assignment | branch `nr-08-durable-scheduler-fake-backend`, exact base `9f50731fddf106f951e797014586e87a63c7c3b9`; [spec](specs/NR-08.md), [evidence](evidence/NR-08.json) |
 | NR-09 | PLANNED | — |
 | NR-10 | PLANNED | — |
 | NR-11 | PLANNED | — |
@@ -45,9 +45,17 @@ Lead D123 accepted NR-05 after PR #6 merged to `main` at `bac217d5f96f0fe47f222f
 
 Lead D126 accepted NR-06 after PR #7 merged at `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`. The exact implementation head passed CI run `37197015131`; the resulting-main workflow run `37206494469` also succeeded. The reviewer completed the assigned AC1–AC4 review, including the LFS-pointer fix. Lead D126 records the task complete and assigns NR-07 next. Project acceptance remains unrequested; see the linked NR-06 evidence index and private receipt journal for the original receipts.
 
-## Current assignment: NR-07 — D127
+## Historical implementation checkpoint: NR-07 — D127
 
-Assignment `NR-07-C1-D127-DAEMON-MCP-LIFECYCLE` starts from exact `main` base `6e78304c78d5833d7902bcf8c955ee9be4bfdd07` on fresh branch `nr-07-daemon-mcp-lifecycle`. Roadmap `docs/ROADMAP.md` is bound to SHA-256 `54ea2e6c1c4149b4e8671a969dbac65d2a7087b072177ad9cb8a94244b517e15`; spec `docs/specs/NR-07.md` is bound to `c7f3191ea32c188c4d48817b27df5456c4a7641da12a15608c4cdbe58765bfb3`; task `docs/tasks/NR-07.md` is bound to `3083f668eb314770d1969549c7fe548172e43cc42fcf0d8064aed474792d16ab`. D127 confirms NR-04, NR-05, and NR-06 dependencies complete. Scope is a single-owner local daemon, authenticated Unix-domain RPC, thin stdio MCP tools, durable status/events, async snapshot boundary, disconnect independence, and bounded drain. Worker scheduling, live ChatGPT/runtime access, TCP, and automatic merge are out of scope. Reviewer cycle 1 returned `NEEDS_FIX` for head `64cae6cef698224d3d9480abb6e4e3990859ab23`; its three blocking findings are addressed in fix commit `4623ace14d2e9ec136c11a6e020f5d09a22a30db`. Local checks pass and fix verification is pending. Merge is not authorized.
+Assignment `NR-07-C1-D127-DAEMON-MCP-LIFECYCLE` started from exact `main` base `6e78304c78d5833d7902bcf8c955ee9be4bfdd07` on feature branch `nr-07-daemon-mcp-lifecycle`. Roadmap, spec and task hashes are retained in the original D127 assignment. Scope was a single-owner local daemon, authenticated Unix-domain RPC, thin stdio MCP tools, durable status/events, async snapshot boundary, disconnect independence and bounded drain. Reviewer cycle 1 returned `NEEDS_FIX` for head `64cae6cef698224d3d9480abb6e4e3990859ab23`; its three blocking findings were addressed in fix commit `4623ace14d2e9ec136c11a6e020f5d09a22a30db`.
+
+## Accepted dependency: NR-07 — Lead D129
+
+Lead D129 accepted NR-07 after PR #8 merged to `main` at `9f50731fddf106f951e797014586e87a63c7c3b9`. Resulting-main CI run `37224778533` succeeded. This enables NR-08; its evidence index remains at [docs/evidence/NR-07.json](evidence/NR-07.json).
+
+## Current assignment: NR-08 — D130
+
+Assignment `NR-08-C1-D130-DURABLE-SCHEDULER-FAKE-BACKEND` starts from exact `main` base `9f50731fddf106f951e797014586e87a63c7c3b9` on fresh branch `nr-08-durable-scheduler-fake-backend`. The bound NR-08 spec SHA-256 is `1c95b5ed94325f10dd6cee434854d1ae8f956c5917bd12dc255593360140e2ed`; task prompt SHA-256 is `af942bdcefa3231c1a91b75e23d0a8a92f0e7ca1793015f20ebee0fadf5be36c`. D130 implements nine logical FAKE runs across correctness/tests/design, durable attempts/leases/fencing, a default global concurrency of three, review-level round-robin fairness, bounded retries/deadlines, unknown-send reconciliation, provisional finding aggregation and an offline-only gate. It performs no LIVE model, connector, tunnel or production-runtime action. NR-08 remains IN_PROGRESS pending exact-head verification, reviewer approval, Lead merge authorization, merge and resulting-main CI.
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

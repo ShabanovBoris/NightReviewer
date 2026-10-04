@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "nr-evidence/1",
+  "taskId": "NR-08",
+  "assignmentId": "NR-08-C1-D130-DURABLE-SCHEDULER-FAKE-BACKEND",
+  "decisionId": "NR-08-D130-START-DETERMINISTIC-OFFLINE-SCHEDULER",
+  "status": "IN_PROGRESS",
+  "classification": "OFFLINE_SCHEDULER_FAKE",
+  "revision": {
+    "baseSha": "9f50731fddf106f951e797014586e87a63c7c3b9",
+    "testedCodeSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+    "branch": "nr-08-durable-scheduler-fake-backend",
+    "specPath": "docs/specs/NR-08.md",
+    "specSha256": "1c95b5ed94325f10dd6cee434854d1ae8f956c5917bd12dc255593360140e2ed"
+  },
+  "environment": {
+    "os": "macOS 26.6.2",
+    "architecture": "arm64",
+    "bunVersion": "1.4.2",
+    "bunRevision": "1.4.2+744846f84",
+    "sqliteVersion": "3.51.0",
+    "gitVersion": "2.53.0",
+    "storageSchemaVersion": 3
+  },
+  "configuration": {
+    "logicalRequiredRuns": 9,
+    "directions": ["correctness", "tests", "design"],
+    "logicalSlotsPerDirection": 3,
+    "defaultGlobalConcurrency": 3,
+    "defaultMaximumAttemptsPerRun": 3,
+    "maximumReconciliationAttempts": 3,
+    "fakeBackendOnly": true,
+    "qualification": "OFFLINE_ONLY"
+  },
+  "verification": {
+    "testedSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+    "testTimeoutMs": 15000,
+    "testSummary": {
+      "testFiles": 15,
+      "passed": 129,
+      "failed": 0,
+      "assertions": 1284
+    },
+    "commands": [
+      {
+        "command": "bun run verify",
+        "exitCode": 0,
+        "summary": "Typecheck, Biome lint, full test suite and Bun build passed."
+      },
+      {
+        "command": "bun run scheduler:demo",
+        "exitCode": 0,
+        "summary": "Offline submit -> fake snapshot -> worker runs -> review_status demo passed."
+      },
+      {
+        "command": "git diff --check",
+        "exitCode": 0
+      }
+    ],
+    "build": {
+      "exitCode": 0,
+      "bundledModules": 576,
+      "entrySizeBytes": 711311
+    },
+    "localLogArtifacts": [
+      {
+        "artifactId": "NR08_FULL_VERIFY_LOG",
+        "sha256": "d3f131518aabd5214896d37fe8b6b1f894594f4943b728dc822483a36998c3b4",
+        "sizeBytes": 14569,
+        "permissions": "0600",
+        "storage": "Private ignored .nightreviewer session evidence; not published."
+      },
+      {
+        "artifactId": "NR08_OFFLINE_DEMO_OUTPUT",
+        "sha256": "b820b3c6e11c42a09997f0bb600f536ad06b3aa7a3b74cde5d2958aa06cd40e2",
+        "sizeBytes": 616,
+        "permissions": "0600",
+        "storage": "Private ignored .nightreviewer session evidence; sanitized summary may be included in the PR comment."
+      }
+    ]
+  },
+  "executionTraces": {
+    "concurrencyCap": {
+      "configured": 2,
+      "maximumObserved": 2,
+      "test": "concurrency cap holds when multiple delayed fake turns are eligible",
+      "clock": "VirtualClock"
+    },
+    "fairness": {
+      "configuredConcurrency": 1,
+      "queuedReviews": 2,
+      "bothReachedOfflineApproval": true,
+      "firstTwoClaimsBelongedToDifferentReviews": true,
+      "test": "global concurrency one fairly advances both review queues"
+    },
+    "retry": {
+      "runIdStableAcrossRetry": true,
+      "attemptIdsDistinct": true,
+      "selectedSuccessfulResults": 1,
+      "acceptedRawFindings": 1,
+      "configuredMaximumAttempts": 2,
+      "observedAttemptsAtBound": 2
+    },
+    "unknownSend": {
+      "blindReplacementAttempt": false,
+      "stillUnknownReconciliations": 3,
+      "provenUnsentRetry": true,
+      "acceptedResultSelectedOnce": true,
+      "selectedRunsAfterAcceptedReconciliation": 9
+    },
+    "restartAndFencing": {
+      "queuedJobsRestored": true,
+      "retryWaitJobRestored": true,
+      "expiredLeaseReclaimed": true,
+      "leaseFenceIncreased": true,
+      "staleCompletionSelected": false,
+      "sqliteIntegrity": "ok",
+      "foreignKeyViolations": 0
+    },
+    "terminalAndCancellation": {
+      "lateAfterApprovedSelected": false,
+      "lateAfterFailedSelected": false,
+      "lateAfterCancelledSelected": false,
+      "queuedCancellationBackendInvocations": 0
+    }
+  },
+  "acceptance": [
+    {
+      "acceptanceId": "NR-08-AC1",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+      "artifactRefs": [
+        "tests/scheduler/scheduler.test.ts#sha256:a8477fe9fbb3f2cdefc0ede638a1050e12d347bb28d224b8d2f0f474a1e9c1e4#size:35823"
+      ],
+      "notes": "Virtual-clock cap test observed concurrency 2 with a cap of 2. Two review queues both advanced under deterministic review-level round-robin at global concurrency 1."
+    },
+    {
+      "acceptanceId": "NR-08-AC2",
+      "status": "PASS",
+      "kind": "CONTRACT",
+      "testedSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+      "artifactRefs": [
+        "tests/scheduler/scheduler.test.ts#sha256:a8477fe9fbb3f2cdefc0ede638a1050e12d347bb28d224b8d2f0f474a1e9c1e4#size:35823",
+        "src/storage/store.ts#sha256:f253a9feb38a2d123743f189c67a9e63b05aa98c45c47192df4d1bb8955944c1#size:148027"
+      ],
+      "notes": "Retries preserve run identity, create distinct attempts and select one valid result. Auth/policy/permanent/malformed classes do not retry. Unknown sends reconcile without blind replacement; late/duplicate results remain obsolete after terminal state."
+    },
+    {
+      "acceptanceId": "NR-08-AC3",
+      "status": "PASS",
+      "kind": "FAKE",
+      "testedSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+      "artifactRefs": [
+        "tests/scheduler/scheduler.test.ts#sha256:a8477fe9fbb3f2cdefc0ede638a1050e12d347bb28d224b8d2f0f474a1e9c1e4#size:35823"
+      ],
+      "notes": "All nine schema-valid no-findings fake slots reached APPROVED through the existing offline policy gate. Unknown/missing selection remains REVIEWING; malformed or permanently failed slots lead to FAILED, never APPROVED."
+    },
+    {
+      "acceptanceId": "NR-08-AC4",
+      "status": "PASS",
+      "kind": "FAKE",
+      "testedSha": "b2bcabaa40eb9a63d1548393c833bdfad4c43dc9",
+      "artifactRefs": [
+        "scripts/scheduler-offline-demo.ts#sha256:30a0e2d802dc6edb6b5d7708abf16032c9222a35b853689dc2dfc9313fa02fb7#size:5881",
+        "tests/scheduler/scheduler.test.ts#sha256:a8477fe9fbb3f2cdefc0ede638a1050e12d347bb28d224b8d2f0f474a1e9c1e4#size:35823"
+      ],
+      "notes": "The demo produced an offline approval, one visible provisional finding, and a queued cancellation with zero backend calls. No external network request was made."
+    }
+  ],
+  "liveAcceptance": {
+    "status": "NOT_RUN",
+    "externalNetworkRequests": 0,
+    "notes": "D130 prohibits live model, browser, connector, tunnel and production-runtime actions. No fake result is claimed as LIVE evidence."
+  },
+  "review": {
+    "status": "NOT_REQUESTED",
+    "mergeAuthorized": false,
+    "exactHeadCi": "PENDING_PUSH"
+  },
+  "knownLimitations": [
+    "The nine slots are logical fake scheduler runs; they do not prove independent fresh reviewer chats or production 3x3 execution (NR-11).",
+    "Finding output remains provisional; semantic adjudication and canonical validation belong to NR-12.",
+    "STILL_UNKNOWN remains blocked after the bounded automatic reconciliation attempts and requires a later reconciliation capability or operator policy."
+  ]
+}

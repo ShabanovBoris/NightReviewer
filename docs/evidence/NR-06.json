@@ -4,8 +4,8 @@
   "taskId": "NR-06",
   "assignmentId": "NR-06-C1-D124-BOUNDED-READONLY-REVIEW-CONTEXT",
   "baseSha": "bac217d5f96f0fe47f222f45acb643a9b05206a7",
-  "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
-  "testedTreeSha": "4d79b7d4c6e9ccfdf3afc7af443223f9ffe0d0ca",
+  "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+  "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
   "assignment": {
     "decisionId": "NR-06-D124-START-CAPABILITY-BOUND-CONTEXT-CORE",
     "rawSha256": "4afcf1f213ba20eda7a73cb0abe3c7cc02a9b68264165887fbc553fa1f4e4abb",
@@ -22,66 +22,66 @@
       "acceptanceId": "NR-06-AC1",
       "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
       "command": "bun run verify",
       "exitCode": 0,
       "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
-        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "tests/context/context.test.ts#sha256:4b41b52cbc17f7702a43a30cfc7ec328cbc84912017b341243a97c0266b23fc3",
         "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
       ],
-      "notes": "PASS on exact PR head workflow run 37188320357. The verify job completed successfully with the NR-06 context tests, including parallel review isolation, pinned binding, deleted/base reads, and foreign test-artifact rejection."
+      "notes": "PASS on exact implementation head in GitHub Actions run 37196325348 (Bun 1.4.2); the full verify job succeeded with parallel run isolation and pinned snapshot checks."
     },
     {
       "acceptanceId": "NR-06-AC2",
       "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
       "command": "bun run verify",
       "exitCode": 0,
       "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
-        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "tests/context/context.test.ts#sha256:4b41b52cbc17f7702a43a30cfc7ec328cbc84912017b341243a97c0266b23fc3",
         "src/context/security.ts#sha256:8f66440117f981c43a12be08055b6dc2ec356fa07210ac3c2bd86d5be3ef8ab6"
       ],
-      "notes": "PASS on exact PR head workflow run 37188320357. The verify job completed successfully with forged, expired, revoked, run-revoked, and closed capability checks across every context operation."
+      "notes": "PASS on exact implementation head in GitHub Actions run 37196325348 (Bun 1.4.2); the full verify job succeeded with forged, expired, revoked, run-revoked, and closed capability checks across every context operation."
     },
     {
       "acceptanceId": "NR-06-AC3",
       "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
       "command": "bun run verify",
       "exitCode": 0,
       "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
-        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
+        "tests/context/context.test.ts#sha256:4b41b52cbc17f7702a43a30cfc7ec328cbc84912017b341243a97c0266b23fc3",
         "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
       ],
-      "notes": "PASS on exact PR head workflow run 37188320357. The verify job completed successfully with manifest, diff, file, literal-search, and explicitly bound test-result cursor pagination coverage."
+      "notes": "PASS on exact implementation head in GitHub Actions run 37196325348 (Bun 1.4.2); the full verify job succeeded with manifest, diff, file, literal-search, and bound test-result pagination coverage."
     },
     {
       "acceptanceId": "NR-06-AC4",
       "status": "PASS",
       "kind": "CONTRACT",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
       "command": "bun run verify",
       "exitCode": 0,
       "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
       "startedAt": null,
       "finishedAt": null,
       "artifactRefs": [
-        "tests/context/context.test.ts#sha256:9eefa9b5250a1e5d9e43f0d14b8b5dfdd2ca1a8f592bc2d2c328cbf6027765fe",
-        "tests/snapshot/snapshot.test.ts#sha256:3c761cee6eab95731c106cabd913bfd9fe4d16f7c78965deadbdb5d117b2c664",
-        "src/context/service.ts#sha256:de264fb3ad64a397fbcb0c6dc1d6bc8613e68ed28cf6364b354d112edace8f31"
+        "tests/context/context.test.ts#sha256:4b41b52cbc17f7702a43a30cfc7ec328cbc84912017b341243a97c0266b23fc3",
+        "tests/snapshot/snapshot.test.ts#sha256:dea2810f45547d3dd59e2899b0372f066ca27030a4f17cb959e79825da925fff",
+        "src/snapshot/service.ts#sha256:a367488eb378bbcebe20600759fdb554793e23cc953812abcb192dd5be801489"
       ],
-      "notes": "PASS on exact PR head workflow run 37188320357. The verify job completed successfully with empty/deleted files, UTF-8 chunks, binary and invalid UTF-8, invalid paths, literal search, and bounded snapshot reads."
+      "notes": "PASS on exact implementation head in GitHub Actions run 37196325348 (Bun 1.4.2); includes the reviewer-requested unchanged-LFS-pointer list/read/search regression and existing bounds, UTF-8, binary, invalid-path, and snapshot coverage."
     }
   ],
   "checks": [
@@ -91,9 +91,9 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Darwin arm64; Node.js 22.22.2; TypeScript 7.0.2",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
-      "testedTreeSha": "4d79b7d4c6e9ccfdf3afc7af443223f9ffe0d0ca",
-      "summary": "Full project TypeScript check passed on the current worktree."
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "Full project TypeScript check passed on the implementation commit a535c6a."
     },
     {
       "id": "lint-local",
@@ -101,8 +101,8 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Darwin arm64; Node.js 22.22.2; Biome 2.5.14",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
-      "testedTreeSha": "4d79b7d4c6e9ccfdf3afc7af443223f9ffe0d0ca",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
       "summary": "Biome checked all 44 files under src, tests, and scripts with no findings."
     },
     {
@@ -111,19 +111,19 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "Git 2.53.0",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
-      "testedTreeSha": "4d79b7d4c6e9ccfdf3afc7af443223f9ffe0d0ca",
-      "summary": "No whitespace errors were reported on the current worktree."
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "No whitespace errors were reported on the implementation commit a535c6a."
     },
     {
-      "id": "bun-run-verify-local",
+      "id": "bun-run-verify-local-initial",
       "command": "bun run verify",
       "exitCode": 127,
       "kind": "CONTRACT",
       "environment": "Darwin arm64; Bun executable unavailable",
-      "testedSha": null,
+      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
       "testedTreeSha": null,
-      "summary": "The command could not start because `bun` is not installed in this environment. Tests and build were not executed; exact Bun 1.4.2 CI remains required."
+      "summary": "Historical initial attempt before the project-bundled Bun 1.4.2 runtime was located; it is not the current local verification."
     },
     {
       "id": "bun-run-verify-exact-head",
@@ -131,12 +131,62 @@
       "exitCode": 0,
       "kind": "CONTRACT",
       "environment": "GitHub Actions Ubuntu 24.04; Bun 1.4.2",
-      "testedSha": "690c40302a6e9101bd99da02caf4ea383557a5ee",
-      "testedTreeSha": "4d79b7d4c6e9ccfdf3afc7af443223f9ffe0d0ca",
-      "workflowRunId": 37188320357,
-      "workflowUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/37188320357",
-      "jobId": 111394978167,
-      "summary": "Exact PR head passed the pinned Bun 1.4.2 verify workflow, including typecheck, lint, tests, and build."
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "workflowRunId": 37196325348,
+      "workflowUrl": "https://github.com/ShabanovBoris/NightReviewer/actions/runs/37196325348",
+      "jobId": 111418853255,
+      "summary": "Exact implementation commit a535c6a passed the pinned Bun 1.4.2 verify workflow, including typecheck, lint, tests, and build."
+    },
+    {
+      "id": "typecheck-local-fix",
+      "command": "node_modules/.bin/tsc --noEmit",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Node.js 22.22.2; TypeScript 7.0.2",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "Full project TypeScript check passed on the LFS-pointer fix commit."
+    },
+    {
+      "id": "lint-local-fix",
+      "command": "node_modules/.bin/biome check src tests scripts",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Node.js 22.22.2; Biome 2.5.14",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "Biome check passed on the LFS-pointer fix commit."
+    },
+    {
+      "id": "focused-ac3-local-fix",
+      "command": "focused NR-06 AC3 pagination/search test with Bun test timeout 15000ms",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Bun 1.4.2",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "Focused AC3 pagination/search test passed in 5914ms using the diagnostic 15-second timeout."
+    },
+    {
+      "id": "bun-run-verify-local-fix",
+      "command": "bun run verify",
+      "exitCode": null,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Bun 1.4.2",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "The local full run hit the existing AC3 test's default 5000ms per-test timeout. It was not accepted as a pass; exact Bun 1.4.2 GitHub Actions run 37196325348 passed the full verify job."
+    },
+    {
+      "id": "build-local-fix",
+      "command": "bun run build",
+      "exitCode": 0,
+      "kind": "CONTRACT",
+      "environment": "Darwin arm64; Bun 1.4.2",
+      "testedSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "testedTreeSha": "867170d1813733da9c068e3080e07f6bcd857fa6",
+      "summary": "Project build passed on the LFS-pointer fix commit."
     }
   ],
   "liveAcceptance": {
@@ -146,10 +196,42 @@
   "pullRequest": {
     "url": "https://github.com/ShabanovBoris/NightReviewer/pull/7",
     "baseSha": "bac217d5f96f0fe47f222f45acb643a9b05206a7",
-    "testedHeadSha": "690c40302a6e9101bd99da02caf4ea383557a5ee"
+    "testedHeadSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+    "implementationSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+    "exactHeadWorkflowRunId": 37196325348,
+    "exactHeadWorkflowJobId": 111418853255
   },
   "review": {
-    "status": "CONTEXT_REQUIRED",
-    "notes": "The one authorized reviewer bootstrap request returned CONTEXT_REQUIRED because the exact D124 assignment payload was not available in the repository or GitHub evidence. No substantive code review or approval is claimed."
+    "status": "FIX_REVIEW_PENDING",
+    "bootstrap": {
+      "status": "READY",
+      "requestMessageId": "c85aa44c-4cab-4289-8a44-0ec358229a64",
+      "receiptMessageId": "d4a7e8a8-3d0d-42e9-82b6-0e4bb846fd41",
+      "receiptSha256": "25f88eb2868d4cf954eb21fe67363c3e296fc5265bd579b8869ecca62ec3653",
+      "receiptSizeBytes": 4363,
+      "revision": "bac217d5f96f0fe47f222f45acb643a9b05206a7"
+    },
+    "initialReview": {
+      "status": "NEEDS_FIX",
+      "requestMessageId": "b4768573-786f-4d2d-8d33-eb4a8b07cd96",
+      "receiptMessageId": "a1f9d65c-1c84-4ca7-9d21-8a3b1f2d6e74",
+      "receiptSha256": "5251c29437016686e546491f3be30bedf1e80d5c4959c47cfbc1d62a7d89c317",
+      "receiptSizeBytes": 5437,
+      "reviewedHeadSha": "8d9ef9f86fc79e98f34156fb623872f29ddb11f8",
+      "bundleHash": "sha256:0775fa6a140bb971e31e7bad36ec44785225d54d1f6b13cfe476a9d43212976b",
+      "findingIds": [
+        "NR-06-R1-F1"
+      ]
+    },
+    "fix": {
+      "status": "IMPLEMENTED_AWAITING_EXACT_REVISION_REVIEW",
+      "findingId": "NR-06-R1-F1",
+      "implementationCommitSha": "a535c6adb8d8033e922f6c0a24318f6c7b1d8003",
+      "summary": "Unchanged LFS pointer candidates are inspected within maxContentInspectionBytes; detected pointers are marked LFS_POINTER and candidates beyond the budget are marked INSPECTION_LIMIT. Added snapshot list/read and context list/read/search regression coverage.",
+      "exactHeadWorkflowRunId": 37196325348,
+      "exactHeadWorkflowJobId": 111418853255,
+      "reviewRequestStatus": "PENDING"
+    },
+    "notes": "No final reviewer approval, lead merge authorization, merge, or NR-06 completion is claimed. The changed revision still requires exact-revision READY, refreshed reviewContext/bundleHash, exact-head CI, and FIX_REVIEW_REQUEST."
   }
 }

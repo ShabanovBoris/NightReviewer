@@ -25,6 +25,11 @@ import {
   type SqliteStorage,
 } from "../../src/storage";
 
+const lfsPointer =
+  "version https://git-lfs.github.com/spec/v1\n" +
+  "oid sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n" +
+  "size 2048\n";
+
 interface TestRun {
   readonly review: CreatedReview;
   readonly manifest: SnapshotManifest;
@@ -446,6 +451,52 @@ test("NR-06 AC4 handles empty, UTF-8, binary, bounded, and invalid content expli
   }
 });
 
+test("NR-06 AC4 reports unchanged LFS pointers and incomplete search coverage", async () => {
+  const fixture = await createFixture(undefined, true);
+  try {
+    const capability = fixture.service.issueCapability(
+      fixture.binding(fixture.runs.a),
+    ).capability;
+    const files = await fixture.service.listFiles({
+      capability,
+      side: "head",
+      pageSize: 50,
+    });
+    expect(
+      files.items.find((item) => item.path === "steady-lfs.dat"),
+    ).toMatchObject({
+      contentState: "LFS_POINTER",
+      lfs: {
+        oid: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        sizeBytes: 2048,
+      },
+    });
+
+    const file = await fixture.service.readFile({
+      capability,
+      side: "head",
+      path: "steady-lfs.dat",
+    });
+    expect(file).toMatchObject({
+      encoding: "utf-8",
+      contentState: "LFS_POINTER",
+      text: lfsPointer,
+    });
+
+    const search = await fixture.service.search({
+      capability,
+      side: "head",
+      query: "oid sha256:",
+      pageSize: 50,
+    });
+    expect(search.totalExact).toBe(false);
+    expect(search.skippedByState.LFS_POINTER).toBe(1);
+    expect(search.items).toEqual([]);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test("NR-06 AC2 rejects forged, expired, revoked, run-revoked, and closed capabilities for every tool", async () => {
   const fixture = await createFixture();
   try {
@@ -558,6 +609,7 @@ test("test-result ingestion verifies bytes, preserves provenance, and is idempot
 
 async function createFixture(
   limits?: Parameters<typeof createReviewContextService>[0]["limits"],
+  withUnchangedLfsPointer = false,
 ): Promise<Fixture> {
   const root = await mkdtemp(path.join(os.tmpdir(), "nightreviewer-nr06-"));
   await chmod(root, 0o700);
@@ -574,6 +626,9 @@ async function createFixture(
   await writeFile(path.join(repo, "deleted.txt"), "deleted on head\n");
   await writeFile(path.join(repo, "modify.txt"), "before\n");
   await writeFile(path.join(repo, "steady.txt"), "unchanged snapshot file\n");
+  if (withUnchangedLfsPointer) {
+    await writeFile(path.join(repo, "steady-lfs.dat"), lfsPointer);
+  }
   await git(repo, ["add", "--all", "--", "."], hooksDir);
   await git(repo, ["commit", "--quiet", "-m", "base"], hooksDir);
   const baseSha = await gitText(repo, ["rev-parse", "HEAD"], hooksDir);

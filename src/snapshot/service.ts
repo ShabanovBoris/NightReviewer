@@ -45,6 +45,10 @@ import {
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const REPO_ID = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/;
+const MAX_LFS_POINTER_BYTES = 1_024;
+const MIN_LFS_POINTER_BYTES = Buffer.byteLength(
+  `version https://git-lfs.github.com/spec/v1\noid sha256:${"0".repeat(64)}\nsize 0\n`,
+);
 
 interface BuiltChange {
   readonly pathBytes: Uint8Array;
@@ -581,9 +585,35 @@ class SnapshotServiceImpl implements SnapshotService {
             "Pinned snapshot trees do not match the immutable manifest count.",
           );
         }
+        const lfsInspection = selectUnchangedLfsBlobs(
+          baseTree.entries,
+          headTree.entries,
+          changedBase,
+          changedHead,
+          manifest.limits,
+        );
+        const inspectedLfs = await readBlobBatch(
+          workspace,
+          bareDir,
+          lfsInspection.selected,
+          manifest.limits,
+          treeDeadlineAt,
+        );
         snapshotTrees = {
-          base: describeSnapshotTree(baseTree.entries, changedBase, manifest),
-          head: describeSnapshotTree(headTree.entries, changedHead, manifest),
+          base: describeSnapshotTree(
+            baseTree.entries,
+            changedBase,
+            manifest,
+            inspectedLfs,
+            lfsInspection.skippedOids,
+          ),
+          head: describeSnapshotTree(
+            headTree.entries,
+            changedHead,
+            manifest,
+            inspectedLfs,
+            lfsInspection.skippedOids,
+          ),
         };
         return snapshotTrees;
       }
@@ -887,10 +917,56 @@ function buildFileDescriptor(
   };
 }
 
+function selectUnchangedLfsBlobs(
+  baseEntries: ReadonlyMap<string, GitTreeEntry>,
+  headEntries: ReadonlyMap<string, GitTreeEntry>,
+  changedBase: ReadonlyMap<string, SnapshotFileDescriptor>,
+  changedHead: ReadonlyMap<string, SnapshotFileDescriptor>,
+  limits: SnapshotLimits,
+): {
+  readonly selected: ReadonlyMap<string, number>;
+  readonly skippedOids: ReadonlySet<string>;
+} {
+  const selected = new Map<string, number>();
+  const skippedOids = new Set<string>();
+  let availableBytes = limits.maxContentInspectionBytes;
+  for (const [entries, changed] of [
+    [baseEntries, changedBase],
+    [headEntries, changedHead],
+  ] as const) {
+    for (const [pathBytesBase64, entry] of entries) {
+      if (
+        changed.has(pathBytesBase64) ||
+        entry.objectType !== "blob" ||
+        entry.mode === "120000" ||
+        !entry.pathUtf8Valid ||
+        entry.sizeBytes === undefined ||
+        entry.sizeBytes === 0 ||
+        entry.sizeBytes < MIN_LFS_POINTER_BYTES ||
+        entry.sizeBytes > MAX_LFS_POINTER_BYTES ||
+        entry.sizeBytes > limits.maxBlobReadBytes ||
+        selected.has(entry.oid) ||
+        skippedOids.has(entry.oid)
+      ) {
+        continue;
+      }
+      if (entry.sizeBytes > availableBytes) {
+        skippedOids.add(entry.oid);
+        continue;
+      }
+      selected.set(entry.oid, entry.sizeBytes);
+      availableBytes -= entry.sizeBytes;
+    }
+  }
+  return { selected, skippedOids };
+}
+
 function describeSnapshotTree(
   entries: ReadonlyMap<string, GitTreeEntry>,
   changedDescriptors: ReadonlyMap<string, SnapshotFileDescriptor>,
   manifest: SnapshotManifest,
+  inspectedLfs: ReadonlyMap<string, Uint8Array>,
+  skippedLfsOids: ReadonlySet<string>,
 ): ReadonlyMap<string, SnapshotFileDescriptor> {
   const result = new Map<string, SnapshotFileDescriptor>();
   for (const [pathBytesBase64, changed] of changedDescriptors) {
@@ -916,6 +992,8 @@ function describeSnapshotTree(
       result.set(pathBytesBase64, changed);
       continue;
     }
+    const inspected =
+      entry.objectType === "blob" ? inspectedLfs.get(entry.oid) : undefined;
     const contentState: SnapshotFileDescriptor["contentState"] =
       !entry.pathUtf8Valid
         ? "PATH_ENCODING_UNSUPPORTED"
@@ -926,7 +1004,11 @@ function describeSnapshotTree(
             ? "TOO_LARGE"
             : entry.mode === "120000"
               ? "SYMLINK_METADATA"
-              : "AVAILABLE";
+              : skippedLfsOids.has(entry.oid)
+                ? "INSPECTION_LIMIT"
+                : inspected !== undefined && isLfsPointer(inspected)
+                  ? "LFS_POINTER"
+                  : "AVAILABLE";
     result.set(pathBytesBase64, {
       path: entry.path,
       pathBytesBase64,
@@ -935,6 +1017,9 @@ function describeSnapshotTree(
       oid: entry.oid,
       ...(entry.sizeBytes === undefined ? {} : { sizeBytes: entry.sizeBytes }),
       contentState,
+      ...(contentState === "LFS_POINTER" && inspected !== undefined
+        ? { lfs: parseLfsPointer(inspected) }
+        : {}),
     });
   }
   return result;
@@ -990,7 +1075,8 @@ function parseLfsPointer(bytes: Uint8Array): {
 function parseLfsPointerOrUndefined(
   bytes: Uint8Array,
 ): { oid: string; sizeBytes: number } | undefined {
-  if (bytes.byteLength > 1_024 || bytes.includes(0)) return undefined;
+  if (bytes.byteLength > MAX_LFS_POINTER_BYTES || bytes.includes(0))
+    return undefined;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);

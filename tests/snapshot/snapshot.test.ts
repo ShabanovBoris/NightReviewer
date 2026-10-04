@@ -221,6 +221,39 @@ test("NR-05 AC3/AC4 rejects traversal and option revisions and records explicit 
   }
 });
 
+test("full-tree snapshot listing and reads identify unchanged Git LFS pointers", async () => {
+  const fixture = await createFixture(true);
+  try {
+    const manifest = await fixture.snapshotService.createSnapshot({
+      cycleId: fixture.cycleId,
+    });
+    const reader = await fixture.snapshotService.openSnapshot(
+      fixture.cycleId,
+      manifest.snapshotId,
+    );
+    try {
+      const descriptor = (await reader.listFiles("head")).find(
+        (entry) => entry.path === "steady-lfs.dat",
+      );
+      expect(descriptor).toMatchObject({
+        contentState: "LFS_POINTER",
+        lfs: {
+          oid: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          sizeBytes: 2048,
+        },
+      });
+
+      const file = await reader.readFile("steady-lfs.dat", "head");
+      expect(file.contentState).toBe("LFS_POINTER");
+      expect(new TextDecoder().decode(file.bytes)).toBe(lfsPointer);
+    } finally {
+      await reader.close();
+    }
+  } finally {
+    await fixture.close();
+  }
+});
+
 test("snapshot failure marks the pinned cycle FAILED before it can be scheduled", async () => {
   const fixture = await createFixture();
   try {
@@ -237,7 +270,9 @@ test("snapshot failure marks the pinned cycle FAILED before it can be scheduled"
   }
 });
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture(
+  withUnchangedLfsPointer = false,
+): Promise<Fixture> {
   const root = await mkdtemp(path.join(os.tmpdir(), "nightreviewer-nr05-"));
   await chmod(root, 0o700);
   const repo = path.join(root, "source");
@@ -281,6 +316,9 @@ async function createFixture(): Promise<Fixture> {
   await writeFile(path.join(repo, "modify.txt"), "before\n");
   await writeFile(path.join(repo, "type-change"), "was a regular file\n");
   await writeFile(path.join(repo, "steady.txt"), "unchanged snapshot file\n");
+  if (withUnchangedLfsPointer) {
+    await writeFile(path.join(repo, "steady-lfs.dat"), lfsPointer);
+  }
   await git(repo, ["add", "--all", "--", "."], hooksDir);
   await git(
     repo,

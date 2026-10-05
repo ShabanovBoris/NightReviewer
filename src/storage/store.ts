@@ -75,8 +75,13 @@ import type {
   ReviewEventPage,
   ReviewRecord,
   SchedulerAggregationInput,
+  SchedulerAttemptArtifact,
+  SchedulerAttemptArtifactPurpose,
+  SchedulerAttemptProvenance,
   SchedulerAttemptResultInput,
   SchedulerAttemptState,
+  SchedulerBackendBinding,
+  SchedulerBackendProfile,
   SchedulerCycleStatus,
   SchedulerJobState,
   SchedulerReconciliationInput,
@@ -95,6 +100,108 @@ const MIN_BUSY_TIMEOUT_MS = 0;
 const MAX_BUSY_TIMEOUT_MS = 30_000;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function validateSchedulerBackendProfile(
+  profile: SchedulerBackendProfile,
+): SchedulerBackendProfile {
+  if (
+    !(
+      (profile.backend === "FAKE" &&
+        profile.qualification === "OFFLINE_ONLY" &&
+        profile.runPlan === "NR08_FAKE_3X3" &&
+        profile.requiredRuns === 9) ||
+      (profile.backend === "LIVE" &&
+        profile.qualification === "LIVE_PRODUCTION_BRIDGE" &&
+        profile.runPlan === "NR09_LIVE_QUALIFICATION" &&
+        profile.requiredRuns === 1)
+    ) ||
+    typeof profile.backendProtocol !== "string" ||
+    profile.backendProtocol.length < 1 ||
+    profile.backendProtocol.length > 128 ||
+    typeof profile.bridgeVersionPin !== "string" ||
+    profile.bridgeVersionPin.length < 1 ||
+    profile.bridgeVersionPin.length > 64 ||
+    typeof profile.model !== "string" ||
+    profile.model.length < 1 ||
+    profile.model.length > 256 ||
+    typeof profile.reasoningEffort !== "string" ||
+    profile.reasoningEffort.length < 1 ||
+    profile.reasoningEffort.length > 32
+  ) {
+    throw invalidArgument("Scheduler backend binding is invalid.");
+  }
+  requireSha256(profile.configurationDigest, "configurationDigest");
+  return profile;
+}
+
+function sameSchedulerBackendProfile(
+  left: SchedulerBackendProfile,
+  right: SchedulerBackendProfile,
+): boolean {
+  return (
+    left.backend === right.backend &&
+    left.backendProtocol === right.backendProtocol &&
+    left.bridgeVersionPin === right.bridgeVersionPin &&
+    left.model === right.model &&
+    left.reasoningEffort === right.reasoningEffort &&
+    left.qualification === right.qualification &&
+    left.configurationDigest === right.configurationDigest &&
+    left.runPlan === right.runPlan &&
+    left.requiredRuns === right.requiredRuns
+  );
+}
+
+const SCHEDULER_ARTIFACT_PURPOSES: readonly SchedulerAttemptArtifactPurpose[] =
+  [
+    "HEALTH",
+    "MODEL_CATALOG",
+    "TURN_RESPONSE",
+    "SCHEMA_REPAIR_RESPONSE",
+    "LOCAL_DIAGNOSTIC",
+    "RECEIPT",
+  ];
+
+function schedulerAttemptArtifacts(
+  auxiliary: SchedulerAttemptResultInput["auxiliaryArtifacts"],
+  receiptArtifact: ArtifactReference | undefined,
+): NonNullable<SchedulerAttemptResultInput["auxiliaryArtifacts"]> {
+  const artifacts = [...(auxiliary ?? [])];
+  if (receiptArtifact !== undefined) {
+    artifacts.push({ purpose: "RECEIPT", reference: receiptArtifact });
+  }
+  const seenPurposes = new Set<string>();
+  return artifacts.map((artifact) => {
+    if (
+      typeof artifact !== "object" ||
+      artifact === null ||
+      !SCHEDULER_ARTIFACT_PURPOSES.includes(artifact.purpose) ||
+      seenPurposes.has(artifact.purpose)
+    ) {
+      throw invalidArgument("Scheduler attempt artifacts are invalid.");
+    }
+    seenPurposes.add(artifact.purpose);
+    return {
+      purpose: artifact.purpose,
+      reference: requireArtifactReference(artifact.reference),
+    };
+  });
+}
+
+function schedulerArtifactContentType(
+  purpose: SchedulerAttemptArtifactPurpose,
+): string {
+  if (
+    purpose === "HEALTH" ||
+    purpose === "MODEL_CATALOG" ||
+    purpose === "RECEIPT"
+  ) {
+    return "application/json";
+  }
+  if (purpose === "TURN_RESPONSE" || purpose === "SCHEMA_REPAIR_RESPONSE") {
+    return "text/event-stream";
+  }
+  return "application/octet-stream";
+}
 
 export function daemonOwnershipResourceId(storageRootDir: string): string {
   const canonicalRoot = path.resolve(storageRootDir);
@@ -1192,9 +1299,12 @@ export class SqliteStorage {
 
   ensureSchedulerRuns(input: EnsureSchedulerRunsInput): void {
     validateIdentifier(input.cycleId, "cycleId");
-    if (input.runs.length !== 9) {
+    const backendBinding = validateSchedulerBackendProfile(
+      input.backendBinding,
+    );
+    if (input.runs.length !== backendBinding.requiredRuns) {
       throw invalidArgument(
-        "The strict fake scheduler requires exactly nine runs.",
+        "The scheduler run set does not match its immutable backend plan.",
       );
     }
     const now = makeUtcTimestamp(input.nowUtc);
@@ -1205,6 +1315,82 @@ export class SqliteStorage {
       if (state.state !== "REVIEWING" || state.manifestHash === null) {
         throw conflict(
           "Scheduler runs require a REVIEWING cycle with a durable snapshot.",
+        );
+      }
+      const existingBinding = this.db
+        .query(
+          `SELECT backend_kind, backend_protocol, bridge_version_pin,
+                  requested_model, requested_reasoning_effort, qualification,
+                  configuration_digest, run_plan, required_run_count
+           FROM scheduler_backend_bindings WHERE cycle_id = ?`,
+        )
+        .get(input.cycleId) as {
+        backend_kind: SchedulerBackendProfile["backend"];
+        backend_protocol: string;
+        bridge_version_pin: string;
+        requested_model: string;
+        requested_reasoning_effort: string;
+        qualification: SchedulerBackendProfile["qualification"];
+        configuration_digest: string;
+        run_plan: SchedulerBackendProfile["runPlan"];
+        required_run_count: number;
+      } | null;
+      if (existingBinding === null) {
+        this.db
+          .query(
+            `INSERT INTO scheduler_backend_bindings
+             (cycle_id, backend_kind, backend_protocol, bridge_version_pin,
+              requested_model, requested_reasoning_effort, qualification,
+              configuration_digest, run_plan, required_run_count, binding_json,
+              created_at_utc)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            input.cycleId,
+            backendBinding.backend,
+            backendBinding.backendProtocol,
+            backendBinding.bridgeVersionPin,
+            backendBinding.model,
+            backendBinding.reasoningEffort,
+            backendBinding.qualification,
+            backendBinding.configurationDigest,
+            backendBinding.runPlan,
+            backendBinding.requiredRuns,
+            encodeJson(backendBinding as unknown as ProtocolJsonValue),
+            now,
+          );
+        this.insertEventOutbox({
+          reviewId: cycle.review_id,
+          cycleId: input.cycleId,
+          eventType: "scheduler.backend_bound",
+          payload: backendBinding,
+          occurredAtUtc: now,
+        });
+      } else if (
+        !sameSchedulerBackendProfile(backendBinding, {
+          backend: existingBinding.backend_kind,
+          backendProtocol: existingBinding.backend_protocol,
+          bridgeVersionPin: existingBinding.bridge_version_pin,
+          model: existingBinding.requested_model,
+          reasoningEffort: existingBinding.requested_reasoning_effort,
+          qualification: existingBinding.qualification,
+          configurationDigest: existingBinding.configuration_digest,
+          runPlan: existingBinding.run_plan,
+          requiredRuns: existingBinding.required_run_count as 1 | 9,
+        })
+      ) {
+        throw conflict(
+          "Scheduler cycle is bound to a different backend configuration.",
+        );
+      }
+      if (
+        backendBinding.runPlan === "NR09_LIVE_QUALIFICATION" &&
+        (input.runs.length !== 1 ||
+          input.runs[0]?.direction !== "correctness" ||
+          input.runs[0]?.replicaIndex !== 1)
+      ) {
+        throw invalidArgument(
+          "NR-09 LIVE qualification must contain one correctness run.",
         );
       }
       const slots = new Set<string>();
@@ -1265,8 +1451,8 @@ export class SqliteStorage {
             cycleId: run.cycleId,
             eventType: "direction_run.recorded",
             payload: {
-              backend: "FAKE",
-              qualification: "OFFLINE_ONLY",
+              backend: backendBinding.backend,
+              qualification: backendBinding.qualification,
               directionRunId: run.runId,
               direction: run.direction,
               role: run.role,
@@ -1328,8 +1514,8 @@ export class SqliteStorage {
             cycleId: input.cycleId,
             eventType: "scheduler.job_queued",
             payload: {
-              backend: "FAKE",
-              qualification: "OFFLINE_ONLY",
+              backend: backendBinding.backend,
+              qualification: backendBinding.qualification,
               runId: run.runId,
               direction: run.direction,
               replicaIndex: run.replicaIndex,
@@ -1350,12 +1536,126 @@ export class SqliteStorage {
           );
         }
       }
-      if (slots.size !== 9) {
+      if (slots.size !== backendBinding.requiredRuns) {
         throw invalidArgument(
-          "Scheduler run set must cover all nine direction slots.",
+          "Scheduler run set does not cover its required plan slots.",
         );
       }
     });
+  }
+
+  readSchedulerBackendBinding(
+    cycleId: string,
+  ): SchedulerBackendBinding | undefined {
+    validateIdentifier(cycleId, "cycleId");
+    const row = this.db
+      .query(
+        `SELECT backend_kind, backend_protocol, bridge_version_pin,
+                requested_model, requested_reasoning_effort, qualification,
+                configuration_digest, run_plan, required_run_count,
+                binding_json, created_at_utc
+         FROM scheduler_backend_bindings WHERE cycle_id = ?`,
+      )
+      .get(cycleId) as {
+      backend_kind: SchedulerBackendProfile["backend"];
+      backend_protocol: string;
+      bridge_version_pin: string;
+      requested_model: string;
+      requested_reasoning_effort: string;
+      qualification: SchedulerBackendProfile["qualification"];
+      configuration_digest: string;
+      run_plan: SchedulerBackendProfile["runPlan"];
+      required_run_count: number;
+      binding_json: string;
+      created_at_utc: string;
+    } | null;
+    if (row === null) return undefined;
+    const profile = validateSchedulerBackendProfile({
+      backend: row.backend_kind,
+      backendProtocol: row.backend_protocol,
+      bridgeVersionPin: row.bridge_version_pin,
+      model: row.requested_model,
+      reasoningEffort: row.requested_reasoning_effort,
+      qualification: row.qualification,
+      configurationDigest: row.configuration_digest,
+      runPlan: row.run_plan,
+      requiredRuns: row.required_run_count as 1 | 9,
+    });
+    const storedJson = parseJson<ProtocolJsonValue>(row.binding_json);
+    if (
+      canonicalJson(storedJson) !==
+      canonicalJson(profile as unknown as ProtocolJsonValue)
+    ) {
+      throw invariantViolation(
+        "Persisted scheduler backend binding does not match its columns.",
+      );
+    }
+    return {
+      ...profile,
+      cycleId,
+      createdAtUtc: makeUtcTimestamp(row.created_at_utc),
+    };
+  }
+
+  readSchedulerAttemptArtifacts(attemptId: string): SchedulerAttemptArtifact[] {
+    validateIdentifier(attemptId, "attemptId");
+    return this.db
+      .query(
+        `SELECT saa.purpose, ra.sha256, ra.byte_size, ra.relative_path
+         FROM scheduler_attempt_artifacts saa
+         JOIN raw_artifacts ra ON ra.sha256 = saa.artifact_sha256
+         WHERE saa.attempt_id = ?
+         ORDER BY saa.purpose`,
+      )
+      .all(attemptId)
+      .map((value) => {
+        const row = value as {
+          purpose: SchedulerAttemptArtifactPurpose;
+          sha256: string;
+          byte_size: number;
+          relative_path: string;
+        };
+        return {
+          purpose: row.purpose,
+          reference: {
+            sha256: row.sha256,
+            sizeBytes: row.byte_size,
+            relativePath: row.relative_path,
+          },
+        };
+      });
+  }
+
+  readSchedulerAttemptProvenance(
+    attemptId: string,
+  ): SchedulerAttemptProvenance {
+    validateIdentifier(attemptId, "attemptId");
+    const row = this.db
+      .query(
+        `SELECT backend_receipt_sha256, backend_send_state
+         FROM scheduler_attempts WHERE attempt_id = ?`,
+      )
+      .get(attemptId) as {
+      backend_receipt_sha256: string | null;
+      backend_send_state: "UNSENT" | "SENT" | "UNKNOWN" | null;
+    } | null;
+    if (row === null) {
+      throw new StorageError("NOT_FOUND", "Scheduler attempt was not found.");
+    }
+    const artifacts = this.readSchedulerAttemptArtifacts(attemptId);
+    const receiptArtifact = artifacts.find(
+      (artifact) => artifact.purpose === "RECEIPT",
+    )?.reference;
+    if (row.backend_receipt_sha256 !== (receiptArtifact?.sha256 ?? null)) {
+      throw invariantViolation(
+        "Scheduler attempt receipt reference does not match its artifact index.",
+      );
+    }
+    return {
+      sendState: row.backend_send_state,
+      ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+      artifacts,
+    };
   }
 
   readReviewingSchedulerCycles(limit = 100): SnapshotCycleContext[] {
@@ -1495,6 +1795,21 @@ export class SqliteStorage {
         deadline_at_utc: string;
       } | null;
       if (row === null) return undefined;
+      const backendBinding = this.readSchedulerBackendBinding(row.cycle_id);
+      if (backendBinding === undefined) {
+        throw invariantViolation(
+          "Scheduler job has no immutable backend binding.",
+        );
+      }
+      const backendMetadata = {
+        backend: backendBinding.backend,
+        qualification: backendBinding.qualification,
+        backendProtocol: backendBinding.backendProtocol,
+        bridgeVersionPin: backendBinding.bridgeVersionPin,
+        requestedModel: backendBinding.model,
+        requestedReasoningEffort: backendBinding.reasoningEffort,
+        configurationDigest: backendBinding.configurationDigest,
+      };
 
       const workKind =
         row.state === "RECONCILIATION_REQUIRED" ? "RECONCILIATION" : "TURN";
@@ -1603,8 +1918,7 @@ export class SqliteStorage {
             cycleId: row.cycle_id,
             eventType: "direction_run.status_changed",
             payload: {
-              backend: "FAKE",
-              qualification: "OFFLINE_ONLY",
+              ...backendMetadata,
               directionRunId: row.run_id,
               direction: row.direction,
               previousStatus: "PENDING",
@@ -1620,16 +1934,17 @@ export class SqliteStorage {
             `INSERT INTO worker_attempts
              (attempt_id, direction_run_id, attempt_number, model, effort,
               started_at_utc, metadata_json)
-             VALUES (?, ?, ?, 'deterministic-fake', 'offline', ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
           )
           .run(
             attemptId,
             row.run_id,
             attemptNumber,
+            backendBinding.model,
+            backendBinding.reasoningEffort,
             now,
             encodeJson({
-              backend: "FAKE",
-              qualification: "OFFLINE_ONLY",
+              ...backendMetadata,
               runId: row.run_id,
               replicaIndex: row.replica_index,
               leaseToken: token,
@@ -1655,8 +1970,7 @@ export class SqliteStorage {
           cycleId: row.cycle_id,
           eventType: "worker.attempt_appended",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             attemptId,
             directionRunId: row.run_id,
             attemptNumber,
@@ -1669,8 +1983,7 @@ export class SqliteStorage {
           cycleId: row.cycle_id,
           eventType: "scheduler.reconciliation_started",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: row.run_id,
             attemptId,
             leaseToken: token,
@@ -1710,6 +2023,17 @@ export class SqliteStorage {
     const now = makeUtcTimestamp(input.occurredAtUtc);
     const reference = requireArtifactReference(input.rawArtifact);
     await readVerifiedArtifact(this.rootDir, reference);
+    const receiptArtifact =
+      input.receiptArtifact === undefined
+        ? undefined
+        : requireArtifactReference(input.receiptArtifact);
+    const auxiliaryArtifacts = schedulerAttemptArtifacts(
+      input.auxiliaryArtifacts,
+      receiptArtifact,
+    );
+    for (const artifact of auxiliaryArtifacts) {
+      await readVerifiedArtifact(this.rootDir, artifact.reference);
+    }
     let parsedOutput: ProtocolValueBySchema["workerOutput"] | undefined;
     if (input.outcome === "SUCCESS") {
       const validation = validateProtocolValue(
@@ -1726,6 +2050,7 @@ export class SqliteStorage {
     return this.withImmediateTransaction(() => {
       this.assertDaemonFencingToken(input.ownerFencing, now);
       const job = this.schedulerJobRow(input.runId);
+      const backendMetadata = this.schedulerBackendMetadata(job.cycle_id);
       const attempt = this.db
         .query(
           `SELECT state, deadline_at_utc FROM scheduler_attempts
@@ -1739,17 +2064,23 @@ export class SqliteStorage {
         throw new StorageError("NOT_FOUND", "Scheduler attempt was not found.");
       }
       this.insertArtifactRecord(reference, "application/json", now);
+      for (const artifact of auxiliaryArtifacts) {
+        this.recordSchedulerAttemptArtifact(input.attemptId, artifact, now);
+      }
+      this.recordSchedulerAttemptReceipt(input.attemptId, receiptArtifact);
+      this.recordSchedulerAttemptSendState(input.attemptId, input.sendState);
       if (attempt.state !== "RUNNING") {
         this.insertEventOutbox({
           reviewId: job.review_id,
           cycleId: job.cycle_id,
           eventType: "scheduler.late_result_obsolete",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             rawArtifact: reference,
+            ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+            auxiliaryArtifacts,
             selected: false,
             previousAttemptState: attempt.state,
           },
@@ -1777,11 +2108,12 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.late_result_obsolete",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             rawArtifact: reference,
+            ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+            auxiliaryArtifacts,
             selected: false,
           },
           occurredAtUtc: now,
@@ -1811,11 +2143,12 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.unknown_send",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             rawArtifact: reference,
+            ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+            auxiliaryArtifacts,
             reason: "ATTEMPT_DEADLINE_EXCEEDED",
             state: "RECONCILIATION_REQUIRED",
           },
@@ -1852,11 +2185,12 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.unknown_send",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             rawArtifact: reference,
+            ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+            auxiliaryArtifacts,
             state: "RECONCILIATION_REQUIRED",
           },
           occurredAtUtc: now,
@@ -1901,14 +2235,15 @@ export class SqliteStorage {
         cycleId: job.cycle_id,
         eventType: "worker.result_recorded",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...backendMetadata,
           resultId,
           attemptId: input.attemptId,
           direction: job.direction,
           disposition,
           selected: selectedOutput !== undefined,
           rawArtifact: reference,
+          ...(receiptArtifact === undefined ? {} : { receiptArtifact }),
+          auxiliaryArtifacts,
         },
         occurredAtUtc: now,
       });
@@ -1937,8 +2272,7 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "direction_run.status_changed",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             directionRunId: job.run_id,
             direction: job.direction,
             previousStatus: "RUNNING",
@@ -2004,8 +2338,7 @@ export class SqliteStorage {
         cycleId: job.cycle_id,
         eventType: canRetry ? "scheduler.retry_wait" : "scheduler.run_failed",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...backendMetadata,
           runId: job.run_id,
           attemptId: input.attemptId,
           errorClass: failureClass,
@@ -2045,6 +2378,7 @@ export class SqliteStorage {
     return this.withImmediateTransaction(() => {
       this.assertDaemonFencingToken(input.ownerFencing, now);
       const job = this.schedulerJobRow(input.runId);
+      const backendMetadata = this.schedulerBackendMetadata(job.cycle_id);
       const attempt = this.db
         .query(
           `SELECT state, raw_artifact_sha256
@@ -2060,6 +2394,14 @@ export class SqliteStorage {
           "Unknown-send attempt was not found.",
         );
       }
+      this.recordSchedulerAttemptSendState(
+        input.attemptId,
+        input.outcome === "PROVEN_UNSENT"
+          ? "UNSENT"
+          : input.outcome === "PROVEN_ACCEPTED_WITH_RESULT"
+            ? "SENT"
+            : "UNKNOWN",
+      );
       const current =
         decodeCycle(this.readCycleRow(job.cycle_id).state_json).state ===
           "REVIEWING" &&
@@ -2074,8 +2416,7 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.late_result_obsolete",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             reconciliationOutcome: input.outcome,
@@ -2118,8 +2459,7 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.reconciliation_unknown",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             reconciliationOutcome: "STILL_UNKNOWN",
@@ -2186,8 +2526,7 @@ export class SqliteStorage {
           cycleId: job.cycle_id,
           eventType: "scheduler.reconciled_unsent",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             attemptId: input.attemptId,
             retryAtUtc: canRetry ? retryAt : null,
@@ -2252,8 +2591,7 @@ export class SqliteStorage {
         cycleId: job.cycle_id,
         eventType: "scheduler.reconciled_accepted",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...backendMetadata,
           runId: job.run_id,
           attemptId: input.attemptId,
           resultId,
@@ -2271,6 +2609,7 @@ export class SqliteStorage {
     this.withImmediateTransaction(() => {
       this.assertDaemonFencingToken(input.ownerFencing, now);
       const cycle = this.readCycleRow(input.cycleId);
+      const backendMetadata = this.schedulerBackendMetadata(input.cycleId);
       const state = decodeCycle(cycle.state_json).state;
       if (state !== "CANCEL_REQUESTED" && state !== "CANCELLED") {
         throw conflict(
@@ -2279,7 +2618,8 @@ export class SqliteStorage {
       }
       const jobs = this.db
         .query(
-          `SELECT run_id, state, active_attempt_id, lease_owner_id, lease_token
+          `SELECT run_id, state, active_attempt_id, active_work_kind,
+                  lease_owner_id, lease_token
            FROM scheduler_jobs WHERE cycle_id = ?
              AND state NOT IN ('COMPLETE', 'FAILED', 'CANCELLED', 'OBSOLETE')`,
         )
@@ -2287,11 +2627,18 @@ export class SqliteStorage {
         run_id: string;
         state: SchedulerJobState;
         active_attempt_id: string | null;
+        active_work_kind: "TURN" | "RECONCILIATION" | null;
         lease_owner_id: string | null;
         lease_token: number;
       }>;
       for (const job of jobs) {
         if (job.active_attempt_id !== null) {
+          if (job.active_work_kind === "TURN") {
+            this.recordSchedulerAttemptSendState(
+              job.active_attempt_id,
+              "UNKNOWN",
+            );
+          }
           this.db
             .query(
               `UPDATE scheduler_attempts SET state = 'CANCELLED',
@@ -2328,8 +2675,7 @@ export class SqliteStorage {
           cycleId: input.cycleId,
           eventType: "scheduler.job_cancelled",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             runId: job.run_id,
             previousState: job.state,
             activeAttemptId: job.active_attempt_id,
@@ -2419,6 +2765,7 @@ export class SqliteStorage {
     validateIdentifier(cycleId, "cycleId");
     const cycle = this.readCycleRow(cycleId);
     const reviewState = decodeCycle(cycle.state_json).state;
+    const backendBinding = this.readSchedulerBackendBinding(cycleId);
     const counts = this.db
       .query(
         `SELECT COUNT(*) AS required_runs,
@@ -2438,6 +2785,15 @@ export class SqliteStorage {
       reconciliation_runs: number | null;
       failed_runs: number | null;
     };
+    if (
+      (backendBinding === undefined && counts.required_runs > 0) ||
+      (backendBinding !== undefined &&
+        counts.required_runs !== backendBinding.requiredRuns)
+    ) {
+      throw invariantViolation(
+        "Scheduler backend binding does not match its persisted run plan.",
+      );
+    }
     const aggregation = this.db
       .query(
         "SELECT report_json FROM scheduler_aggregations WHERE cycle_id = ?",
@@ -2467,6 +2823,14 @@ export class SqliteStorage {
       schedulerState = "RECONCILIATION_REQUIRED";
     } else if ((counts.failed_runs ?? 0) > 0) {
       schedulerState = "FAILED";
+    } else if (
+      backendBinding?.backend === "LIVE" &&
+      (counts.completed_runs ?? 0) === backendBinding.requiredRuns &&
+      (counts.active_runs ?? 0) === 0 &&
+      (counts.retry_waiting_runs ?? 0) === 0 &&
+      (counts.reconciliation_runs ?? 0) === 0
+    ) {
+      schedulerState = "COMPLETE";
     } else if (aggregation !== null || reviewState === "AGGREGATING") {
       schedulerState = "AGGREGATING";
     } else if (
@@ -2478,11 +2842,14 @@ export class SqliteStorage {
       schedulerState = "QUEUED";
     }
     return {
-      backend: "FAKE",
-      qualification: "OFFLINE_ONLY",
+      backend: backendBinding?.backend ?? "FAKE",
+      qualification: backendBinding?.qualification ?? "OFFLINE_ONLY",
       state: schedulerState,
       completedRuns: counts.completed_runs ?? 0,
-      requiredRuns: Math.max(counts.required_runs ?? 0, 9),
+      requiredRuns: Math.max(
+        counts.required_runs ?? 0,
+        backendBinding?.requiredRuns ?? 9,
+      ),
       activeRuns: counts.active_runs ?? 0,
       retryWaitingRuns: counts.retry_waiting_runs ?? 0,
       reconciliationRequiredRuns: counts.reconciliation_runs ?? 0,
@@ -2494,6 +2861,8 @@ export class SqliteStorage {
   readSchedulerSelectedRuns(cycleId: string): SchedulerSelectedRun[] {
     validateIdentifier(cycleId, "cycleId");
     this.readCycle(cycleId);
+    const backendBinding = this.readSchedulerBackendBinding(cycleId);
+    const requiredRuns = backendBinding?.requiredRuns ?? 9;
     const rows = this.db
       .query(
         `SELECT j.run_id, j.direction, j.replica_index,
@@ -2513,7 +2882,7 @@ export class SqliteStorage {
       selected: number | null;
     }>;
     if (
-      rows.length !== 9 ||
+      rows.length !== requiredRuns ||
       rows.some(
         (row) =>
           row.selected !== 1 ||
@@ -2522,7 +2891,7 @@ export class SqliteStorage {
       )
     ) {
       throw needsReconciliation(
-        "The scheduler does not have nine selected valid run outputs.",
+        "The scheduler does not have all selected valid run outputs for its backend plan.",
       );
     }
     return rows.map((row) => ({
@@ -3627,6 +3996,128 @@ export class SqliteStorage {
     }
   }
 
+  private schedulerBackendMetadata(cycleId: string) {
+    const binding = this.readSchedulerBackendBinding(cycleId);
+    if (binding === undefined) {
+      throw invariantViolation(
+        "Scheduler event has no immutable backend binding.",
+      );
+    }
+    return {
+      backend: binding.backend,
+      qualification: binding.qualification,
+      backendProtocol: binding.backendProtocol,
+      bridgeVersionPin: binding.bridgeVersionPin,
+      requestedModel: binding.model,
+      requestedReasoningEffort: binding.reasoningEffort,
+      configurationDigest: binding.configurationDigest,
+    };
+  }
+
+  private recordSchedulerAttemptArtifact(
+    attemptId: string,
+    artifact: NonNullable<
+      SchedulerAttemptResultInput["auxiliaryArtifacts"]
+    >[number],
+    createdAt: string,
+  ): void {
+    this.insertArtifactRecord(
+      artifact.reference,
+      schedulerArtifactContentType(artifact.purpose),
+      createdAt,
+    );
+    const existing = this.db
+      .query(
+        `SELECT artifact_sha256 FROM scheduler_attempt_artifacts
+         WHERE attempt_id = ? AND purpose = ?`,
+      )
+      .get(attemptId, artifact.purpose) as { artifact_sha256: string } | null;
+    if (existing !== null) {
+      if (existing.artifact_sha256 !== artifact.reference.sha256) {
+        throw conflict(
+          "Scheduler attempt artifact purpose was recorded with different bytes.",
+        );
+      }
+      return;
+    }
+    this.db
+      .query(
+        `INSERT INTO scheduler_attempt_artifacts
+         (attempt_id, purpose, artifact_sha256) VALUES (?, ?, ?)`,
+      )
+      .run(attemptId, artifact.purpose, artifact.reference.sha256);
+  }
+
+  private recordSchedulerAttemptReceipt(
+    attemptId: string,
+    artifact: ArtifactReference | undefined,
+  ): void {
+    if (artifact === undefined) return;
+    const row = this.db
+      .query(
+        "SELECT backend_receipt_sha256 FROM scheduler_attempts WHERE attempt_id = ?",
+      )
+      .get(attemptId) as { backend_receipt_sha256: string | null } | null;
+    if (row === null) {
+      throw invariantViolation("Scheduler receipt has no worker attempt.");
+    }
+    if (
+      row.backend_receipt_sha256 !== null &&
+      row.backend_receipt_sha256 !== artifact.sha256
+    ) {
+      throw conflict(
+        "Scheduler attempt receipt changed after it was recorded.",
+      );
+    }
+    if (row.backend_receipt_sha256 === null) {
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET backend_receipt_sha256 = ?
+           WHERE attempt_id = ? AND backend_receipt_sha256 IS NULL`,
+        )
+        .run(artifact.sha256, attemptId);
+    }
+  }
+
+  private recordSchedulerAttemptSendState(
+    attemptId: string,
+    sendState: SchedulerAttemptResultInput["sendState"],
+  ): void {
+    if (sendState === undefined) return;
+    if (!(["UNSENT", "SENT", "UNKNOWN"] as const).includes(sendState)) {
+      throw invalidArgument("Scheduler attempt send state is invalid.");
+    }
+    const row = this.db
+      .query(
+        "SELECT backend_send_state FROM scheduler_attempts WHERE attempt_id = ?",
+      )
+      .get(attemptId) as {
+      backend_send_state: "UNSENT" | "SENT" | "UNKNOWN" | null;
+    } | null;
+    if (row === null) {
+      throw invariantViolation("Scheduler send state has no worker attempt.");
+    }
+    if (
+      row.backend_send_state !== null &&
+      row.backend_send_state !== "UNKNOWN" &&
+      sendState !== "UNKNOWN" &&
+      row.backend_send_state !== sendState
+    ) {
+      throw conflict("Scheduler attempt send state changed incompatibly.");
+    }
+    if (
+      row.backend_send_state === null ||
+      (row.backend_send_state === "UNKNOWN" && sendState !== "UNKNOWN")
+    ) {
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET backend_send_state = ?
+           WHERE attempt_id = ? AND backend_send_state IS ?`,
+        )
+        .run(sendState, attemptId, row.backend_send_state);
+    }
+  }
+
   private insertIdempotencyRecord(input: {
     callerId: string;
     operation: string;
@@ -3814,8 +4305,7 @@ export class SqliteStorage {
         cycleId: job.cycle_id,
         eventType: "finding.raw_recorded",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...this.schedulerBackendMetadata(job.cycle_id),
           rawFindingId,
           resultId,
           runId: job.run_id,
@@ -3890,6 +4380,7 @@ export class SqliteStorage {
       cycle_state: string;
     }>;
     for (const row of rows) {
+      const backendMetadata = this.schedulerBackendMetadata(row.cycle_id);
       const cancelled =
         row.cycle_state === "CANCEL_REQUESTED" ||
         row.cycle_state === "CANCELLED";
@@ -3923,6 +4414,9 @@ export class SqliteStorage {
           now,
           row.active_attempt_id,
         );
+        if (row.active_work_kind === "TURN") {
+          this.recordSchedulerAttemptSendState(row.active_attempt_id, "UNKNOWN");
+      }
       this.db
         .query(
           `UPDATE scheduler_jobs SET state = ?, active_attempt_id = NULL,
@@ -3954,8 +4448,7 @@ export class SqliteStorage {
             ? "scheduler.lease_expired_unknown_send"
             : "scheduler.lease_expired_obsolete",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...backendMetadata,
           runId: row.run_id,
           attemptId: row.active_attempt_id,
           previousWorkKind: row.active_work_kind,
@@ -3986,6 +4479,7 @@ export class SqliteStorage {
       status: DirectionRunStatus;
     }>;
     for (const row of rows) {
+      const backendMetadata = this.schedulerBackendMetadata(row.cycle_id);
       this.db
         .query(
           `UPDATE scheduler_jobs SET state = 'FAILED',
@@ -4005,8 +4499,7 @@ export class SqliteStorage {
           cycleId: row.cycle_id,
           eventType: "direction_run.status_changed",
           payload: {
-            backend: "FAKE",
-            qualification: "OFFLINE_ONLY",
+            ...backendMetadata,
             directionRunId: row.run_id,
             direction: row.direction,
             previousStatus: row.status,
@@ -4021,8 +4514,7 @@ export class SqliteStorage {
         cycleId: row.cycle_id,
         eventType: "scheduler.run_failed",
         payload: {
-          backend: "FAKE",
-          qualification: "OFFLINE_ONLY",
+          ...backendMetadata,
           runId: row.run_id,
           errorClass: "DEADLINE_EXCEEDED",
           jobState: "FAILED",
@@ -4038,6 +4530,7 @@ export class SqliteStorage {
     now: string,
   ): void {
     const job = this.schedulerJobRow(runId);
+    const backendMetadata = this.schedulerBackendMetadata(job.cycle_id);
     if (
       job.state === "COMPLETE" ||
       job.state === "FAILED" ||
@@ -4059,7 +4552,10 @@ export class SqliteStorage {
           job.lease_token,
         );
     }
-    if (job.active_attempt_id !== null) {
+      if (job.active_attempt_id !== null) {
+        if (job.active_work_kind === "TURN") {
+          this.recordSchedulerAttemptSendState(job.active_attempt_id, "UNKNOWN");
+      }
       this.db
         .query(
           `UPDATE scheduler_attempts SET state = 'PERMANENT_FAILURE',
@@ -4086,8 +4582,7 @@ export class SqliteStorage {
       cycleId: job.cycle_id,
       eventType: "scheduler.run_failed",
       payload: {
-        backend: "FAKE",
-        qualification: "OFFLINE_ONLY",
+        ...backendMetadata,
         runId,
         errorClass,
         jobState: "FAILED",

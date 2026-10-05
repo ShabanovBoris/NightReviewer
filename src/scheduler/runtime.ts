@@ -27,6 +27,7 @@ import type {
   BackendInvocationInput,
   BackendInvocationResult,
   BackendReconciliationResult,
+  BackendResultEvidence,
   ReviewerBackend,
   SchedulerClock,
   SchedulerRunSeed,
@@ -37,9 +38,7 @@ const DIRECTIONS: readonly WorkerDirection[] = [
   "tests",
   "design",
 ];
-const REQUIRED_RUNS = DIRECTIONS.length * 3;
-const FAKE_PROMPT =
-  "NR-08 deterministic offline scheduler fixture; no semantic review.";
+const FAKE_REQUIRED_RUNS = DIRECTIONS.length * 3;
 
 interface ActiveClaim {
   readonly cycleId: string;
@@ -105,9 +104,6 @@ export class DurableScheduler {
     this.jitter = options.jitter ?? deterministicJitter;
     this.clock = options.clock ?? systemSchedulerClock;
     this.drainTimeoutMs = options.drainTimeoutMs ?? 10_000;
-    if (options.backend !== undefined && options.backend.backend !== "FAKE") {
-      throw new TypeError("NR-08 forbids LIVE reviewer backends.");
-    }
     this.backend =
       options.backend ?? new FakeReviewerBackend({ clock: this.clock });
     if (
@@ -152,6 +148,7 @@ export class DurableScheduler {
     const seeds = this.makeRunSeeds(context);
     this.store.ensureSchedulerRuns({
       cycleId: context.cycleId,
+      backendBinding: this.backend.profile,
       runs: seeds,
       ownerFencing: this.owner.fencingToken(),
       nowUtc: this.nowUtc(),
@@ -222,33 +219,60 @@ export class DurableScheduler {
   private makeRunSeeds(context: SnapshotCycleContext): SchedulerRunSeed[] {
     const schemaHash = context.cycle.versionBinding.schemaHash;
     const policyHash = context.cycle.versionBinding.policyHash;
-    const promptHash = createHash("sha256").update(FAKE_PROMPT).digest("hex");
+    const profile = this.backend.profile;
     const deadlineAtUtc = new Date(
       this.clock.nowMs() + this.reviewDeadlineMs,
     ).toISOString();
+    const slots =
+      profile.runPlan === "NR08_FAKE_3X3"
+        ? DIRECTIONS.flatMap((direction) =>
+            Array.from({ length: 3 }, (_, index) => ({
+              direction,
+              replicaIndex: index + 1,
+            })),
+          )
+        : [{ direction: "correctness" as const, replicaIndex: 1 }];
+    if (slots.length !== profile.requiredRuns) {
+      throw new TypeError(
+        "Backend run plan does not match its required run count.",
+      );
+    }
     const seeds: SchedulerRunSeed[] = [];
-    for (const direction of DIRECTIONS) {
-      for (let replicaIndex = 1; replicaIndex <= 3; replicaIndex += 1) {
-        const runDigest = createHash("sha256")
-          .update(`${context.cycleId}:${direction}:${String(replicaIndex)}`)
-          .digest("hex");
-        seeds.push({
-          runId: `run-${runDigest.slice(0, 32)}`,
-          reviewId: context.reviewId,
-          cycleId: context.cycleId,
-          direction,
-          replicaIndex,
-          objectFormat: context.cycle.revisions.objectFormat,
-          baseSha: context.cycle.revisions.baseSha,
-          headSha: context.cycle.revisions.headSha,
-          promptHash,
-          schemaHash,
-          policyHash,
-          role: "reviewer",
-          maxAttempts: this.maxAttempts,
-          deadlineAtUtc,
-        });
+    for (const { direction, replicaIndex } of slots) {
+      const runIdentity =
+        profile.runPlan === "NR08_FAKE_3X3"
+          ? `${context.cycleId}:${direction}:${String(replicaIndex)}`
+          : `${context.cycleId}:${profile.runPlan}:${direction}:${String(replicaIndex)}`;
+      const runDigest = createHash("sha256").update(runIdentity).digest("hex");
+      const promptContext = {
+        runId: `run-${runDigest.slice(0, 32)}`,
+        reviewId: context.reviewId,
+        cycleId: context.cycleId,
+        direction,
+        replicaIndex,
+        objectFormat: context.cycle.revisions.objectFormat,
+        baseSha: context.cycle.revisions.baseSha,
+        headSha: context.cycle.revisions.headSha,
+        schemaHash,
+        policyHash,
+      };
+      const prompt = this.backend.promptForRun(promptContext);
+      if (
+        typeof prompt !== "string" ||
+        prompt.length === 0 ||
+        Buffer.byteLength(prompt) > 1_048_576
+      ) {
+        throw new TypeError(
+          "Backend run prompt is invalid or exceeds its bound.",
+        );
       }
+      seeds.push({
+        ...promptContext,
+        promptHash: createHash("sha256").update(prompt, "utf8").digest("hex"),
+        role: "reviewer",
+        maxAttempts: this.maxAttempts,
+        deadlineAtUtc,
+      });
     }
     return seeds;
   }
@@ -362,9 +386,7 @@ export class DurableScheduler {
       if (outcome.kind === "TIMEOUT") {
         this.active.get(input.claim.attemptId)?.controller.abort();
       }
-      const bytes = markedBytes({
-        backend: "FAKE",
-        qualification: "OFFLINE_ONLY",
+      const bytes = markedBytes(this.backend.profile, {
         runId: input.claim.runId,
         attemptId: input.claim.attemptId,
         outcome: "UNKNOWN_SEND",
@@ -377,6 +399,7 @@ export class DurableScheduler {
         kind: "UNKNOWN_SEND",
         errorClass: "UNKNOWN_SEND",
         rawBytes: bytes,
+        sendState: "UNKNOWN",
       });
       this.observeLateResult(backendPromise, (late) =>
         this.finishAttempt(input, late),
@@ -384,9 +407,7 @@ export class DurableScheduler {
       return;
     }
     if (outcome.kind === "ERROR") {
-      const bytes = markedBytes({
-        backend: "FAKE",
-        qualification: "OFFLINE_ONLY",
+      const bytes = markedBytes(this.backend.profile, {
         runId: input.claim.runId,
         attemptId: input.claim.attemptId,
         outcome: "UNKNOWN_SEND",
@@ -397,6 +418,7 @@ export class DurableScheduler {
         kind: "UNKNOWN_SEND",
         errorClass: "UNKNOWN_SEND",
         rawBytes: bytes,
+        sendState: "UNKNOWN",
       });
       return;
     }
@@ -455,27 +477,33 @@ export class DurableScheduler {
         result.sendState,
       );
       if (classification === "FAIL") {
+        const evidence = resultEvidence(result);
         result =
           result.errorClass === "INVALID_SCHEMA"
             ? {
                 kind: "MALFORMED",
                 errorClass: "INVALID_SCHEMA",
                 rawBytes: result.rawBytes,
+                ...evidence,
               }
             : {
                 kind: "PERMANENT_FAILURE",
                 errorClass: result.errorClass,
                 rawBytes: result.rawBytes,
+                ...evidence,
               };
       } else if (classification === "RECONCILE") {
         result = {
           kind: "UNKNOWN_SEND",
           errorClass: "UNKNOWN_SEND",
           rawBytes: result.rawBytes,
+          ...resultEvidence(result),
         };
       }
     }
-    const rawArtifact = await this.store.persistRawArtifact(result.rawBytes);
+    const rawArtifact =
+      result.primaryRawArtifact ??
+      (await this.store.persistRawArtifact(result.rawBytes));
     let retryAtUtc: string | undefined;
     if (result.kind === "RETRYABLE_FAILURE") {
       retryAtUtc = new Date(
@@ -490,6 +518,13 @@ export class DurableScheduler {
       lease: input.claim.lease,
       outcome: result.kind,
       rawArtifact,
+      ...(result.sendState === undefined
+        ? {}
+        : { sendState: result.sendState }),
+      ...(result.receiptArtifact === undefined
+        ? {}
+        : { receiptArtifact: result.receiptArtifact }),
+      auxiliaryArtifacts: result.rawArtifacts ?? [],
       ...(result.kind === "SUCCESS" ? { parsedResult: result.output } : {}),
       ...("errorClass" in result ? { errorClass: result.errorClass } : {}),
       ...(retryAtUtc === undefined ? {} : { retryAtUtc }),
@@ -558,6 +593,9 @@ export class DurableScheduler {
   }
 
   private async maybeAdvanceCycle(cycleId: string): Promise<void> {
+    if (this.backend.profile.qualification === "LIVE_PRODUCTION_BRIDGE") {
+      return;
+    }
     const context = this.store.readSnapshotCycleContext(cycleId);
     const status = this.store.readSchedulerCycleStatus(cycleId);
     if (
@@ -566,7 +604,7 @@ export class DurableScheduler {
       status.activeRuns === 0 &&
       status.retryWaitingRuns === 0 &&
       status.reconciliationRequiredRuns === 0 &&
-      status.completedRuns + status.failedRuns === REQUIRED_RUNS
+      status.completedRuns + status.failedRuns === FAKE_REQUIRED_RUNS
     ) {
       this.store.applyCycleCommand(
         "daemon-scheduler",
@@ -588,7 +626,7 @@ export class DurableScheduler {
     }
     if (
       context.cycle.state === "REVIEWING" &&
-      status.completedRuns === REQUIRED_RUNS
+      status.completedRuns === FAKE_REQUIRED_RUNS
     ) {
       this.store.applyCycleCommand(
         "daemon-scheduler",
@@ -746,6 +784,8 @@ export class DurableScheduler {
       baseSha: seed.baseSha,
       headSha: seed.headSha,
       promptHash: seed.promptHash,
+      schemaHash: seed.schemaHash,
+      policyHash: seed.policyHash,
     };
   }
 
@@ -790,11 +830,32 @@ function deterministicJitter(runId: string, attemptNumber: number): number {
   return digest.readUInt16BE(0) / 0xffff;
 }
 
-function markedBytes(output: unknown): Uint8Array {
+function resultEvidence(
+  result: BackendInvocationResult,
+): BackendResultEvidence {
+  return {
+    ...(result.receipt === undefined ? {} : { receipt: result.receipt }),
+    ...(result.receiptArtifact === undefined
+      ? {}
+      : { receiptArtifact: result.receiptArtifact }),
+    ...(result.primaryRawArtifact === undefined
+      ? {}
+      : { primaryRawArtifact: result.primaryRawArtifact }),
+    ...(result.rawArtifacts === undefined
+      ? {}
+      : { rawArtifacts: result.rawArtifacts }),
+    ...(result.sendState === undefined ? {} : { sendState: result.sendState }),
+  };
+}
+
+function markedBytes(
+  profile: ReviewerBackend["profile"],
+  output: unknown,
+): Uint8Array {
   return Buffer.from(
     JSON.stringify({
-      backend: "FAKE",
-      qualification: "OFFLINE_ONLY",
+      backend: profile.backend,
+      qualification: profile.qualification,
       output,
     }),
     "utf8",

@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
@@ -20,15 +21,18 @@ import type {
   BackendInvocationInput,
   BackendInvocationResult,
   BackendReconciliationResult,
+  BackendTurnReceipt,
   FakeScenarioPlan,
   ReviewerBackend,
   SchedulerClock,
+  SchedulerPromptContext,
 } from "../../src/scheduler";
 import {
   classifyBackendFailure,
   DurableScheduler,
   FakeReviewerBackend,
   fakeWorkerOutput,
+  NR08_FAKE_PROMPT,
 } from "../../src/scheduler";
 import type { SnapshotCycleContext, SqliteStorage } from "../../src/storage";
 import { openStorage } from "../../src/storage";
@@ -114,6 +118,188 @@ test("nine complete no-finding fake runs pass the offline gate", async () => {
     });
   } finally {
     await closeFixture(fixture, scheduler);
+  }
+});
+
+test("LIVE qualification persists one run and does not aggregate or approve", async () => {
+  const fixture = await createFixture();
+  const backend = new MockLiveQualificationBackend(fixture.store);
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+  });
+  try {
+    await scheduler.start();
+    await waitFor(
+      () =>
+        fixture.store.readSchedulerCycleStatus(fixture.context.cycleId)
+          .state === "COMPLETE",
+    );
+
+    expect(fixture.store.readCycle(fixture.context.cycleId).state).toBe(
+      "REVIEWING",
+    );
+    expect(
+      fixture.store.readSchedulerBackendBinding(fixture.context.cycleId),
+    ).toMatchObject({
+      backend: "LIVE",
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      runPlan: "NR09_LIVE_QUALIFICATION",
+      requiredRuns: 1,
+      configurationDigest: backend.profile.configurationDigest,
+    });
+    expect(
+      fixture.store.readSchedulerCycleStatus(fixture.context.cycleId),
+    ).toMatchObject({
+      backend: "LIVE",
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      state: "COMPLETE",
+      completedRuns: 1,
+      requiredRuns: 1,
+    });
+    const reviewRuntime = new DaemonReviewRuntime({
+      store: fixture.store,
+      owner: fixture.owner,
+      trustedRepositoryIds: new Set(["fixture/project"]),
+      snapshotService: emptySnapshotService(),
+      scheduler,
+      bindingProvider: () => versionHashBindingExample,
+    });
+    const liveStatus = (await reviewRuntime.invoke(
+      "review_status",
+      { reviewId: fixture.context.reviewId },
+      "live-qualification-status",
+    )) as {
+      progress: { completedRuns: number; requiredRuns: number };
+      scheduler: { backend: string; qualification: string; state: string };
+    };
+    expect(liveStatus.progress).toMatchObject({
+      completedRuns: 1,
+      requiredRuns: 1,
+    });
+    expect(liveStatus.scheduler).toMatchObject({
+      backend: "LIVE",
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      state: "COMPLETE",
+    });
+    const [selected] = fixture.store.readSchedulerSelectedRuns(
+      fixture.context.cycleId,
+    );
+    expect(selected?.direction).toBe("correctness");
+    expect(selected?.replicaIndex).toBe(1);
+    expect(
+      fixture.store
+        .readEventPage(fixture.context.cycleId)
+        .events.some(
+          (event) => event.eventType === "scheduler.aggregation_recorded",
+        ),
+    ).toBe(false);
+
+    const attempt = fixture.store
+      .readEventPage(fixture.context.cycleId)
+      .events.find((event) => event.eventType === "worker.result_recorded");
+    if (attempt === undefined) {
+      throw new Error("Mock live result event was not recorded.");
+    }
+    const attemptId = (attempt.payload as { attemptId: string }).attemptId;
+    const provenance = fixture.store.readSchedulerAttemptProvenance(attemptId);
+    expect(provenance.sendState).toBe("SENT");
+    expect(provenance.artifacts.map(({ purpose }) => purpose)).toEqual([
+      "RECEIPT",
+      "TURN_RESPONSE",
+    ]);
+    if (provenance.receiptArtifact === undefined) {
+      throw new Error("Mock live result did not persist its receipt.");
+    }
+    const receiptBytes = await fixture.store.readRawArtifact(
+      provenance.receiptArtifact,
+    );
+    expect(
+      JSON.parse(Buffer.from(receiptBytes).toString("utf8")),
+    ).toMatchObject({
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      sendState: "SENT",
+      session: { freshForAttempt: true },
+    });
+
+    const mismatchedBackend = new MockLiveQualificationBackend(
+      fixture.store,
+      "b".repeat(64),
+    );
+    const restartedScheduler = new DurableScheduler({
+      store: fixture.store,
+      owner: fixture.owner,
+      backend: mismatchedBackend,
+    });
+    expect(() => restartedScheduler.activateCycle(fixture.context)).toThrow(
+      "Scheduler cycle is bound to a different backend configuration.",
+    );
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
+test("schema v4 backfills existing scheduler jobs as immutable NR-08 FAKE", async () => {
+  const fixture = await createFixture();
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+  });
+  let storeClosed = false;
+  let reopened: SqliteStorage | undefined;
+  try {
+    scheduler.activateCycle(fixture.context);
+    const rootDir = path.join(fixture.temporary, "store");
+    fixture.owner.release();
+    fixture.store.close();
+    storeClosed = true;
+
+    const legacy = new Database(path.join(rootDir, "database.sqlite"));
+    try {
+      legacy.exec(`
+        PRAGMA foreign_keys = OFF;
+        DROP TRIGGER schema_migrations_no_update;
+        DROP TRIGGER schema_migrations_no_delete;
+        DROP TRIGGER scheduler_backend_bindings_no_update;
+        DROP TRIGGER scheduler_backend_bindings_no_delete;
+        DROP TRIGGER scheduler_attempt_artifacts_no_update;
+        DROP TRIGGER scheduler_attempt_artifacts_no_delete;
+        DROP TABLE scheduler_attempt_artifacts;
+        DROP TABLE scheduler_backend_bindings;
+        ALTER TABLE scheduler_attempts DROP COLUMN backend_send_state;
+        ALTER TABLE scheduler_attempts DROP COLUMN backend_receipt_sha256;
+        DELETE FROM schema_migrations WHERE version = 4;
+        PRAGMA user_version = 3;
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    reopened = await openStorage({ rootDir });
+    expect(reopened.schemaVersion).toBe(4);
+    expect(
+      reopened.readSchedulerBackendBinding(fixture.context.cycleId),
+    ).toMatchObject({
+      backend: "FAKE",
+      qualification: "OFFLINE_ONLY",
+      backendProtocol: "nr-fake-scheduler/1",
+      bridgeVersionPin: "not_applicable",
+      model: "deterministic-fake",
+      reasoningEffort: "offline",
+      runPlan: "NR08_FAKE_3X3",
+      requiredRuns: 9,
+    });
+    expect(
+      reopened.readSchedulerCycleStatus(fixture.context.cycleId),
+    ).toMatchObject({ backend: "FAKE", requiredRuns: 9, state: "QUEUED" });
+  } finally {
+    reopened?.close();
+    if (!storeClosed) {
+      fixture.owner.release();
+      fixture.store.close();
+    }
+    await rm(fixture.temporary, { recursive: true, force: true });
   }
 });
 
@@ -1130,6 +1316,100 @@ interface Fixture {
   readonly context: SnapshotCycleContext;
 }
 
+class MockLiveQualificationBackend implements ReviewerBackend {
+  readonly backend = "LIVE" as const;
+  readonly profile: ReviewerBackend["profile"];
+
+  constructor(
+    private readonly store: SqliteStorage,
+    configurationDigest = "a".repeat(64),
+  ) {
+    this.profile = {
+      backend: "LIVE",
+      backendProtocol: "chatgpt-web-responses/1",
+      bridgeVersionPin: "6.1.3",
+      model: "chatgpt-web/gpt-5.6-sol",
+      reasoningEffort: "high",
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      configurationDigest,
+      runPlan: "NR09_LIVE_QUALIFICATION",
+      requiredRuns: 1,
+    };
+  }
+
+  promptForRun(_context: SchedulerPromptContext): string {
+    return "NR-09 mocked live qualification test prompt.";
+  }
+
+  async invoke(
+    input: BackendInvocationInput,
+  ): Promise<BackendInvocationResult> {
+    const output = fakeWorkerOutput(input.context, input.claim);
+    const rawBytes = Buffer.from(JSON.stringify(output), "utf8");
+    const rawArtifact = await this.store.persistRawArtifact(rawBytes);
+    const turnArtifact = {
+      purpose: "TURN_RESPONSE" as const,
+      reference: rawArtifact,
+    };
+    const receipt: BackendTurnReceipt = {
+      schemaVersion: "nr-backend-turn-receipt/1",
+      backend: "LIVE",
+      qualification: "LIVE_PRODUCTION_BRIDGE",
+      reviewId: input.context.reviewId,
+      cycleId: input.context.cycleId,
+      runId: input.context.runId,
+      attemptId: input.claim.attemptId,
+      direction: input.context.direction,
+      objectFormat: input.context.objectFormat,
+      reviewedBaseSha: input.context.baseSha,
+      reviewedHeadSha: input.context.headSha,
+      promptHash: input.context.promptHash,
+      schemaHash: input.context.schemaHash,
+      policyHash: input.context.policyHash,
+      bridge: {
+        service: "codex-chatgpt-web",
+        pid: 4242,
+        version: this.profile.bridgeVersionPin,
+        mode: "full",
+      },
+      model: {
+        requested: this.profile.model,
+        observed: this.profile.model,
+        reasoningEffortRequested: this.profile.reasoningEffort,
+        reasoningEffortObserved: this.profile.reasoningEffort,
+        advertisedReasoningEfforts: [this.profile.reasoningEffort],
+      },
+      session: {
+        threadId: "nr09-mock-thread",
+        turnIds: ["nr09-mock-turn"],
+        responseIds: ["nr09-mock-response"],
+        freshForAttempt: true,
+      },
+      outcome: "COMPLETED",
+      sendState: "SENT",
+      rawArtifacts: [turnArtifact],
+      generatedAtUtc: nowUtc(),
+    };
+    const receiptArtifact = await this.store.persistRawArtifact(
+      Buffer.from(`${JSON.stringify(receipt)}\n`, "utf8"),
+    );
+    return {
+      kind: "SUCCESS",
+      output,
+      rawBytes,
+      sendState: "SENT",
+      receipt,
+      receiptArtifact,
+      primaryRawArtifact: rawArtifact,
+      rawArtifacts: [turnArtifact],
+    };
+  }
+
+  async reconcile(): Promise<BackendReconciliationResult> {
+    return { kind: "STILL_UNKNOWN" };
+  }
+}
+
 async function createFixture(clock?: SchedulerClock): Promise<Fixture> {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "nr08-scheduler-"));
   const store = await openStorage({ rootDir: path.join(temporary, "store") });
@@ -1379,6 +1659,7 @@ class VirtualClock implements SchedulerClock {
 
 class DeferredFakeBackend implements ReviewerBackend {
   readonly backend = "FAKE" as const;
+  readonly profile = new FakeReviewerBackend().profile;
   private notifyStarted!: (input: BackendInvocationInput) => void;
   private notifyResult!: (result: BackendInvocationResult) => void;
   readonly started: Promise<BackendInvocationInput>;
@@ -1391,6 +1672,10 @@ class DeferredFakeBackend implements ReviewerBackend {
     this.result = new Promise((resolve) => {
       this.notifyResult = resolve;
     });
+  }
+
+  promptForRun(_context: Parameters<FakeReviewerBackend["promptForRun"]>[0]) {
+    return NR08_FAKE_PROMPT;
   }
 
   async invoke(
@@ -1423,6 +1708,7 @@ class DeferredFakeBackend implements ReviewerBackend {
 
 class NonCooperativeFakeBackend implements ReviewerBackend {
   readonly backend = "FAKE" as const;
+  readonly profile: FakeReviewerBackend["profile"];
   readonly hangingInvocation: Promise<BackendInvocationInput>;
   readonly hangingReconciliation: Promise<BackendInvocationInput>;
   readonly delegatedInvocations: BackendInvocationInput[] = [];
@@ -1445,12 +1731,17 @@ class NonCooperativeFakeBackend implements ReviewerBackend {
       readonly hangFirstReconciliation?: boolean;
     } = {},
   ) {
+    this.profile = delegate.profile;
     this.hangingInvocation = new Promise((resolve) => {
       this.notifyHangingInvocation = resolve;
     });
     this.hangingReconciliation = new Promise((resolve) => {
       this.notifyHangingReconciliation = resolve;
     });
+  }
+
+  promptForRun(context: Parameters<FakeReviewerBackend["promptForRun"]>[0]) {
+    return this.delegate.promptForRun(context);
   }
 
   invoke(input: BackendInvocationInput): Promise<BackendInvocationResult> {

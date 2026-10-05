@@ -201,6 +201,21 @@ test("spawned daemon and MCP stdio clients preserve durable review lifecycle", a
     expect(reviewId).toBeString();
     expect(cycleId).toBeString();
 
+    const cancellationAccepted = structuredResult(
+      await callTool(clientA, "review_submit", {
+        ...submission,
+        idempotencyKey: "integration-cancel-queued",
+      }),
+    );
+    const cancelled = structuredResult(
+      await callTool(clientA, "review_cancel", {
+        reviewId: cancellationAccepted.reviewId,
+        reason: "Integration test queued cancellation.",
+        idempotencyKey: "integration-cancel-queued",
+      }),
+    );
+    expect(cancelled.state).toBe("CANCELLED");
+
     expect(await clientA.close()).toBe(0);
     clientA = undefined;
 
@@ -226,21 +241,18 @@ test("spawned daemon and MCP stdio clients preserve durable review lifecycle", a
     });
     expect(errorResult(unknownReview).code).toBe("NOT_FOUND");
 
-    const finalReview = await waitForState(clientB, reviewId, [
-      "REVIEWING",
-      "FAILED",
-    ]);
+    const finalReview = await waitForState(clientB, reviewId, ["APPROVED"]);
     expect(finalReview.reviewId).toBe(reviewId);
     expect(finalReview.cycleId).toBe(cycleId);
     expect(finalReview.progress).toEqual({
-      completedRuns: 0,
+      completedRuns: 9,
       requiredRuns: 9,
       activeRuns: 0,
     });
     expect(
       isRecord(finalReview.coverage) && finalReview.coverage.complete,
     ).toBe(true);
-    expect(finalReview.nextAction).toBe("WAIT");
+    expect(finalReview.nextAction).toBe("NONE");
 
     storage = await openStorage({ rootDir: storageRoot });
     for (let index = 0; index < 100; index += 1) {
@@ -281,13 +293,6 @@ test("spawned daemon and MCP stdio clients preserve durable review lifecycle", a
     });
     expect(errorResult(staleFix).code).toBe("CONFLICT");
 
-    const cancelled = await callTool(clientB, "review_cancel", {
-      reviewId,
-      reason: "Integration test cleanup.",
-      idempotencyKey: "integration-cancel",
-    });
-    expect(structuredResult(cancelled).state).toBe("CANCELLED");
-
     storage.close();
     storage = undefined;
     const shutdownAccepted = structuredResult(
@@ -311,12 +316,17 @@ test("spawned daemon and MCP stdio clients preserve durable review lifecycle", a
     await clientC.initialize();
     clientC.notifyInitialized();
     const recovered = await waitForState(clientC, shutdownReviewId, [
-      "REVIEWING",
+      "APPROVED",
     ]);
     expect(recovered).toMatchObject({
       reviewId: shutdownReviewId,
-      state: "REVIEWING",
-      nextAction: "WAIT",
+      state: "APPROVED",
+      nextAction: "NONE",
+      progress: {
+        completedRuns: 9,
+        requiredRuns: 9,
+        activeRuns: 0,
+      },
     });
 
     const duplicateDaemon = spawnDaemon(storageRoot, fixture.root);

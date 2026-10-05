@@ -927,10 +927,16 @@ test("backs up populated v1 before forward migration and refuses a future schema
   let current: SqliteStorage | undefined;
   try {
     migrated = await openStorage({ rootDir: legacyDir });
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(3);
     expect(migrated.readReview("legacy-review").state).toBe("QUEUED");
     const backupParent = path.join(legacyDir, "migration-backups");
-    const [backupName] = await readdir(backupParent);
+    const backupNames = await readdir(backupParent);
+    const backupName = backupNames.find((name) =>
+      name.startsWith("schema-1-to-2-"),
+    );
+    expect(backupNames.some((name) => name.startsWith("schema-2-to-3-"))).toBe(
+      true,
+    );
     if (backupName === undefined)
       throw new Error("Forward migration did not create its backup.");
     const backupDir = path.join(backupParent, backupName);

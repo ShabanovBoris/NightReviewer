@@ -8,12 +8,14 @@ import {
   createInitialReviewCycle,
   hashCanonicalJson,
   type ProtocolJsonValue,
+  type ProtocolValueBySchema,
   type ReviewCycleState,
   type ReviewSubmitInput,
   type ReviewTransitionCommand,
   transitionReviewCycle,
   type VersionHashBinding,
   validateProtocolValue,
+  type WorkerFinding,
 } from "../protocol";
 import {
   createBackupAt,
@@ -48,13 +50,17 @@ import type {
   ArtifactIssue,
   ArtifactReference,
   BackupManifest,
+  CancelSchedulerCycleInput,
   CanonicalFindingInput,
   CanonicalFindingRecord,
+  ClaimedSchedulerJob,
+  ClaimSchedulerJobInput,
   CreatedReview,
   CreateReviewInput,
   DirectionRunBinding,
   DirectionRunInput,
   DirectionRunStatus,
+  EnsureSchedulerRunsInput,
   FencingToken,
   FixSubmissionInput,
   FixSubmissionResult,
@@ -68,6 +74,13 @@ import type {
   RecordFindingVerificationInput,
   ReviewEventPage,
   ReviewRecord,
+  SchedulerAggregationInput,
+  SchedulerAttemptResultInput,
+  SchedulerAttemptState,
+  SchedulerCycleStatus,
+  SchedulerJobState,
+  SchedulerReconciliationInput,
+  SchedulerSelectedRun,
   SnapshotCycleContext,
   SnapshotInput,
   SnapshotRecord,
@@ -87,6 +100,10 @@ export function daemonOwnershipResourceId(storageRootDir: string): string {
   const canonicalRoot = path.resolve(storageRootDir);
   const digest = createHash("sha256").update(canonicalRoot).digest("hex");
   return `daemon:${digest}`;
+}
+
+function schedulerLeaseResourceId(runId: string): string {
+  return `scheduler-job:${runId}`;
 }
 
 interface CycleRow {
@@ -140,6 +157,25 @@ interface EventInput {
   readonly eventType: string;
   readonly payload: unknown;
   readonly occurredAtUtc: string;
+}
+
+interface SchedulerJobRow {
+  readonly run_id: string;
+  readonly review_id: string;
+  readonly cycle_id: string;
+  readonly direction: "correctness" | "tests" | "design";
+  readonly replica_index: number;
+  readonly state: SchedulerJobState;
+  readonly attempt_count: number;
+  readonly max_attempts: number;
+  readonly deadline_at_utc: string;
+  readonly active_attempt_id: string | null;
+  readonly active_work_kind: "TURN" | "RECONCILIATION" | null;
+  readonly lease_owner_id: string | null;
+  readonly lease_token: number;
+  readonly lease_expires_at_utc: string | null;
+  readonly latest_error_class: string | null;
+  readonly next_attempt_at_utc: string;
 }
 
 export class SqliteStorage {
@@ -619,6 +655,10 @@ export class SqliteStorage {
       readonly occurredAtUtc?: string;
       readonly fencing?: FencingToken;
       readonly ownerFencing?: FencingToken;
+      readonly eventMetadata?: {
+        readonly backend: "FAKE";
+        readonly qualification: "OFFLINE_ONLY";
+      };
     } = {},
   ): {
     readonly state: ReviewCycleState;
@@ -697,7 +737,11 @@ export class SqliteStorage {
       this.db
         .query("UPDATE reviews SET updated_at_utc = ? WHERE review_id = ?")
         .run(occurredAt, currentRow.review_id);
-      const eventPayload = { command, state: transition.state };
+      const eventPayload = {
+        ...(options.eventMetadata ?? {}),
+        command,
+        state: transition.state,
+      };
       this.insertEventOutbox({
         reviewId: currentRow.review_id,
         cycleId,
@@ -740,9 +784,7 @@ export class SqliteStorage {
   async persistRawArtifact(bytes: Uint8Array): Promise<ArtifactReference> {
     if (!(bytes instanceof Uint8Array))
       throw invalidArgument("Raw artifact must be exact bytes.");
-    return this.withAsyncImmediateTransaction(async () =>
-      persistArtifactFile(this.rootDir, bytes),
-    );
+    return persistArtifactFile(this.rootDir, bytes);
   }
 
   async readRawArtifact(reference: ArtifactReference): Promise<Uint8Array> {
@@ -1146,6 +1188,1364 @@ export class SqliteStorage {
         occurredAtUtc: startedAt,
       });
     });
+  }
+
+  ensureSchedulerRuns(input: EnsureSchedulerRunsInput): void {
+    validateIdentifier(input.cycleId, "cycleId");
+    if (input.runs.length !== 9) {
+      throw invalidArgument(
+        "The strict fake scheduler requires exactly nine runs.",
+      );
+    }
+    const now = makeUtcTimestamp(input.nowUtc);
+    this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      const cycle = this.readCycleRow(input.cycleId);
+      const state = decodeCycle(cycle.state_json);
+      if (state.state !== "REVIEWING" || state.manifestHash === null) {
+        throw conflict(
+          "Scheduler runs require a REVIEWING cycle with a durable snapshot.",
+        );
+      }
+      const slots = new Set<string>();
+      for (const run of input.runs) {
+        validateIdentifier(run.runId, "runId");
+        const slot = `${run.direction}:${run.replicaIndex}`;
+        if (
+          run.cycleId !== input.cycleId ||
+          run.reviewId !== cycle.review_id ||
+          run.role !== "reviewer" ||
+          !Number.isSafeInteger(run.replicaIndex) ||
+          run.replicaIndex < 1 ||
+          run.replicaIndex > 3 ||
+          slots.has(slot) ||
+          !Number.isSafeInteger(run.maxAttempts) ||
+          run.maxAttempts < 1 ||
+          run.maxAttempts > 10
+        ) {
+          throw invalidArgument("Scheduler run set is invalid or duplicated.");
+        }
+        slots.add(slot);
+        const deadline = makeUtcTimestamp(run.deadlineAtUtc);
+        const promptHash = requireSha256(run.promptHash, "promptHash");
+        const schemaHash = requireSha256(run.schemaHash, "schemaHash");
+        const policyHash = requireSha256(run.policyHash, "policyHash");
+        const existingRun = this.db
+          .query(
+            `SELECT cycle_id, direction, role, prompt_hash, schema_hash, policy_hash
+             FROM direction_runs WHERE direction_run_id = ?`,
+          )
+          .get(run.runId) as {
+          cycle_id: string;
+          direction: string;
+          role: string;
+          prompt_hash: string;
+          schema_hash: string;
+          policy_hash: string;
+        } | null;
+        if (existingRun === null) {
+          this.db
+            .query(
+              `INSERT INTO direction_runs
+               (direction_run_id, cycle_id, direction, role, status,
+                prompt_hash, schema_hash, policy_hash, created_at_utc)
+               VALUES (?, ?, ?, 'reviewer', 'PENDING', ?, ?, ?, ?)`,
+            )
+            .run(
+              run.runId,
+              input.cycleId,
+              run.direction,
+              promptHash,
+              schemaHash,
+              policyHash,
+              now,
+            );
+          this.insertEventOutbox({
+            reviewId: run.reviewId,
+            cycleId: run.cycleId,
+            eventType: "direction_run.recorded",
+            payload: {
+              backend: "FAKE",
+              qualification: "OFFLINE_ONLY",
+              directionRunId: run.runId,
+              direction: run.direction,
+              role: run.role,
+              replicaIndex: run.replicaIndex,
+              promptHash,
+              schemaHash,
+              policyHash,
+            },
+            occurredAtUtc: now,
+          });
+        } else if (
+          existingRun.cycle_id !== input.cycleId ||
+          existingRun.direction !== run.direction ||
+          existingRun.role !== run.role ||
+          existingRun.prompt_hash !== promptHash ||
+          existingRun.schema_hash !== schemaHash ||
+          existingRun.policy_hash !== policyHash
+        ) {
+          throw conflict(
+            "Existing scheduler run identity has different bindings.",
+          );
+        }
+        const existingJob = this.db
+          .query(
+            `SELECT review_id, cycle_id, direction, replica_index, max_attempts, deadline_at_utc
+             FROM scheduler_jobs WHERE run_id = ?`,
+          )
+          .get(run.runId) as {
+          review_id: string;
+          cycle_id: string;
+          direction: string;
+          replica_index: number;
+          max_attempts: number;
+          deadline_at_utc: string;
+        } | null;
+        if (existingJob === null) {
+          this.db
+            .query(
+              `INSERT INTO scheduler_jobs
+               (run_id, review_id, cycle_id, direction, replica_index, state,
+                attempt_count, max_attempts, next_attempt_at_utc, deadline_at_utc,
+                created_at_utc, updated_at_utc)
+               VALUES (?, ?, ?, ?, ?, 'QUEUED', 0, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+              run.runId,
+              run.reviewId,
+              input.cycleId,
+              run.direction,
+              run.replicaIndex,
+              run.maxAttempts,
+              now,
+              deadline,
+              now,
+              now,
+            );
+          this.insertEventOutbox({
+            reviewId: run.reviewId,
+            cycleId: input.cycleId,
+            eventType: "scheduler.job_queued",
+            payload: {
+              backend: "FAKE",
+              qualification: "OFFLINE_ONLY",
+              runId: run.runId,
+              direction: run.direction,
+              replicaIndex: run.replicaIndex,
+              maxAttempts: run.maxAttempts,
+              deadlineAtUtc: deadline,
+            },
+            occurredAtUtc: now,
+          });
+        } else if (
+          existingJob.review_id !== run.reviewId ||
+          existingJob.cycle_id !== input.cycleId ||
+          existingJob.direction !== run.direction ||
+          existingJob.replica_index !== run.replicaIndex ||
+          existingJob.max_attempts !== run.maxAttempts
+        ) {
+          throw conflict(
+            "Existing scheduler job has different immutable policy.",
+          );
+        }
+      }
+      if (slots.size !== 9) {
+        throw invalidArgument(
+          "Scheduler run set must cover all nine direction slots.",
+        );
+      }
+    });
+  }
+
+  readReviewingSchedulerCycles(limit = 100): SnapshotCycleContext[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw invalidArgument(
+        "Scheduler cycle limit must be between 1 and 1000.",
+      );
+    }
+    const rows = this.db
+      .query(
+        `SELECT r.review_id, r.repo_id, r.task, r.acceptance_criteria_json,
+                c.cycle_id, c.state_json
+         FROM review_cycles c
+         JOIN reviews r ON r.review_id = c.review_id
+         WHERE c.state = 'REVIEWING'
+           AND c.cycle_number = (
+             SELECT MAX(latest.cycle_number) FROM review_cycles latest
+             WHERE latest.review_id = c.review_id
+           )
+         ORDER BY c.created_at_utc, c.cycle_id
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      review_id: string;
+      repo_id: string;
+      task: string;
+      acceptance_criteria_json: string;
+      cycle_id: string;
+      state_json: string;
+    }>;
+    return rows.map((row) => ({
+      reviewId: row.review_id,
+      cycleId: row.cycle_id,
+      repoId: row.repo_id,
+      task: row.task,
+      acceptanceCriteria: parseJson<ReviewSubmitInput["acceptanceCriteria"]>(
+        row.acceptance_criteria_json,
+      ),
+      cycle: decodeCycle(row.state_json),
+    }));
+  }
+
+  readAggregatingSchedulerCycles(limit = 100): SnapshotCycleContext[] {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+      throw invalidArgument(
+        "Scheduler cycle limit must be between 1 and 1000.",
+      );
+    }
+    const rows = this.db
+      .query(
+        `SELECT r.review_id, r.repo_id, r.task, r.acceptance_criteria_json,
+                c.cycle_id, c.state_json
+         FROM review_cycles c
+         JOIN reviews r ON r.review_id = c.review_id
+         WHERE c.state = 'AGGREGATING'
+           AND c.cycle_number = (
+             SELECT MAX(latest.cycle_number) FROM review_cycles latest
+             WHERE latest.review_id = c.review_id
+           )
+         ORDER BY c.created_at_utc, c.cycle_id
+         LIMIT ?`,
+      )
+      .all(limit) as Array<{
+      review_id: string;
+      repo_id: string;
+      task: string;
+      acceptance_criteria_json: string;
+      cycle_id: string;
+      state_json: string;
+    }>;
+    return rows.map((row) => ({
+      reviewId: row.review_id,
+      cycleId: row.cycle_id,
+      repoId: row.repo_id,
+      task: row.task,
+      acceptanceCriteria: parseJson<ReviewSubmitInput["acceptanceCriteria"]>(
+        row.acceptance_criteria_json,
+      ),
+      cycle: decodeCycle(row.state_json),
+    }));
+  }
+
+  claimNextSchedulerJob(
+    input: ClaimSchedulerJobInput,
+  ): ClaimedSchedulerJob | undefined {
+    if (
+      !Number.isSafeInteger(input.leaseTtlMs) ||
+      input.leaseTtlMs < 1 ||
+      input.leaseTtlMs > 24 * 60 * 60 * 1_000 ||
+      !Number.isSafeInteger(input.attemptTimeoutMs) ||
+      input.attemptTimeoutMs < 1 ||
+      input.attemptTimeoutMs > 24 * 60 * 60 * 1_000
+    ) {
+      throw invalidArgument(
+        "Scheduler lease and attempt deadline are invalid.",
+      );
+    }
+    const now = makeUtcTimestamp(input.nowUtc);
+    return this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      this.recoverExpiredSchedulerLeases(now);
+      this.failExpiredQueuedSchedulerJobs(now);
+      const cursor = this.db
+        .query(
+          "SELECT last_review_id FROM scheduler_control WHERE singleton_id = 1",
+        )
+        .get() as { last_review_id: string | null } | null;
+      if (cursor === null) {
+        throw invariantViolation("Scheduler fairness cursor is missing.");
+      }
+      const row = this.db
+        .query(
+          `SELECT j.run_id, j.review_id, j.cycle_id, j.direction, j.replica_index,
+                  j.state, j.attempt_count, j.max_attempts, j.deadline_at_utc
+           FROM scheduler_jobs j
+           JOIN review_cycles c ON c.cycle_id = j.cycle_id
+           WHERE c.state = 'REVIEWING' AND (
+             (j.state IN ('QUEUED', 'RETRY_WAIT')
+              AND j.next_attempt_at_utc <= ? AND j.deadline_at_utc > ?
+              AND j.attempt_count < j.max_attempts) OR
+             (j.state = 'RECONCILIATION_REQUIRED'
+              AND j.next_attempt_at_utc <= ? AND j.reconciliation_count < 3)
+           )
+           ORDER BY CASE WHEN ? IS NULL OR j.review_id > ? THEN 0 ELSE 1 END,
+             j.review_id, j.direction, j.replica_index, j.run_id
+           LIMIT 1`,
+        )
+        .get(now, now, now, cursor.last_review_id, cursor.last_review_id) as {
+        run_id: string;
+        review_id: string;
+        cycle_id: string;
+        direction: "correctness" | "tests" | "design";
+        replica_index: number;
+        state: SchedulerJobState;
+        attempt_count: number;
+        max_attempts: number;
+        deadline_at_utc: string;
+      } | null;
+      if (row === null) return undefined;
+
+      const workKind =
+        row.state === "RECONCILIATION_REQUIRED" ? "RECONCILIATION" : "TURN";
+      let attemptId: string;
+      let attemptNumber: number;
+      if (workKind === "RECONCILIATION") {
+        const previous = this.db
+          .query(
+            `SELECT attempt_id, attempt_number FROM scheduler_attempts
+             WHERE run_id = ? AND state IN ('UNKNOWN_SEND', 'RECONCILIATION_UNKNOWN')
+             ORDER BY attempt_number DESC LIMIT 1`,
+          )
+          .get(row.run_id) as {
+          attempt_id: string;
+          attempt_number: number;
+        } | null;
+        if (previous === null) {
+          this.failSchedulerJobWithinTransaction(
+            row.run_id,
+            "NEEDS_RECONCILIATION",
+            now,
+          );
+          return undefined;
+        }
+        attemptId = previous.attempt_id;
+        attemptNumber = previous.attempt_number;
+      } else {
+        attemptNumber = row.attempt_count + 1;
+        attemptId = randomUUID();
+      }
+
+      const resourceId = schedulerLeaseResourceId(row.run_id);
+      const previousLease = this.currentLease(resourceId);
+      if (
+        previousLease !== null &&
+        previousLease.owner_id !== null &&
+        previousLease.expires_at_utc !== null &&
+        previousLease.expires_at_utc > now
+      ) {
+        throw conflict("Scheduler job lease is still held by an active owner.");
+      }
+      const priorToken = previousLease?.fencing_token ?? 0;
+      if (priorToken >= Number.MAX_SAFE_INTEGER) {
+        throw new StorageError(
+          "CONFLICT",
+          "Scheduler lease fencing limit reached.",
+        );
+      }
+      const token = priorToken + 1;
+      const expiresAt = new Date(
+        Date.parse(now) + input.leaseTtlMs,
+      ).toISOString();
+      this.db
+        .query(
+          `INSERT INTO leases
+           (resource_id, owner_id, fencing_token, expires_at_utc, updated_at_utc)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(resource_id) DO UPDATE SET
+             owner_id = excluded.owner_id,
+             fencing_token = excluded.fencing_token,
+             expires_at_utc = excluded.expires_at_utc,
+             updated_at_utc = excluded.updated_at_utc`,
+        )
+        .run(resourceId, input.ownerFencing.ownerId, token, expiresAt, now);
+      const attemptDeadline = new Date(
+        Math.min(
+          Date.parse(row.deadline_at_utc),
+          Date.parse(now) + input.attemptTimeoutMs,
+        ),
+      ).toISOString();
+      this.db
+        .query(
+          `UPDATE scheduler_jobs SET state = 'LEASED', attempt_count = ?,
+             reconciliation_count = reconciliation_count + ?,
+             active_attempt_id = ?, active_work_kind = ?, lease_owner_id = ?,
+             lease_token = ?, lease_expires_at_utc = ?, updated_at_utc = ?
+           WHERE run_id = ?`,
+        )
+        .run(
+          workKind === "TURN" ? attemptNumber : row.attempt_count,
+          workKind === "RECONCILIATION" ? 1 : 0,
+          attemptId,
+          workKind,
+          input.ownerFencing.ownerId,
+          token,
+          expiresAt,
+          now,
+          row.run_id,
+        );
+      if (workKind === "TURN") {
+        const directionRun = this.db
+          .query("SELECT status FROM direction_runs WHERE direction_run_id = ?")
+          .get(row.run_id) as { status: DirectionRunStatus } | null;
+        if (directionRun === null) {
+          throw invariantViolation("Scheduler job has no direction run.");
+        }
+        if (directionRun.status === "PENDING") {
+          this.db
+            .query(
+              `UPDATE direction_runs SET status = 'RUNNING'
+               WHERE direction_run_id = ? AND status = 'PENDING'`,
+            )
+            .run(row.run_id);
+          this.insertEventOutbox({
+            reviewId: row.review_id,
+            cycleId: row.cycle_id,
+            eventType: "direction_run.status_changed",
+            payload: {
+              backend: "FAKE",
+              qualification: "OFFLINE_ONLY",
+              directionRunId: row.run_id,
+              direction: row.direction,
+              previousStatus: "PENDING",
+              status: "RUNNING",
+            },
+            occurredAtUtc: now,
+          });
+        } else if (directionRun.status !== "RUNNING") {
+          throw conflict("Direction run is already terminal.");
+        }
+        this.db
+          .query(
+            `INSERT INTO worker_attempts
+             (attempt_id, direction_run_id, attempt_number, model, effort,
+              started_at_utc, metadata_json)
+             VALUES (?, ?, ?, 'deterministic-fake', 'offline', ?, ?)`,
+          )
+          .run(
+            attemptId,
+            row.run_id,
+            attemptNumber,
+            now,
+            encodeJson({
+              backend: "FAKE",
+              qualification: "OFFLINE_ONLY",
+              runId: row.run_id,
+              replicaIndex: row.replica_index,
+              leaseToken: token,
+            }),
+          );
+        this.db
+          .query(
+            `INSERT INTO scheduler_attempts
+             (attempt_id, run_id, attempt_number, state, lease_token,
+              deadline_at_utc, started_at_utc)
+             VALUES (?, ?, ?, 'RUNNING', ?, ?, ?)`,
+          )
+          .run(
+            attemptId,
+            row.run_id,
+            attemptNumber,
+            token,
+            attemptDeadline,
+            now,
+          );
+        this.insertEventOutbox({
+          reviewId: row.review_id,
+          cycleId: row.cycle_id,
+          eventType: "worker.attempt_appended",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            attemptId,
+            directionRunId: row.run_id,
+            attemptNumber,
+          },
+          occurredAtUtc: now,
+        });
+      } else {
+        this.insertEventOutbox({
+          reviewId: row.review_id,
+          cycleId: row.cycle_id,
+          eventType: "scheduler.reconciliation_started",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: row.run_id,
+            attemptId,
+            leaseToken: token,
+          },
+          occurredAtUtc: now,
+        });
+      }
+      this.db
+        .query(
+          "UPDATE scheduler_control SET last_review_id = ? WHERE singleton_id = 1",
+        )
+        .run(row.review_id);
+      return {
+        reviewId: row.review_id,
+        cycleId: row.cycle_id,
+        runId: row.run_id,
+        direction: row.direction,
+        replicaIndex: row.replica_index,
+        attemptId,
+        attemptNumber,
+        workKind,
+        deadlineAtUtc: row.deadline_at_utc,
+        attemptDeadlineAtUtc: attemptDeadline,
+        lease: { resourceId, ownerId: input.ownerFencing.ownerId, token },
+        leaseExpiresAtUtc: expiresAt,
+      };
+    });
+  }
+
+  async finishSchedulerAttempt(
+    input: SchedulerAttemptResultInput,
+  ): Promise<boolean> {
+    validateIdentifier(input.runId, "runId");
+    validateIdentifier(input.attemptId, "attemptId");
+    validateFencingToken(input.ownerFencing);
+    validateFencingToken(input.lease);
+    const now = makeUtcTimestamp(input.occurredAtUtc);
+    const reference = requireArtifactReference(input.rawArtifact);
+    await readVerifiedArtifact(this.rootDir, reference);
+    let parsedOutput: ProtocolValueBySchema["workerOutput"] | undefined;
+    if (input.outcome === "SUCCESS") {
+      const validation = validateProtocolValue(
+        "workerOutput",
+        input.parsedResult,
+      );
+      if (!validation.ok) {
+        throw invalidArgument(
+          "A successful scheduler result must match workerOutput.",
+        );
+      }
+      parsedOutput = validation.value;
+    }
+    return this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      const job = this.schedulerJobRow(input.runId);
+      const attempt = this.db
+        .query(
+          `SELECT state, deadline_at_utc FROM scheduler_attempts
+           WHERE attempt_id = ? AND run_id = ?`,
+        )
+        .get(input.attemptId, input.runId) as {
+        state: SchedulerAttemptState;
+        deadline_at_utc: string;
+      } | null;
+      if (attempt === null) {
+        throw new StorageError("NOT_FOUND", "Scheduler attempt was not found.");
+      }
+      this.insertArtifactRecord(reference, "application/json", now);
+      if (attempt.state !== "RUNNING") {
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.late_result_obsolete",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            rawArtifact: reference,
+            selected: false,
+            previousAttemptState: attempt.state,
+          },
+          occurredAtUtc: now,
+        });
+        return false;
+      }
+      const cycleState = decodeCycle(
+        this.readCycleRow(job.cycle_id).state_json,
+      ).state;
+      const isCurrent =
+        cycleState === "REVIEWING" &&
+        job.active_work_kind === "TURN" &&
+        this.isCurrentSchedulerClaim(job, input.attemptId, input.lease, now);
+      if (!isCurrent) {
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'OBSOLETE',
+             raw_artifact_sha256 = ?, finished_at_utc = ?
+             WHERE attempt_id = ? AND state = 'RUNNING'`,
+          )
+          .run(reference.sha256, now, input.attemptId);
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.late_result_obsolete",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            rawArtifact: reference,
+            selected: false,
+          },
+          occurredAtUtc: now,
+        });
+        return false;
+      }
+      if (attempt.deadline_at_utc <= now) {
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'UNKNOWN_SEND',
+             raw_artifact_sha256 = ?, error_class = 'ATTEMPT_DEADLINE_EXCEEDED',
+             finished_at_utc = ? WHERE attempt_id = ? AND state = 'RUNNING'`,
+          )
+          .run(reference.sha256, now, input.attemptId);
+        this.clearSchedulerJobLease(
+          job.run_id,
+          input.attemptId,
+          input.lease,
+          now,
+          {
+            state: "RECONCILIATION_REQUIRED",
+            latestErrorClass: "ATTEMPT_DEADLINE_EXCEEDED",
+          },
+        );
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.unknown_send",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            rawArtifact: reference,
+            reason: "ATTEMPT_DEADLINE_EXCEEDED",
+            state: "RECONCILIATION_REQUIRED",
+          },
+          occurredAtUtc: now,
+        });
+        return true;
+      }
+
+      if (input.outcome === "UNKNOWN_SEND") {
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'UNKNOWN_SEND',
+             raw_artifact_sha256 = ?, error_class = ?, finished_at_utc = ?
+             WHERE attempt_id = ?`,
+          )
+          .run(
+            reference.sha256,
+            input.errorClass ?? "UNKNOWN_SEND",
+            now,
+            input.attemptId,
+          );
+        this.clearSchedulerJobLease(
+          job.run_id,
+          input.attemptId,
+          input.lease,
+          now,
+          {
+            state: "RECONCILIATION_REQUIRED",
+            latestErrorClass: input.errorClass ?? "UNKNOWN_SEND",
+          },
+        );
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.unknown_send",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            rawArtifact: reference,
+            state: "RECONCILIATION_REQUIRED",
+          },
+          occurredAtUtc: now,
+        });
+        return true;
+      }
+
+      let selectedOutput: ProtocolValueBySchema["workerOutput"] | undefined;
+      if (input.outcome === "SUCCESS") {
+        if (parsedOutput === undefined) {
+          throw invariantViolation("Validated worker output was lost.");
+        }
+        this.assertSchedulerOutput(job, input.attemptId, parsedOutput);
+        selectedOutput = parsedOutput;
+      }
+      const disposition =
+        input.outcome === "SUCCESS"
+          ? "VALID"
+          : input.outcome === "MALFORMED"
+            ? "MALFORMED"
+            : "FAILED";
+      const resultId = randomUUID();
+      this.db
+        .query(
+          `INSERT INTO worker_attempt_results
+           (result_id, direction_run_id, attempt_id, raw_artifact_sha256,
+            disposition, parsed_result_json, selected, recorded_at_utc)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          resultId,
+          job.run_id,
+          input.attemptId,
+          reference.sha256,
+          disposition,
+          selectedOutput === undefined ? null : encodeJson(selectedOutput),
+          selectedOutput === undefined ? 0 : 1,
+          now,
+        );
+      this.insertEventOutbox({
+        reviewId: job.review_id,
+        cycleId: job.cycle_id,
+        eventType: "worker.result_recorded",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          resultId,
+          attemptId: input.attemptId,
+          direction: job.direction,
+          disposition,
+          selected: selectedOutput !== undefined,
+          rawArtifact: reference,
+        },
+        occurredAtUtc: now,
+      });
+
+      if (selectedOutput !== undefined) {
+        this.recordSchedulerRawFindings(
+          job,
+          resultId,
+          selectedOutput.findings,
+          now,
+        );
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'SUCCEEDED',
+             raw_artifact_sha256 = ?, finished_at_utc = ? WHERE attempt_id = ?`,
+          )
+          .run(reference.sha256, now, input.attemptId);
+        this.db
+          .query(
+            `UPDATE direction_runs SET status = 'COMPLETE'
+             WHERE direction_run_id = ? AND status = 'RUNNING'`,
+          )
+          .run(job.run_id);
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "direction_run.status_changed",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            directionRunId: job.run_id,
+            direction: job.direction,
+            previousStatus: "RUNNING",
+            status: "COMPLETE",
+          },
+          occurredAtUtc: now,
+        });
+        this.clearSchedulerJobLease(
+          job.run_id,
+          input.attemptId,
+          input.lease,
+          now,
+          { state: "COMPLETE", latestErrorClass: null },
+        );
+        return true;
+      }
+
+      const retryAt =
+        input.outcome === "RETRYABLE_FAILURE" && input.retryAtUtc !== undefined
+          ? makeUtcTimestamp(input.retryAtUtc)
+          : undefined;
+      const canRetry =
+        input.outcome === "RETRYABLE_FAILURE" &&
+        retryAt !== undefined &&
+        retryAt < job.deadline_at_utc &&
+        job.attempt_count < job.max_attempts;
+      const failureClass = input.errorClass ?? input.outcome;
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET state = ?, raw_artifact_sha256 = ?,
+           error_class = ?, finished_at_utc = ? WHERE attempt_id = ?`,
+        )
+        .run(
+          input.outcome,
+          reference.sha256,
+          failureClass,
+          now,
+          input.attemptId,
+        );
+      if (!canRetry) {
+        this.db
+          .query(
+            `UPDATE direction_runs SET status = 'FAILED'
+             WHERE direction_run_id = ? AND status IN ('PENDING', 'RUNNING')`,
+          )
+          .run(job.run_id);
+      }
+      this.clearSchedulerJobLease(
+        job.run_id,
+        input.attemptId,
+        input.lease,
+        now,
+        canRetry
+          ? {
+              state: "RETRY_WAIT",
+              retryAtUtc: retryAt,
+              latestErrorClass: failureClass,
+            }
+          : { state: "FAILED", latestErrorClass: failureClass },
+      );
+      this.insertEventOutbox({
+        reviewId: job.review_id,
+        cycleId: job.cycle_id,
+        eventType: canRetry ? "scheduler.retry_wait" : "scheduler.run_failed",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          runId: job.run_id,
+          attemptId: input.attemptId,
+          errorClass: failureClass,
+          retryAtUtc: canRetry ? retryAt : null,
+          jobState: canRetry ? "RETRY_WAIT" : "FAILED",
+        },
+        occurredAtUtc: now,
+      });
+      return true;
+    });
+  }
+
+  async reconcileSchedulerAttempt(
+    input: SchedulerReconciliationInput,
+  ): Promise<boolean> {
+    validateIdentifier(input.runId, "runId");
+    validateIdentifier(input.attemptId, "attemptId");
+    validateFencingToken(input.ownerFencing);
+    validateFencingToken(input.lease);
+    const now = makeUtcTimestamp(input.occurredAtUtc);
+    let acceptedOutput: ProtocolValueBySchema["workerOutput"] | undefined;
+    let acceptedArtifact: ArtifactReference | undefined;
+    if (input.outcome === "PROVEN_ACCEPTED_WITH_RESULT") {
+      acceptedArtifact = requireArtifactReference(input.rawArtifact);
+      await readVerifiedArtifact(this.rootDir, acceptedArtifact);
+      const validation = validateProtocolValue(
+        "workerOutput",
+        input.parsedResult,
+      );
+      if (!validation.ok) {
+        throw invalidArgument(
+          "Reconciled worker output does not match workerOutput.",
+        );
+      }
+      acceptedOutput = validation.value;
+    }
+    return this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      const job = this.schedulerJobRow(input.runId);
+      const attempt = this.db
+        .query(
+          `SELECT state, raw_artifact_sha256
+           FROM scheduler_attempts WHERE attempt_id = ? AND run_id = ?`,
+        )
+        .get(input.attemptId, input.runId) as {
+        state: SchedulerAttemptState;
+        raw_artifact_sha256: string | null;
+      } | null;
+      if (attempt === null) {
+        throw new StorageError(
+          "NOT_FOUND",
+          "Unknown-send attempt was not found.",
+        );
+      }
+      const current =
+        decodeCycle(this.readCycleRow(job.cycle_id).state_json).state ===
+          "REVIEWING" &&
+        job.active_work_kind === "RECONCILIATION" &&
+        this.isCurrentSchedulerClaim(job, input.attemptId, input.lease, now);
+      if (!current) {
+        if (acceptedArtifact !== undefined) {
+          this.insertArtifactRecord(acceptedArtifact, "application/json", now);
+        }
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.late_result_obsolete",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            reconciliationOutcome: input.outcome,
+            selected: false,
+            previousAttemptState: attempt.state,
+            ...(acceptedArtifact === undefined
+              ? {}
+              : { rawArtifact: acceptedArtifact }),
+          },
+          occurredAtUtc: now,
+        });
+        return false;
+      }
+
+      if (input.outcome === "STILL_UNKNOWN") {
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'RECONCILIATION_UNKNOWN',
+             reconciliation_outcome = 'STILL_UNKNOWN', finished_at_utc = ?
+             WHERE attempt_id = ?`,
+          )
+          .run(now, input.attemptId);
+        const retryAt =
+          input.retryAtUtc === undefined
+            ? new Date(Date.parse(now) + 60_000).toISOString()
+            : makeUtcTimestamp(input.retryAtUtc);
+        this.clearSchedulerJobLease(
+          job.run_id,
+          input.attemptId,
+          input.lease,
+          now,
+          {
+            state: "RECONCILIATION_REQUIRED",
+            retryAtUtc: retryAt,
+            latestErrorClass: "UNKNOWN_SEND",
+          },
+        );
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.reconciliation_unknown",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            reconciliationOutcome: "STILL_UNKNOWN",
+            state: "RECONCILIATION_REQUIRED",
+          },
+          occurredAtUtc: now,
+        });
+        return true;
+      }
+
+      if (input.outcome === "PROVEN_UNSENT") {
+        this.db
+          .query(
+            `UPDATE scheduler_attempts SET state = 'RECONCILED_UNSENT',
+             reconciliation_outcome = 'PROVEN_UNSENT', finished_at_utc = ?
+             WHERE attempt_id = ?`,
+          )
+          .run(now, input.attemptId);
+        const retryAt =
+          input.retryAtUtc === undefined
+            ? now
+            : makeUtcTimestamp(input.retryAtUtc);
+        const canRetry =
+          job.attempt_count < job.max_attempts && retryAt < job.deadline_at_utc;
+        if (attempt.raw_artifact_sha256 !== null) {
+          this.db
+            .query(
+              `INSERT INTO worker_attempt_results
+               (result_id, direction_run_id, attempt_id, raw_artifact_sha256,
+                disposition, selected, recorded_at_utc)
+               VALUES (?, ?, ?, ?, 'FAILED', 0, ?)`,
+            )
+            .run(
+              randomUUID(),
+              job.run_id,
+              input.attemptId,
+              attempt.raw_artifact_sha256,
+              now,
+            );
+        }
+        if (!canRetry) {
+          this.db
+            .query(
+              `UPDATE direction_runs SET status = 'FAILED'
+               WHERE direction_run_id = ? AND status = 'RUNNING'`,
+            )
+            .run(job.run_id);
+        }
+        this.clearSchedulerJobLease(
+          job.run_id,
+          input.attemptId,
+          input.lease,
+          now,
+          canRetry
+            ? {
+                state: "RETRY_WAIT",
+                retryAtUtc: retryAt,
+                latestErrorClass: "PROVEN_UNSENT",
+              }
+            : { state: "FAILED", latestErrorClass: "PROVEN_UNSENT" },
+        );
+        this.insertEventOutbox({
+          reviewId: job.review_id,
+          cycleId: job.cycle_id,
+          eventType: "scheduler.reconciled_unsent",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            attemptId: input.attemptId,
+            retryAtUtc: canRetry ? retryAt : null,
+            jobState: canRetry ? "RETRY_WAIT" : "FAILED",
+          },
+          occurredAtUtc: now,
+        });
+        return true;
+      }
+
+      if (acceptedOutput === undefined || acceptedArtifact === undefined) {
+        throw invariantViolation(
+          "Accepted reconciliation result was not validated.",
+        );
+      }
+      this.assertSchedulerOutput(job, input.attemptId, acceptedOutput);
+      this.insertArtifactRecord(acceptedArtifact, "application/json", now);
+      const resultId = randomUUID();
+      this.db
+        .query(
+          `INSERT INTO worker_attempt_results
+           (result_id, direction_run_id, attempt_id, raw_artifact_sha256,
+            disposition, parsed_result_json, selected, recorded_at_utc)
+           VALUES (?, ?, ?, ?, 'VALID', ?, 1, ?)`,
+        )
+        .run(
+          resultId,
+          job.run_id,
+          input.attemptId,
+          acceptedArtifact.sha256,
+          encodeJson(acceptedOutput),
+          now,
+        );
+      this.recordSchedulerRawFindings(
+        job,
+        resultId,
+        acceptedOutput.findings,
+        now,
+      );
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET state = 'RECONCILED_ACCEPTED',
+           reconciliation_outcome = 'PROVEN_ACCEPTED_WITH_RESULT',
+           raw_artifact_sha256 = ?, finished_at_utc = ? WHERE attempt_id = ?`,
+        )
+        .run(acceptedArtifact.sha256, now, input.attemptId);
+      this.db
+        .query(
+          `UPDATE direction_runs SET status = 'COMPLETE'
+           WHERE direction_run_id = ? AND status = 'RUNNING'`,
+        )
+        .run(job.run_id);
+      this.clearSchedulerJobLease(
+        job.run_id,
+        input.attemptId,
+        input.lease,
+        now,
+        { state: "COMPLETE", latestErrorClass: null },
+      );
+      this.insertEventOutbox({
+        reviewId: job.review_id,
+        cycleId: job.cycle_id,
+        eventType: "scheduler.reconciled_accepted",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          runId: job.run_id,
+          attemptId: input.attemptId,
+          resultId,
+          rawArtifact: acceptedArtifact,
+        },
+        occurredAtUtc: now,
+      });
+      return true;
+    });
+  }
+
+  cancelSchedulerCycle(input: CancelSchedulerCycleInput): void {
+    validateIdentifier(input.cycleId, "cycleId");
+    const now = makeUtcTimestamp(input.occurredAtUtc);
+    this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      const cycle = this.readCycleRow(input.cycleId);
+      const state = decodeCycle(cycle.state_json).state;
+      if (state !== "CANCEL_REQUESTED" && state !== "CANCELLED") {
+        throw conflict(
+          "Scheduler cancellation requires a requested cancellation.",
+        );
+      }
+      const jobs = this.db
+        .query(
+          `SELECT run_id, state, active_attempt_id, lease_owner_id, lease_token
+           FROM scheduler_jobs WHERE cycle_id = ?
+             AND state NOT IN ('COMPLETE', 'FAILED', 'CANCELLED', 'OBSOLETE')`,
+        )
+        .all(input.cycleId) as Array<{
+        run_id: string;
+        state: SchedulerJobState;
+        active_attempt_id: string | null;
+        lease_owner_id: string | null;
+        lease_token: number;
+      }>;
+      for (const job of jobs) {
+        if (job.active_attempt_id !== null) {
+          this.db
+            .query(
+              `UPDATE scheduler_attempts SET state = 'CANCELLED',
+               finished_at_utc = ? WHERE attempt_id = ? AND state IN (
+                 'RUNNING', 'UNKNOWN_SEND', 'RECONCILIATION_UNKNOWN'
+               )`,
+            )
+            .run(now, job.active_attempt_id);
+        }
+        if (job.lease_owner_id !== null) {
+          this.db
+            .query(
+              `UPDATE leases SET owner_id = NULL, expires_at_utc = NULL,
+               updated_at_utc = ? WHERE resource_id = ? AND owner_id = ?
+               AND fencing_token = ?`,
+            )
+            .run(
+              now,
+              schedulerLeaseResourceId(job.run_id),
+              job.lease_owner_id,
+              job.lease_token,
+            );
+        }
+        this.db
+          .query(
+            `UPDATE scheduler_jobs SET state = 'CANCELLED',
+             active_attempt_id = NULL, active_work_kind = NULL,
+             lease_owner_id = NULL, lease_expires_at_utc = ?, updated_at_utc = ?
+             WHERE run_id = ?`,
+          )
+          .run(null, now, job.run_id);
+        this.insertEventOutbox({
+          reviewId: cycle.review_id,
+          cycleId: input.cycleId,
+          eventType: "scheduler.job_cancelled",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            runId: job.run_id,
+            previousState: job.state,
+            activeAttemptId: job.active_attempt_id,
+          },
+          occurredAtUtc: now,
+        });
+      }
+    });
+  }
+
+  async recordSchedulerAggregation(
+    input: SchedulerAggregationInput,
+  ): Promise<void> {
+    validateIdentifier(input.cycleId, "cycleId");
+    validateFencingToken(input.ownerFencing);
+    const now = makeUtcTimestamp(input.occurredAtUtc);
+    const reference = requireArtifactReference(input.rawArtifact);
+    await readVerifiedArtifact(this.rootDir, reference);
+    this.withImmediateTransaction(() => {
+      this.assertDaemonFencingToken(input.ownerFencing, now);
+      const cycle = this.readCycleRow(input.cycleId);
+      if (decodeCycle(cycle.state_json).state !== "AGGREGATING") {
+        throw conflict("Scheduler aggregation requires an AGGREGATING cycle.");
+      }
+      const reportJson = encodeJson(input.report);
+      const existing = this.db
+        .query(
+          `SELECT backend, qualification, state, report_json,
+                  raw_artifact_sha256 FROM scheduler_aggregations WHERE cycle_id = ?`,
+        )
+        .get(input.cycleId) as {
+        backend: string;
+        qualification: string;
+        state: string;
+        report_json: string;
+        raw_artifact_sha256: string;
+      } | null;
+      if (existing !== null) {
+        if (
+          existing.backend !== input.backend ||
+          existing.qualification !== input.qualification ||
+          existing.state !== input.state ||
+          existing.report_json !== reportJson ||
+          existing.raw_artifact_sha256 !== reference.sha256
+        ) {
+          throw conflict(
+            "Scheduler aggregation changed after it was recorded.",
+          );
+        }
+        return;
+      }
+      this.insertArtifactRecord(reference, "application/json", now);
+      this.db
+        .query(
+          `INSERT INTO scheduler_aggregations
+           (cycle_id, backend, qualification, state, report_json,
+            raw_artifact_sha256, created_at_utc)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.cycleId,
+          input.backend,
+          input.qualification,
+          input.state,
+          reportJson,
+          reference.sha256,
+          now,
+        );
+      this.insertEventOutbox({
+        reviewId: cycle.review_id,
+        cycleId: input.cycleId,
+        eventType: "scheduler.aggregation_recorded",
+        payload: {
+          backend: input.backend,
+          qualification: input.qualification,
+          state: input.state,
+          rawArtifact: reference,
+          provisional: input.state === "PROVISIONAL_FINDINGS",
+          semanticAdjudication: "NOT_PERFORMED",
+        },
+        occurredAtUtc: now,
+      });
+    });
+  }
+
+  readSchedulerCycleStatus(cycleId: string): SchedulerCycleStatus {
+    validateIdentifier(cycleId, "cycleId");
+    const cycle = this.readCycleRow(cycleId);
+    const reviewState = decodeCycle(cycle.state_json).state;
+    const counts = this.db
+      .query(
+        `SELECT COUNT(*) AS required_runs,
+           SUM(CASE WHEN state = 'COMPLETE' THEN 1 ELSE 0 END) AS completed_runs,
+           SUM(CASE WHEN state = 'LEASED' THEN 1 ELSE 0 END) AS active_runs,
+           SUM(CASE WHEN state = 'RETRY_WAIT' THEN 1 ELSE 0 END) AS retry_waiting_runs,
+           SUM(CASE WHEN state = 'RECONCILIATION_REQUIRED' THEN 1 ELSE 0 END)
+             AS reconciliation_runs,
+           SUM(CASE WHEN state = 'FAILED' THEN 1 ELSE 0 END) AS failed_runs
+         FROM scheduler_jobs WHERE cycle_id = ?`,
+      )
+      .get(cycleId) as {
+      required_runs: number;
+      completed_runs: number | null;
+      active_runs: number | null;
+      retry_waiting_runs: number | null;
+      reconciliation_runs: number | null;
+      failed_runs: number | null;
+    };
+    const aggregation = this.db
+      .query(
+        "SELECT report_json FROM scheduler_aggregations WHERE cycle_id = ?",
+      )
+      .get(cycleId) as { report_json: string } | null;
+    const report =
+      aggregation === null
+        ? undefined
+        : parseJson<ProtocolJsonValue>(aggregation.report_json);
+    const findings =
+      typeof report === "object" &&
+      report !== null &&
+      !Array.isArray(report) &&
+      "provisionalFindings" in report &&
+      Array.isArray(report.provisionalFindings)
+        ? (report.provisionalFindings as unknown as SchedulerCycleStatus["provisionalFindings"])
+        : [];
+    let schedulerState: SchedulerCycleStatus["state"];
+    if (reviewState === "APPROVED") schedulerState = "COMPLETE";
+    else if (reviewState === "FAILED") schedulerState = "FAILED";
+    else if (
+      reviewState === "CANCELLED" ||
+      reviewState === "CANCEL_REQUESTED"
+    ) {
+      schedulerState = "CANCELLED";
+    } else if ((counts.reconciliation_runs ?? 0) > 0) {
+      schedulerState = "RECONCILIATION_REQUIRED";
+    } else if ((counts.failed_runs ?? 0) > 0) {
+      schedulerState = "FAILED";
+    } else if (aggregation !== null || reviewState === "AGGREGATING") {
+      schedulerState = "AGGREGATING";
+    } else if (
+      (counts.active_runs ?? 0) > 0 ||
+      (counts.completed_runs ?? 0) > 0
+    ) {
+      schedulerState = "RUNNING";
+    } else {
+      schedulerState = "QUEUED";
+    }
+    return {
+      backend: "FAKE",
+      qualification: "OFFLINE_ONLY",
+      state: schedulerState,
+      completedRuns: counts.completed_runs ?? 0,
+      requiredRuns: Math.max(counts.required_runs ?? 0, 9),
+      activeRuns: counts.active_runs ?? 0,
+      retryWaitingRuns: counts.retry_waiting_runs ?? 0,
+      reconciliationRequiredRuns: counts.reconciliation_runs ?? 0,
+      failedRuns: counts.failed_runs ?? 0,
+      provisionalFindings: findings,
+    };
+  }
+
+  readSchedulerSelectedRuns(cycleId: string): SchedulerSelectedRun[] {
+    validateIdentifier(cycleId, "cycleId");
+    this.readCycle(cycleId);
+    const rows = this.db
+      .query(
+        `SELECT j.run_id, j.direction, j.replica_index,
+                wr.parsed_result_json, wr.disposition, wr.selected
+         FROM scheduler_jobs j
+         LEFT JOIN worker_attempt_results wr
+           ON wr.direction_run_id = j.run_id AND wr.selected = 1
+         WHERE j.cycle_id = ? AND j.state = 'COMPLETE'
+         ORDER BY j.direction, j.replica_index, j.run_id`,
+      )
+      .all(cycleId) as Array<{
+      run_id: string;
+      direction: SchedulerSelectedRun["direction"];
+      replica_index: number;
+      parsed_result_json: string | null;
+      disposition: string | null;
+      selected: number | null;
+    }>;
+    if (
+      rows.length !== 9 ||
+      rows.some(
+        (row) =>
+          row.selected !== 1 ||
+          row.disposition !== "VALID" ||
+          row.parsed_result_json === null,
+      )
+    ) {
+      throw needsReconciliation(
+        "The scheduler does not have nine selected valid run outputs.",
+      );
+    }
+    return rows.map((row) => ({
+      runId: row.run_id,
+      direction: row.direction,
+      replicaIndex: row.replica_index,
+      output: parseJson<ProtocolJsonValue>(row.parsed_result_json as string),
+    }));
+  }
+
+  nextSchedulerWakeupUtc(): string | undefined {
+    const row = this.db
+      .query(
+        `SELECT MIN(CASE WHEN j.state = 'LEASED'
+             THEN j.lease_expires_at_utc ELSE j.next_attempt_at_utc END) AS next_at
+         FROM scheduler_jobs j JOIN review_cycles c ON c.cycle_id = j.cycle_id
+         WHERE c.state = 'REVIEWING' AND (
+           j.state IN ('QUEUED', 'RETRY_WAIT', 'LEASED') OR
+           (j.state = 'RECONCILIATION_REQUIRED' AND j.reconciliation_count < 3)
+         )`,
+      )
+      .get() as { next_at: string | null } | null;
+    return row?.next_at ?? undefined;
   }
 
   recordRawFinding(input: RawFindingInput): void {
@@ -2292,6 +3692,408 @@ export class SqliteStorage {
       )
       .get(callerId, operation, idempotencyKey) as IdempotencyRow | null;
     return row ?? undefined;
+  }
+
+  private schedulerJobRow(runId: string): SchedulerJobRow {
+    const row = this.db
+      .query(
+        `SELECT run_id, review_id, cycle_id, direction, replica_index,
+                state, attempt_count, max_attempts, deadline_at_utc,
+                active_attempt_id, active_work_kind, lease_owner_id, lease_token,
+                lease_expires_at_utc, latest_error_class, next_attempt_at_utc
+         FROM scheduler_jobs WHERE run_id = ?`,
+      )
+      .get(runId) as SchedulerJobRow | null;
+    if (row === null) {
+      throw new StorageError("NOT_FOUND", "Scheduler job was not found.");
+    }
+    return row;
+  }
+
+  private isCurrentSchedulerClaim(
+    job: SchedulerJobRow,
+    attemptId: string,
+    lease: FencingToken,
+    now: string,
+  ): boolean {
+    if (
+      job.state !== "LEASED" ||
+      job.active_attempt_id !== attemptId ||
+      job.lease_owner_id !== lease.ownerId ||
+      job.lease_token !== lease.token ||
+      job.lease_expires_at_utc === null ||
+      job.lease_expires_at_utc <= now ||
+      lease.resourceId !== schedulerLeaseResourceId(job.run_id)
+    ) {
+      return false;
+    }
+    const current = this.currentLease(lease.resourceId);
+    return (
+      current !== null &&
+      current.owner_id === lease.ownerId &&
+      current.fencing_token === lease.token &&
+      current.expires_at_utc !== null &&
+      current.expires_at_utc > now
+    );
+  }
+
+  private clearSchedulerJobLease(
+    runId: string,
+    attemptId: string,
+    lease: FencingToken,
+    now: string,
+    update: {
+      readonly state: SchedulerJobState;
+      readonly retryAtUtc?: string;
+      readonly latestErrorClass?: string | null;
+    },
+  ): void {
+    const job = this.schedulerJobRow(runId);
+    if (!this.isCurrentSchedulerClaim(job, attemptId, lease, now)) {
+      throw conflict(
+        "Scheduler completion supplied a stale job fencing token.",
+      );
+    }
+    const retryAt =
+      update.retryAtUtc === undefined
+        ? job.next_attempt_at_utc
+        : makeUtcTimestamp(update.retryAtUtc);
+    const errorClass =
+      update.latestErrorClass === undefined
+        ? job.latest_error_class
+        : update.latestErrorClass;
+    const changed = this.db
+      .query(
+        `UPDATE scheduler_jobs SET state = ?, next_attempt_at_utc = ?,
+         active_attempt_id = NULL, active_work_kind = NULL, lease_owner_id = NULL,
+         lease_expires_at_utc = NULL, latest_error_class = ?, updated_at_utc = ?
+         WHERE run_id = ? AND state = 'LEASED' AND active_attempt_id = ?
+         AND lease_owner_id = ? AND lease_token = ?`,
+      )
+      .run(
+        update.state,
+        retryAt,
+        errorClass,
+        now,
+        runId,
+        attemptId,
+        lease.ownerId,
+        lease.token,
+      );
+    if (changed.changes !== 1) {
+      throw conflict("Scheduler job changed before completion was committed.");
+    }
+    const released = this.db
+      .query(
+        `UPDATE leases SET owner_id = NULL, expires_at_utc = NULL,
+         updated_at_utc = ? WHERE resource_id = ? AND owner_id = ? AND fencing_token = ?`,
+      )
+      .run(now, lease.resourceId, lease.ownerId, lease.token);
+    if (released.changes !== 1) {
+      throw conflict("Scheduler lease changed before it could be released.");
+    }
+  }
+
+  private recordSchedulerRawFindings(
+    job: SchedulerJobRow,
+    resultId: string,
+    findings: readonly WorkerFinding[],
+    now: string,
+  ): void {
+    for (const finding of findings) {
+      const rawFindingId = randomUUID();
+      this.db
+        .query(
+          `INSERT INTO raw_findings
+           (raw_finding_id, result_id, local_id, payload_json, created_at_utc)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(rawFindingId, resultId, finding.localId, encodeJson(finding), now);
+      this.insertEventOutbox({
+        reviewId: job.review_id,
+        cycleId: job.cycle_id,
+        eventType: "finding.raw_recorded",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          rawFindingId,
+          resultId,
+          runId: job.run_id,
+          localId: finding.localId,
+          provisional: true,
+          semanticAdjudication: "NOT_PERFORMED",
+        },
+        occurredAtUtc: now,
+      });
+    }
+  }
+
+  private assertSchedulerOutput(
+    job: SchedulerJobRow,
+    attemptId: string,
+    output: ProtocolValueBySchema["workerOutput"],
+  ): void {
+    const row = this.db
+      .query(
+        `SELECT c.object_format, c.base_sha, c.head_sha, dr.prompt_hash
+         FROM direction_runs dr
+         JOIN review_cycles c ON c.cycle_id = dr.cycle_id
+         WHERE dr.direction_run_id = ? AND c.cycle_id = ?`,
+      )
+      .get(job.run_id, job.cycle_id) as {
+      object_format: "sha1" | "sha256";
+      base_sha: string;
+      head_sha: string;
+      prompt_hash: string;
+    } | null;
+    if (
+      row === null ||
+      output.reviewId !== job.review_id ||
+      output.cycleId !== job.cycle_id ||
+      output.runId !== job.run_id ||
+      output.attemptId !== attemptId ||
+      output.direction !== job.direction ||
+      output.objectFormat !== row.object_format ||
+      output.reviewedBaseSha !== row.base_sha ||
+      output.reviewedHeadSha !== row.head_sha ||
+      output.promptHash !== row.prompt_hash ||
+      output.verdict === "INCOMPLETE" ||
+      output.coverage.complete !== true ||
+      (output.findings.length === 0 && output.verdict !== "NO_FINDINGS") ||
+      (output.findings.length > 0 && output.verdict !== "FINDINGS")
+    ) {
+      throw invalidArgument(
+        "Worker output identity or completeness does not match its scheduler job.",
+      );
+    }
+  }
+
+  private recoverExpiredSchedulerLeases(now: string): void {
+    const rows = this.db
+      .query(
+        `SELECT j.run_id, j.review_id, j.cycle_id, j.state, j.active_attempt_id,
+                j.active_work_kind, j.lease_owner_id, j.lease_token, c.state AS cycle_state
+         FROM scheduler_jobs j
+         JOIN review_cycles c ON c.cycle_id = j.cycle_id
+         WHERE j.state = 'LEASED' AND j.lease_expires_at_utc <= ?
+         ORDER BY j.run_id`,
+      )
+      .all(now) as Array<{
+      run_id: string;
+      review_id: string;
+      cycle_id: string;
+      state: SchedulerJobState;
+      active_attempt_id: string;
+      active_work_kind: "TURN" | "RECONCILIATION";
+      lease_owner_id: string;
+      lease_token: number;
+      cycle_state: string;
+    }>;
+    for (const row of rows) {
+      const cancelled =
+        row.cycle_state === "CANCEL_REQUESTED" ||
+        row.cycle_state === "CANCELLED";
+      const obsolete =
+        row.cycle_state === "APPROVED" || row.cycle_state === "FAILED";
+      const nextState = cancelled
+        ? "CANCELLED"
+        : obsolete
+          ? "OBSOLETE"
+          : "RECONCILIATION_REQUIRED";
+      const attemptState = cancelled
+        ? "CANCELLED"
+        : obsolete
+          ? "OBSOLETE"
+          : row.active_work_kind === "TURN"
+            ? "UNKNOWN_SEND"
+            : "RECONCILIATION_UNKNOWN";
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET state = ?, error_class = ?,
+           reconciliation_outcome = CASE WHEN ? = 'RECONCILIATION_UNKNOWN'
+             THEN 'STILL_UNKNOWN' ELSE reconciliation_outcome END,
+           finished_at_utc = ? WHERE attempt_id = ? AND state IN (
+             'RUNNING', 'UNKNOWN_SEND', 'RECONCILIATION_UNKNOWN'
+           )`,
+        )
+        .run(
+          attemptState,
+          nextState === "RECONCILIATION_REQUIRED" ? "LEASE_EXPIRED" : null,
+          attemptState,
+          now,
+          row.active_attempt_id,
+        );
+      this.db
+        .query(
+          `UPDATE scheduler_jobs SET state = ?, active_attempt_id = NULL,
+           active_work_kind = NULL, lease_owner_id = NULL, lease_expires_at_utc = NULL,
+           latest_error_class = ?, updated_at_utc = ? WHERE run_id = ? AND state = 'LEASED'`,
+        )
+        .run(
+          nextState,
+          nextState === "RECONCILIATION_REQUIRED" ? "LEASE_EXPIRED" : null,
+          now,
+          row.run_id,
+        );
+      this.db
+        .query(
+          `UPDATE leases SET owner_id = NULL, expires_at_utc = NULL,
+           updated_at_utc = ? WHERE resource_id = ? AND owner_id = ? AND fencing_token = ?`,
+        )
+        .run(
+          now,
+          schedulerLeaseResourceId(row.run_id),
+          row.lease_owner_id,
+          row.lease_token,
+        );
+      this.insertEventOutbox({
+        reviewId: row.review_id,
+        cycleId: row.cycle_id,
+        eventType:
+          nextState === "RECONCILIATION_REQUIRED"
+            ? "scheduler.lease_expired_unknown_send"
+            : "scheduler.lease_expired_obsolete",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          runId: row.run_id,
+          attemptId: row.active_attempt_id,
+          previousWorkKind: row.active_work_kind,
+          state: nextState,
+          automaticRetry: false,
+        },
+        occurredAtUtc: now,
+      });
+    }
+  }
+
+  private failExpiredQueuedSchedulerJobs(now: string): void {
+    const rows = this.db
+      .query(
+        `SELECT j.run_id, j.review_id, j.cycle_id, j.direction, dr.status
+         FROM scheduler_jobs j
+         JOIN direction_runs dr ON dr.direction_run_id = j.run_id
+         JOIN review_cycles c ON c.cycle_id = j.cycle_id
+         WHERE c.state = 'REVIEWING' AND j.state IN ('QUEUED', 'RETRY_WAIT')
+           AND j.deadline_at_utc <= ?
+         ORDER BY j.run_id`,
+      )
+      .all(now) as Array<{
+      run_id: string;
+      review_id: string;
+      cycle_id: string;
+      direction: string;
+      status: DirectionRunStatus;
+    }>;
+    for (const row of rows) {
+      this.db
+        .query(
+          `UPDATE scheduler_jobs SET state = 'FAILED',
+           latest_error_class = 'DEADLINE_EXCEEDED', updated_at_utc = ?
+           WHERE run_id = ? AND state IN ('QUEUED', 'RETRY_WAIT')`,
+        )
+        .run(now, row.run_id);
+      if (row.status === "PENDING" || row.status === "RUNNING") {
+        this.db
+          .query(
+            `UPDATE direction_runs SET status = 'FAILED'
+             WHERE direction_run_id = ?`,
+          )
+          .run(row.run_id);
+        this.insertEventOutbox({
+          reviewId: row.review_id,
+          cycleId: row.cycle_id,
+          eventType: "direction_run.status_changed",
+          payload: {
+            backend: "FAKE",
+            qualification: "OFFLINE_ONLY",
+            directionRunId: row.run_id,
+            direction: row.direction,
+            previousStatus: row.status,
+            status: "FAILED",
+            errorClass: "DEADLINE_EXCEEDED",
+          },
+          occurredAtUtc: now,
+        });
+      }
+      this.insertEventOutbox({
+        reviewId: row.review_id,
+        cycleId: row.cycle_id,
+        eventType: "scheduler.run_failed",
+        payload: {
+          backend: "FAKE",
+          qualification: "OFFLINE_ONLY",
+          runId: row.run_id,
+          errorClass: "DEADLINE_EXCEEDED",
+          jobState: "FAILED",
+        },
+        occurredAtUtc: now,
+      });
+    }
+  }
+
+  private failSchedulerJobWithinTransaction(
+    runId: string,
+    errorClass: string,
+    now: string,
+  ): void {
+    const job = this.schedulerJobRow(runId);
+    if (
+      job.state === "COMPLETE" ||
+      job.state === "FAILED" ||
+      job.state === "CANCELLED" ||
+      job.state === "OBSOLETE"
+    ) {
+      return;
+    }
+    if (job.lease_owner_id !== null) {
+      this.db
+        .query(
+          `UPDATE leases SET owner_id = NULL, expires_at_utc = NULL,
+           updated_at_utc = ? WHERE resource_id = ? AND owner_id = ? AND fencing_token = ?`,
+        )
+        .run(
+          now,
+          schedulerLeaseResourceId(runId),
+          job.lease_owner_id,
+          job.lease_token,
+        );
+    }
+    if (job.active_attempt_id !== null) {
+      this.db
+        .query(
+          `UPDATE scheduler_attempts SET state = 'PERMANENT_FAILURE',
+           error_class = ?, finished_at_utc = ? WHERE attempt_id = ?
+           AND state IN ('RUNNING', 'UNKNOWN_SEND', 'RECONCILIATION_UNKNOWN')`,
+        )
+        .run(errorClass, now, job.active_attempt_id);
+    }
+    this.db
+      .query(
+        `UPDATE scheduler_jobs SET state = 'FAILED', active_attempt_id = NULL,
+         active_work_kind = NULL, lease_owner_id = NULL, lease_expires_at_utc = NULL,
+         latest_error_class = ?, updated_at_utc = ? WHERE run_id = ?`,
+      )
+      .run(errorClass, now, runId);
+    this.db
+      .query(
+        `UPDATE direction_runs SET status = 'FAILED'
+         WHERE direction_run_id = ? AND status IN ('PENDING', 'RUNNING')`,
+      )
+      .run(runId);
+    this.insertEventOutbox({
+      reviewId: job.review_id,
+      cycleId: job.cycle_id,
+      eventType: "scheduler.run_failed",
+      payload: {
+        backend: "FAKE",
+        qualification: "OFFLINE_ONLY",
+        runId,
+        errorClass,
+        jobState: "FAILED",
+      },
+      occurredAtUtc: now,
+    });
   }
 
   private reviewIdForCycle(cycleId: string): string {

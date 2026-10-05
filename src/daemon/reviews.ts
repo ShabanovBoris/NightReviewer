@@ -17,6 +17,7 @@ import {
   type VersionHashBinding,
   validateProtocolValue,
 } from "../protocol";
+import type { DurableScheduler } from "../scheduler";
 import type { SnapshotService } from "../snapshot";
 import { defaultSnapshotLimits, SnapshotError } from "../snapshot";
 import type { CanonicalFindingRecord, SnapshotCycleContext } from "../storage";
@@ -60,6 +61,7 @@ export interface ReviewRuntimeOptions {
   readonly trustedRepositoryIds: ReadonlySet<string>;
   readonly bindingProvider?: (input: ReviewSubmitInput) => VersionHashBinding;
   readonly drainTimeoutMs?: number;
+  readonly scheduler?: DurableScheduler;
 }
 
 interface ActiveSnapshot {
@@ -73,6 +75,7 @@ export class DaemonReviewRuntime {
     input: ReviewSubmitInput,
   ) => VersionHashBinding;
   private readonly drainTimeoutMs: number;
+  private readonly scheduler: DurableScheduler | undefined;
   private started = false;
   private pumping = false;
   private pumpScheduled = false;
@@ -84,6 +87,7 @@ export class DaemonReviewRuntime {
     this.bindingProvider = options.bindingProvider ?? defaultBindingProvider;
     this.drainTimeoutMs =
       options.drainTimeoutMs ?? defaultSnapshotLimits.maxCreationTimeMs + 5_000;
+    this.scheduler = options.scheduler;
   }
 
   start(): void {
@@ -143,6 +147,7 @@ export class DaemonReviewRuntime {
       for (const entry of this.activeSnapshots.values())
         entry.controller.abort();
     }
+    await this.scheduler?.drain(timeoutMs);
   }
 
   private async submit(
@@ -243,6 +248,7 @@ export class DaemonReviewRuntime {
     const findings = this.options.store
       .readCanonicalFindings(review.cycleId)
       .map((finding) => canonicalFinding(finding, correlationId));
+    const scheduler = this.scheduler?.progress(review.cycleId);
     const result = {
       reviewId: review.reviewId,
       cycleId: review.cycleId,
@@ -250,10 +256,23 @@ export class DaemonReviewRuntime {
       state: review.state,
       stateVersion: review.stateVersion,
       progress: {
-        completedRuns: 0,
-        requiredRuns: STRICT_REQUIRED_RUNS,
-        activeRuns: 0,
+        completedRuns: scheduler?.completedRuns ?? 0,
+        requiredRuns: scheduler?.requiredRuns ?? STRICT_REQUIRED_RUNS,
+        activeRuns: scheduler?.activeRuns ?? 0,
       },
+      ...(scheduler === undefined
+        ? {}
+        : {
+            scheduler: {
+              backend: scheduler.backend,
+              qualification: scheduler.qualification,
+              state: scheduler.state,
+              retryWaitingRuns: scheduler.retryWaitingRuns,
+              reconciliationRequiredRuns: scheduler.reconciliationRequiredRuns,
+              failedRuns: scheduler.failedRuns,
+              provisionalFindings: scheduler.provisionalFindings,
+            },
+          }),
       findings,
       coverage,
       nextAction: NEXT_ACTION[review.state],
@@ -411,6 +430,7 @@ export class DaemonReviewRuntime {
       review = this.options.store.readReview(input.reviewId);
     }
 
+    await this.scheduler?.cancelCycle(review.cycleId);
     const active = this.activeSnapshots.get(review.cycleId);
     if (active !== undefined) {
       active.controller.abort();
@@ -558,6 +578,10 @@ export class DaemonReviewRuntime {
         },
         { ownerFencing: this.options.owner.fencingToken() },
       );
+      const reviewingContext = this.options.store.readSnapshotCycleContext(
+        context.cycleId,
+      );
+      this.scheduler?.activateCycle(reviewingContext);
     } catch (error) {
       if (signal.aborted) return;
       try {

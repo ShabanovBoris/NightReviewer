@@ -6,9 +6,10 @@ import type {
   ReviewSubmitInput,
   VersionHashBinding,
   WorkerDirection,
+  WorkerFinding,
 } from "../protocol";
 
-export const STORAGE_SCHEMA_VERSION = 2;
+export const STORAGE_SCHEMA_VERSION = 3;
 
 export interface OpenStorageOptions {
   /** One NightReviewer-owned directory. Database/artifact paths are fixed beneath it. */
@@ -171,6 +172,165 @@ export interface DirectionRunInput {
   readonly schemaHash: string;
   readonly policyHash: string;
   readonly createdAtUtc?: string;
+}
+
+export interface SchedulerRunInput extends DirectionRunInput {
+  readonly reviewId: string;
+  readonly replicaIndex: number;
+  readonly maxAttempts: number;
+  readonly deadlineAtUtc: string;
+}
+
+export type SchedulerJobState =
+  | "QUEUED"
+  | "LEASED"
+  | "RETRY_WAIT"
+  | "RECONCILIATION_REQUIRED"
+  | "COMPLETE"
+  | "FAILED"
+  | "CANCELLED"
+  | "OBSOLETE";
+
+export type SchedulerAttemptState =
+  | "RUNNING"
+  | "SUCCEEDED"
+  | "RETRYABLE_FAILURE"
+  | "PERMANENT_FAILURE"
+  | "MALFORMED"
+  | "UNKNOWN_SEND"
+  | "RECONCILED_UNSENT"
+  | "RECONCILED_ACCEPTED"
+  | "RECONCILIATION_UNKNOWN"
+  | "OBSOLETE"
+  | "CANCELLED";
+
+export interface ClaimedSchedulerJob {
+  readonly reviewId: string;
+  readonly cycleId: string;
+  readonly runId: string;
+  readonly direction: WorkerDirection;
+  readonly replicaIndex: number;
+  readonly attemptId: string;
+  readonly attemptNumber: number;
+  readonly workKind: "TURN" | "RECONCILIATION";
+  readonly deadlineAtUtc: string;
+  readonly attemptDeadlineAtUtc: string;
+  readonly lease: FencingToken;
+  readonly leaseExpiresAtUtc: string;
+}
+
+export interface ClaimSchedulerJobInput {
+  readonly ownerFencing: FencingToken;
+  readonly nowUtc?: string;
+  readonly leaseTtlMs: number;
+  readonly attemptTimeoutMs: number;
+}
+
+export interface EnsureSchedulerRunsInput {
+  readonly cycleId: string;
+  readonly runs: readonly SchedulerRunInput[];
+  readonly ownerFencing: FencingToken;
+  readonly nowUtc?: string;
+}
+
+export interface SchedulerProvisionalFinding {
+  readonly runId: string;
+  readonly direction: WorkerDirection;
+  readonly replicaIndex: number;
+  readonly localId: string;
+  readonly finding: WorkerFinding;
+}
+
+export interface SchedulerCycleStatus {
+  readonly backend: "FAKE";
+  readonly qualification: "OFFLINE_ONLY";
+  readonly state:
+    | "QUEUED"
+    | "RUNNING"
+    | "RECONCILIATION_REQUIRED"
+    | "AGGREGATING"
+    | "COMPLETE"
+    | "FAILED"
+    | "CANCELLED";
+  readonly completedRuns: number;
+  readonly requiredRuns: number;
+  readonly activeRuns: number;
+  readonly retryWaitingRuns: number;
+  readonly reconciliationRequiredRuns: number;
+  readonly failedRuns: number;
+  readonly provisionalFindings: readonly SchedulerProvisionalFinding[];
+}
+
+export interface SchedulerSelectedRun {
+  readonly runId: string;
+  readonly direction: WorkerDirection;
+  readonly replicaIndex: number;
+  readonly output: ProtocolJsonValue;
+}
+
+export interface SchedulerAttemptResultInput {
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly ownerFencing: FencingToken;
+  readonly lease: FencingToken;
+  readonly outcome:
+    | "SUCCESS"
+    | "RETRYABLE_FAILURE"
+    | "PERMANENT_FAILURE"
+    | "MALFORMED"
+    | "UNKNOWN_SEND";
+  readonly rawArtifact: ArtifactReference;
+  readonly parsedResult?: unknown;
+  readonly errorClass?: string;
+  readonly retryAtUtc?: string;
+  readonly occurredAtUtc?: string;
+}
+
+export type SchedulerReconciliationInput =
+  | {
+      readonly runId: string;
+      readonly attemptId: string;
+      readonly ownerFencing: FencingToken;
+      readonly lease: FencingToken;
+      readonly outcome: "PROVEN_UNSENT";
+      readonly retryAtUtc?: string;
+      readonly occurredAtUtc?: string;
+    }
+  | {
+      readonly runId: string;
+      readonly attemptId: string;
+      readonly ownerFencing: FencingToken;
+      readonly lease: FencingToken;
+      readonly outcome: "PROVEN_ACCEPTED_WITH_RESULT";
+      readonly rawArtifact: ArtifactReference;
+      readonly parsedResult: unknown;
+      readonly occurredAtUtc?: string;
+    }
+  | {
+      readonly runId: string;
+      readonly attemptId: string;
+      readonly ownerFencing: FencingToken;
+      readonly lease: FencingToken;
+      readonly outcome: "STILL_UNKNOWN";
+      readonly retryAtUtc?: string;
+      readonly occurredAtUtc?: string;
+    };
+
+export interface SchedulerAggregationInput {
+  readonly cycleId: string;
+  readonly ownerFencing: FencingToken;
+  readonly backend: "FAKE";
+  readonly qualification: "OFFLINE_ONLY";
+  readonly state: "NO_FINDINGS" | "PROVISIONAL_FINDINGS";
+  readonly report: ProtocolJsonValue;
+  readonly rawArtifact: ArtifactReference;
+  readonly occurredAtUtc?: string;
+}
+
+export interface CancelSchedulerCycleInput {
+  readonly cycleId: string;
+  readonly ownerFencing: FencingToken;
+  readonly occurredAtUtc?: string;
 }
 
 export type DirectionRunStatus =

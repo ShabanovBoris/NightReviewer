@@ -4,5 +4,6 @@ export * from "./context";
 export * from "./daemon";
 export * from "./mcp";
 export * from "./protocol";
+export * from "./scheduler";
 export * from "./snapshot";
 export * from "./storage";

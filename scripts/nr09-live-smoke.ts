@@ -373,6 +373,7 @@ export function buildQualificationPrompt(
     "Return exactly one schema-valid nr-review/1 workerOutput with verdict INCOMPLETE,",
     "coverage.complete false, empty paths, empty findings, and one limitation stating",
     "that this turn proves transport only and performs no semantic review.",
+    "Qualification acceptance criterion: NR09_LIVE_QUALIFICATION.",
     "Echo the exact run-bound identity appended by the caller. Do not add prose outside JSON.",
     "Qualification identity: " +
       JSON.stringify({

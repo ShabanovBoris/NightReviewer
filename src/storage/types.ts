@@ -9,7 +9,7 @@ import type {
   WorkerFinding,
 } from "../protocol";
 
-export const STORAGE_SCHEMA_VERSION = 3;
+export const STORAGE_SCHEMA_VERSION = 4;
 
 export interface OpenStorageOptions {
   /** One NightReviewer-owned directory. Database/artifact paths are fixed beneath it. */
@@ -55,6 +55,12 @@ export interface ArtifactReference {
   readonly sha256: string;
   readonly sizeBytes: number;
   readonly relativePath: string;
+}
+
+export interface RawArtifactCapture {
+  write(bytes: Uint8Array): Promise<void>;
+  commit(): Promise<ArtifactReference>;
+  abort(): Promise<void>;
 }
 
 export type ArtifactIssueKind =
@@ -181,6 +187,47 @@ export interface SchedulerRunInput extends DirectionRunInput {
   readonly deadlineAtUtc: string;
 }
 
+export type SchedulerBackendKind = "FAKE" | "LIVE";
+export type SchedulerQualification = "OFFLINE_ONLY" | "LIVE_PRODUCTION_BRIDGE";
+export type SchedulerRunPlanId = "NR08_FAKE_3X3" | "NR09_LIVE_QUALIFICATION";
+
+/** Non-secret, immutable backend identity stored before any scheduler claim. */
+export interface SchedulerBackendProfile {
+  readonly backend: SchedulerBackendKind;
+  readonly backendProtocol: string;
+  readonly bridgeVersionPin: string;
+  readonly model: string;
+  readonly reasoningEffort: string;
+  readonly qualification: SchedulerQualification;
+  readonly configurationDigest: string;
+  readonly runPlan: SchedulerRunPlanId;
+  readonly requiredRuns: 1 | 9;
+}
+
+export interface SchedulerBackendBinding extends SchedulerBackendProfile {
+  readonly cycleId: string;
+  readonly createdAtUtc: string;
+}
+
+export type SchedulerAttemptArtifactPurpose =
+  | "HEALTH"
+  | "MODEL_CATALOG"
+  | "TURN_RESPONSE"
+  | "SCHEMA_REPAIR_RESPONSE"
+  | "LOCAL_DIAGNOSTIC"
+  | "RECEIPT";
+
+export interface SchedulerAttemptArtifact {
+  readonly purpose: SchedulerAttemptArtifactPurpose;
+  readonly reference: ArtifactReference;
+}
+
+export interface SchedulerAttemptProvenance {
+  readonly sendState: "UNSENT" | "SENT" | "UNKNOWN" | null;
+  readonly receiptArtifact?: ArtifactReference;
+  readonly artifacts: readonly SchedulerAttemptArtifact[];
+}
+
 export type SchedulerJobState =
   | "QUEUED"
   | "LEASED"
@@ -228,6 +275,7 @@ export interface ClaimSchedulerJobInput {
 
 export interface EnsureSchedulerRunsInput {
   readonly cycleId: string;
+  readonly backendBinding: SchedulerBackendProfile;
   readonly runs: readonly SchedulerRunInput[];
   readonly ownerFencing: FencingToken;
   readonly nowUtc?: string;
@@ -242,8 +290,8 @@ export interface SchedulerProvisionalFinding {
 }
 
 export interface SchedulerCycleStatus {
-  readonly backend: "FAKE";
-  readonly qualification: "OFFLINE_ONLY";
+  readonly backend: SchedulerBackendKind;
+  readonly qualification: SchedulerQualification;
   readonly state:
     | "QUEUED"
     | "RUNNING"
@@ -280,6 +328,9 @@ export interface SchedulerAttemptResultInput {
     | "MALFORMED"
     | "UNKNOWN_SEND";
   readonly rawArtifact: ArtifactReference;
+  readonly sendState?: "UNSENT" | "SENT" | "UNKNOWN";
+  readonly receiptArtifact?: ArtifactReference;
+  readonly auxiliaryArtifacts?: readonly SchedulerAttemptArtifact[];
   readonly parsedResult?: unknown;
   readonly errorClass?: string;
   readonly retryAtUtc?: string;
@@ -330,6 +381,10 @@ export interface SchedulerAggregationInput {
 export interface CancelSchedulerCycleInput {
   readonly cycleId: string;
   readonly ownerFencing: FencingToken;
+  readonly activeAttemptSendStates?: readonly {
+    readonly attemptId: string;
+    readonly sendState: "UNSENT" | "UNKNOWN";
+  }[];
   readonly occurredAtUtc?: string;
 }
 

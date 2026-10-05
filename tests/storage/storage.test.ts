@@ -22,6 +22,7 @@ import {
   versionHashBindingExample,
 } from "../../src/protocol";
 import {
+  artifactReferenceFor,
   type CreatedReview,
   openStorage,
   restoreStorageBackup,
@@ -702,6 +703,63 @@ test("uses expiring leases and fencing tokens to reject stale state mutations", 
   }
 });
 
+test("captures streamed raw artifact bytes durably before committing the exact digest", async () => {
+  const root = await temporaryRoot();
+  const storeDir = path.join(root, "store");
+  let store: SqliteStorage | undefined;
+  try {
+    store = await openStorage({ rootDir: storeDir });
+    const capture = await store.beginRawArtifactCapture();
+    const firstChunk = new TextEncoder().encode("event: response.created\n");
+    const secondChunk = new TextEncoder().encode(
+      'data: {"id":"response-1"}\n\n',
+    );
+    await capture.write(firstChunk);
+
+    const temporaryDirectory = path.join(storeDir, "artifacts", "sha256");
+    const temporaryName = (await readdir(temporaryDirectory)).find((name) =>
+      name.startsWith(".tmp-"),
+    );
+    if (temporaryName === undefined) {
+      throw new Error("Streamed artifact temporary file was not created.");
+    }
+    expect(
+      new Uint8Array(
+        await readFile(path.join(temporaryDirectory, temporaryName)),
+      ),
+    ).toEqual(firstChunk);
+
+    await capture.write(secondChunk);
+    const reference = await capture.commit();
+    const expectedBytes = new Uint8Array(
+      firstChunk.byteLength + secondChunk.byteLength,
+    );
+    expectedBytes.set(firstChunk);
+    expectedBytes.set(secondChunk, firstChunk.byteLength);
+    expect(await store.readRawArtifact(reference)).toEqual(expectedBytes);
+    expect(reference).toMatchObject({
+      sha256: artifactReferenceFor(expectedBytes).sha256,
+      sizeBytes: firstChunk.byteLength + secondChunk.byteLength,
+    });
+    expect(
+      (await readdir(temporaryDirectory)).some((name) =>
+        name.startsWith(".tmp-"),
+      ),
+    ).toBe(false);
+
+    const abandoned = await store.beginRawArtifactCapture();
+    await abandoned.write(firstChunk);
+    await abandoned.abort();
+    expect(
+      (await readdir(temporaryDirectory)).some((name) =>
+        name.startsWith(".tmp-"),
+      ),
+    ).toBe(false);
+  } finally {
+    await closeStoresAndRemove(root, [store]);
+  }
+});
+
 test("retains malformed raw bytes and reconciliation reports crash or file-integrity gaps", async () => {
   const root = await temporaryRoot();
   const storeDir = path.join(root, "store");
@@ -927,7 +985,7 @@ test("backs up populated v1 before forward migration and refuses a future schema
   let current: SqliteStorage | undefined;
   try {
     migrated = await openStorage({ rootDir: legacyDir });
-    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.readReview("legacy-review").state).toBe("QUEUED");
     const backupParent = path.join(legacyDir, "migration-backups");
     const backupNames = await readdir(backupParent);
@@ -935,6 +993,9 @@ test("backs up populated v1 before forward migration and refuses a future schema
       name.startsWith("schema-1-to-2-"),
     );
     expect(backupNames.some((name) => name.startsWith("schema-2-to-3-"))).toBe(
+      true,
+    );
+    expect(backupNames.some((name) => name.startsWith("schema-3-to-4-"))).toBe(
       true,
     );
     if (backupName === undefined)

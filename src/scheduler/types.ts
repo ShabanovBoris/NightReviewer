@@ -50,6 +50,7 @@ export interface BackendInvocationInput {
   readonly claim: ClaimedSchedulerJob;
   readonly context: SchedulerRunContext;
   readonly signal: AbortSignal;
+  readonly reportSendState?: (state: "UNSENT" | "UNKNOWN") => void;
 }
 
 export interface BackendTurnReceipt {

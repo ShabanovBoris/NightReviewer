@@ -10,7 +10,11 @@ import type {
   ReviewerBackend,
   SchedulerPromptContext,
 } from "../scheduler/types";
-import type { ArtifactReference, SchedulerBackendProfile } from "../storage";
+import type {
+  ArtifactReference,
+  RawArtifactCapture,
+  SchedulerBackendProfile,
+} from "../storage";
 import {
   type BridgeSseOutcome,
   type BridgeSseResponseObservation,
@@ -45,6 +49,9 @@ export type ChatGptWebRawArtifactStore = (
   bytes: Uint8Array,
 ) => Promise<ArtifactReference>;
 
+export type ChatGptWebRawArtifactCaptureFactory =
+  () => Promise<RawArtifactCapture>;
+
 export interface ChatGptWebBackendOptions {
   readonly baseUrl: string | URL;
   readonly apiKey: string;
@@ -56,6 +63,7 @@ export interface ChatGptWebBackendOptions {
   readonly credentialProfileId: string;
   readonly buildPrompt: (context: SchedulerPromptContext) => string;
   readonly persistRawArtifact: ChatGptWebRawArtifactStore;
+  readonly createRawArtifactCapture: ChatGptWebRawArtifactCaptureFactory;
   readonly fetcher?: typeof fetch;
   readonly createId?: () => string;
   readonly now?: () => Date;
@@ -170,6 +178,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   readonly #maxResponseBytes: number;
   readonly #buildPrompt: (context: SchedulerPromptContext) => string;
   readonly #persistRawArtifact: ChatGptWebRawArtifactStore;
+  readonly #createRawArtifactCapture: ChatGptWebRawArtifactCaptureFactory;
   readonly #fetcher: typeof fetch;
   readonly #createId: () => string;
   readonly #now: () => Date;
@@ -206,6 +215,9 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     if (typeof options.persistRawArtifact !== "function") {
       throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
     }
+    if (typeof options.createRawArtifactCapture !== "function") {
+      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+    }
     if (
       typeof options.credentialProfileId !== "string" ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(options.credentialProfileId)
@@ -214,6 +226,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     }
     this.#buildPrompt = options.buildPrompt;
     this.#persistRawArtifact = options.persistRawArtifact;
+    this.#createRawArtifactCapture = options.createRawArtifactCapture;
     this.#fetcher = options.fetcher ?? fetch;
     this.#createId = options.createId ?? randomUUID;
     this.#now = options.now ?? (() => new Date());
@@ -349,6 +362,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   async invoke(
     input: BackendInvocationInput,
   ): Promise<BackendInvocationResult> {
+    input.reportSendState?.("UNSENT");
     const rawArtifacts: ChatGptWebCapturedArtifact[] = [];
     const threadId = this.#createId();
     const turnIds: string[] = [];
@@ -394,6 +408,16 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
         purpose: "TURN_RESPONSE",
       });
     } catch (error) {
+      if (isProvenUnsentAbort(error)) {
+        turnIds.pop();
+        return this.#cancelledBeforeSend(
+          error,
+          input,
+          compatibility,
+          rawArtifacts,
+          { ...session },
+        );
+      }
       return this.#unknownAfterSend(error, input, compatibility, rawArtifacts, {
         ...session,
       });
@@ -640,7 +664,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     },
   ): Promise<CapturedResponse> {
     if (input.signal.aborted) {
-      throw new ChatGptWebBackendError("REQUEST_TIMEOUT", false, "UNKNOWN");
+      throw new ChatGptWebBackendError("REQUEST_ABORTED", false, "UNSENT");
     }
     const body = {
       model: this.#model,
@@ -684,6 +708,15 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       },
     };
     const scope = createRequestScope(input.signal, this.#requestTimeoutMs);
+    if (scope.parentAborted()) {
+      scope.close();
+      throw new ChatGptWebBackendError("REQUEST_ABORTED", false, "UNSENT");
+    }
+    if (scope.timedOut()) {
+      scope.close();
+      throw new ChatGptWebBackendError("REQUEST_TIMEOUT", true, "UNSENT");
+    }
+    input.reportSendState?.("UNKNOWN");
     let response: Response;
     try {
       try {
@@ -716,43 +749,83 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
           "UNKNOWN",
         );
       }
-      const read = await readBoundedBody(
-        response,
-        scope.signal,
-        this.#maxResponseBytes,
-      );
-      const reference = await this.#persist(read.bytes, turn.purpose);
       const contentType = response.headers.get("content-type") ?? "";
       const contentTypeValid =
         response.status !== 200 ||
         contentType.toLowerCase().includes("text/event-stream");
       const observations: BridgeSseResponseObservation[] = [];
-      const outcome =
-        read.complete &&
-        !read.tooLarge &&
-        contentTypeValid &&
-        !scope.signal.aborted
-          ? await readBridgeSse(
-              new Response(
-                read.bytes.byteLength === 0
-                  ? null
-                  : exactArrayBuffer(read.bytes),
-                {
-                  status: response.status,
-                  headers: response.headers,
-                },
-              ),
-              {
-                onResponseObservation: (value) => observations.push(value),
-              },
-            )
-          : undefined;
+      let bytes: Uint8Array;
+      let complete: boolean;
+      let tooLarge: boolean;
+      let outcome: BridgeSseOutcome | undefined;
+      let reference: ArtifactReference;
+      if (response.status === 200 && contentTypeValid) {
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        let capture: RawArtifactCapture;
+        try {
+          capture = await this.#createRawArtifactCapture();
+        } catch {
+          await response.body?.cancel().catch(() => undefined);
+          throw new ChatGptWebBackendError(
+            "RAW_PERSISTENCE_FAILED",
+            false,
+            "UNKNOWN",
+          );
+        }
+        let captureFailed = false;
+        try {
+          outcome = await readBridgeSse(response, {
+            signal: scope.signal,
+            maxRawBytes: this.#maxResponseBytes,
+            onRawChunk: async (chunk) => {
+              const stableChunk = Uint8Array.from(chunk);
+              try {
+                await capture.write(stableChunk);
+              } catch {
+                captureFailed = true;
+                throw new Error("Raw artifact capture failed.");
+              }
+              chunks.push(stableChunk);
+              total += stableChunk.byteLength;
+            },
+            onResponseObservation: (value) => observations.push(value),
+          });
+          tooLarge =
+            outcome.kind === "incomplete" &&
+            outcome.reason === "response_body_too_large";
+          complete = outcome.kind !== "cancelled" && !tooLarge;
+        } catch {
+          complete = false;
+          tooLarge = false;
+        }
+        if (captureFailed) {
+          await capture.abort().catch(() => undefined);
+          throw new ChatGptWebBackendError(
+            "RAW_PERSISTENCE_FAILED",
+            false,
+            "UNKNOWN",
+          );
+        }
+        bytes = joinBytes(chunks, total);
+        reference = await this.#commitRawArtifactCapture(capture, bytes);
+      } else {
+        const read = await readBoundedBody(
+          response,
+          scope.signal,
+          this.#maxResponseBytes,
+        );
+        bytes = read.bytes;
+        complete = read.complete;
+        tooLarge = read.tooLarge;
+        reference = await this.#persist(bytes, turn.purpose);
+      }
       return {
-        bytes: read.bytes,
+        bytes,
         reference,
         response,
-        complete: read.complete,
-        tooLarge: read.tooLarge,
+        complete,
+        tooLarge,
         contentTypeValid,
         timedOut: scope.timedOut(),
         parentAborted: scope.parentAborted(),
@@ -1009,6 +1082,37 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     };
   }
 
+  async #cancelledBeforeSend(
+    error: ChatGptWebBackendError,
+    input: BackendInvocationInput,
+    compatibility: ChatGptWebCompatibility,
+    rawArtifacts: ChatGptWebCapturedArtifact[],
+    session: {
+      readonly threadId: string;
+      readonly turnIds: readonly string[];
+      readonly responseIds: readonly string[];
+      readonly observedModel?: string | null;
+      readonly observedReasoningEffort?: string | null;
+    },
+  ): Promise<BackendInvocationResult> {
+    const bytes = diagnosticBytes(error.code, "responses");
+    const diagnostic = await this.#persist(bytes, "LOCAL_DIAGNOSTIC");
+    rawArtifacts.push({ purpose: "LOCAL_DIAGNOSTIC", reference: diagnostic });
+    return this.#resultWithReceipt(
+      {
+        kind: "PERMANENT_FAILURE",
+        errorClass: "PERMANENT",
+        rawBytes: bytes,
+        sendState: "UNSENT",
+      },
+      input,
+      compatibility,
+      rawArtifacts,
+      session,
+      "ABORTED",
+    );
+  }
+
   async #unknownAfterSend(
     error: unknown,
     input: BackendInvocationInput,
@@ -1114,6 +1218,14 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     try {
       receiptArtifact = await this.#persist(receiptBytes, "LOCAL_DIAGNOSTIC");
     } catch {
+      if (sendState === "UNSENT") {
+        return {
+          ...result,
+          sendState,
+          ...(primaryRawArtifact === undefined ? {} : { primaryRawArtifact }),
+          rawArtifacts,
+        };
+      }
       return {
         kind: "UNKNOWN_SEND",
         errorClass: "UNKNOWN_SEND",
@@ -1148,6 +1260,30 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       }
       return reference;
     } catch {
+      throw new ChatGptWebBackendError(
+        "RAW_PERSISTENCE_FAILED",
+        false,
+        "UNKNOWN",
+      );
+    }
+  }
+
+  async #commitRawArtifactCapture(
+    capture: RawArtifactCapture,
+    bytes: Uint8Array,
+  ): Promise<ArtifactReference> {
+    try {
+      const reference = await capture.commit();
+      if (
+        reference.sha256 !== sha256(bytes) ||
+        reference.sizeBytes !== bytes.byteLength ||
+        typeof reference.relativePath !== "string"
+      ) {
+        throw new Error("mismatch");
+      }
+      return reference;
+    } catch {
+      await capture.abort().catch(() => undefined);
       throw new ChatGptWebBackendError(
         "RAW_PERSISTENCE_FAILED",
         false,
@@ -1368,12 +1504,12 @@ function joinBytes(chunks: readonly Uint8Array[], total: number): Uint8Array {
   return joined;
 }
 
-function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const exact = Buffer.from(bytes);
-  return exact.buffer.slice(
-    exact.byteOffset,
-    exact.byteOffset + exact.byteLength,
-  ) as ArrayBuffer;
+function isProvenUnsentAbort(error: unknown): error is ChatGptWebBackendError {
+  return (
+    error instanceof ChatGptWebBackendError &&
+    error.code === "REQUEST_ABORTED" &&
+    error.sendState === "UNSENT"
+  );
 }
 
 function workerOutputJsonSchema(): Record<string, unknown> {

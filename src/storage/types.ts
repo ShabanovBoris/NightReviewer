@@ -57,6 +57,12 @@ export interface ArtifactReference {
   readonly relativePath: string;
 }
 
+export interface RawArtifactCapture {
+  write(bytes: Uint8Array): Promise<void>;
+  commit(): Promise<ArtifactReference>;
+  abort(): Promise<void>;
+}
+
 export type ArtifactIssueKind =
   | "ORPHAN_FILE"
   | "MISSING_FILE"
@@ -375,6 +381,10 @@ export interface SchedulerAggregationInput {
 export interface CancelSchedulerCycleInput {
   readonly cycleId: string;
   readonly ownerFencing: FencingToken;
+  readonly activeAttemptSendStates?: readonly {
+    readonly attemptId: string;
+    readonly sendState: "UNSENT" | "UNKNOWN";
+  }[];
   readonly occurredAtUtc?: string;
 }
 

@@ -43,6 +43,9 @@ export type BridgeSseTerminalEvent =
 /** Keeps trace capture opt-in so ordinary contract/cancellation parsing retains no extra response data. */
 export interface BridgeSseOptions {
   readonly signal?: AbortSignal;
+  readonly maxRawBytes?: number;
+  /** Receives exact body bytes before the reducer decodes or interprets them. */
+  readonly onRawChunk?: (chunk: Uint8Array) => void | Promise<void>;
   readonly onTerminalEvent?: (eventName: BridgeSseTerminalEvent) => void;
   readonly onResponseObservation?: (
     observation: BridgeSseResponseObservation,
@@ -255,6 +258,13 @@ export async function readBridgeSse(
     });
 
   const reader = response.body.getReader();
+  const maxRawBytes = options.maxRawBytes ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(maxRawBytes) || maxRawBytes < 0) {
+    reader.releaseLock();
+    throw new RangeError(
+      "SSE raw byte limit must be a non-negative safe integer.",
+    );
+  }
   const decoder = new TextDecoder();
   const functionCalls = new Map<string, FunctionCallState>();
   let frame: SseFrame = { data: [] };
@@ -262,7 +272,13 @@ export async function readBridgeSse(
   let responseId: string | undefined;
   let outputText = "";
   let terminal: BridgeSseOutcome | undefined;
+  let rawBytes = 0;
   const events = new Set<string>();
+  const cancelOnAbort = (): void => {
+    void reader.cancel().catch(() => undefined);
+  };
+  options.signal?.addEventListener("abort", cancelOnAbort, { once: true });
+  if (options.signal?.aborted) cancelOnAbort();
   // The control probe must distinguish a terminal SSE frame from later HTTP-owner cleanup.
   const notifyTerminalEvent = (eventName: string | undefined): void => {
     if (
@@ -469,6 +485,24 @@ export async function readBridgeSse(
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) break;
+      const remaining = maxRawBytes - rawBytes;
+      if (chunk.value.byteLength > remaining) {
+        traceComplete = false;
+        if (remaining > 0) {
+          const retained = chunk.value.subarray(0, remaining);
+          await options.onRawChunk?.(retained);
+          rawBytes += retained.byteLength;
+        }
+        await reader.cancel().catch(() => undefined);
+        return withTrace({
+          kind: "incomplete",
+          ...(responseId ? { responseId } : {}),
+          reason: "response_body_too_large",
+          events: [...events],
+        });
+      }
+      await options.onRawChunk?.(chunk.value);
+      rawBytes += chunk.value.byteLength;
       pending += decoder.decode(chunk.value, { stream: true });
       let cursor = 0;
       for (let index = 0; index < pending.length; index += 1) {
@@ -494,6 +528,7 @@ export async function readBridgeSse(
     if (pending) consumeLine(pending);
     dispatch();
   } catch (error) {
+    await reader.cancel(error).catch(() => undefined);
     if (options.signal?.aborted)
       return withTrace({ kind: "cancelled", events: [...events] });
     if (traceFrames) {
@@ -502,6 +537,7 @@ export async function readBridgeSse(
     }
     throw error;
   } finally {
+    options.signal?.removeEventListener("abort", cancelOnAbort);
     reader.releaseLock();
   }
 

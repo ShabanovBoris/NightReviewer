@@ -772,6 +772,59 @@ test("queued cancellation makes no backend invocation", async () => {
   }
 });
 
+test("cancellation preserves a backend's proven-unsent send state", async () => {
+  const fixture = await createFixture();
+  const backend = new DeferredFakeBackend({ reportUnsent: true });
+  const scheduler = new DurableScheduler({
+    store: fixture.store,
+    owner: fixture.owner,
+    backend,
+    concurrency: 1,
+  });
+  try {
+    scheduler.activateCycle(fixture.context);
+    await scheduler.start();
+    const invocation = await backend.started;
+    const current = fixture.store.readReview(fixture.context.reviewId);
+    fixture.store.applyCycleCommand(
+      "test-caller",
+      current.cycleId,
+      {
+        type: "REQUEST_CANCEL",
+        reason: "Cancel after the LIVE preflight but before the POST boundary.",
+        expectedVersion: current.stateVersion,
+        idempotencyKey: "cancel-proven-unsent",
+      },
+      { ownerFencing: fixture.owner.fencingToken(), occurredAtUtc: nowUtc() },
+    );
+
+    await scheduler.cancelCycle(current.cycleId);
+
+    expect(
+      fixture.store.readSchedulerAttemptProvenance(invocation.claim.attemptId)
+        .sendState,
+    ).toBe("UNSENT");
+    expect(
+      fixture.store.readSchedulerCycleStatus(current.cycleId),
+    ).toMatchObject({ state: "CANCELLED", reconciliationRequiredRuns: 0 });
+
+    const cancelRequested = fixture.store.readReview(current.reviewId);
+    fixture.store.applyCycleCommand(
+      "test-caller",
+      current.cycleId,
+      {
+        type: "CONFIRM_CANCEL",
+        fencingAndRevocationConfirmed: true,
+        expectedVersion: cancelRequested.stateVersion,
+        idempotencyKey: "confirm-cancel-proven-unsent",
+      },
+      { ownerFencing: fixture.owner.fencingToken(), occurredAtUtc: nowUtc() },
+    );
+  } finally {
+    await closeFixture(fixture, scheduler);
+  }
+});
+
 test("in-flight late output is retained as obsolete after cancellation", async () => {
   const clock = new VirtualClock(Date.now());
   const fixture = await createFixture(clock);
@@ -1665,7 +1718,9 @@ class DeferredFakeBackend implements ReviewerBackend {
   readonly started: Promise<BackendInvocationInput>;
   private readonly result: Promise<BackendInvocationResult>;
 
-  constructor() {
+  constructor(
+    private readonly options: { readonly reportUnsent?: boolean } = {},
+  ) {
     this.started = new Promise((resolve) => {
       this.notifyStarted = resolve;
     });
@@ -1681,6 +1736,7 @@ class DeferredFakeBackend implements ReviewerBackend {
   async invoke(
     input: BackendInvocationInput,
   ): Promise<BackendInvocationResult> {
+    if (this.options.reportUnsent) input.reportSendState?.("UNSENT");
     this.notifyStarted(input);
     return this.result;
   }

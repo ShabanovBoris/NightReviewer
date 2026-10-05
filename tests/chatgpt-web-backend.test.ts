@@ -7,7 +7,7 @@ import {
   ChatGptWebReviewerBackend,
 } from "../src/backends/chatgpt-web";
 import type { BackendInvocationInput } from "../src/scheduler/types";
-import type { ArtifactReference } from "../src/storage";
+import type { ArtifactReference, RawArtifactCapture } from "../src/storage";
 
 const prompt = "Review only the run-bound context supplied to this worker.";
 const promptHash = hash(prompt);
@@ -116,16 +116,23 @@ function backendOptions(
   options: Partial<ChatGptWebBackendOptions> = {},
 ) {
   const captured: Uint8Array[] = [];
+  const persistRawArtifact =
+    options.persistRawArtifact ??
+    (async (bytes: Uint8Array) => {
+      const copy = Uint8Array.from(bytes);
+      captured.push(copy);
+      return artifactReference(copy, captured.length);
+    });
+  const createRawArtifactCapture =
+    options.createRawArtifactCapture ??
+    (async () => memoryArtifactCapture(persistRawArtifact));
   const backend = new ChatGptWebReviewerBackend({
     baseUrl: "http://127.0.0.1:17841/",
     apiKey: "test-runtime-key",
     clientVersion: "0.1.0",
     buildPrompt: () => prompt,
-    persistRawArtifact: async (bytes) => {
-      const copy = Uint8Array.from(bytes);
-      captured.push(copy);
-      return artifactReference(copy, captured.length);
-    },
+    persistRawArtifact,
+    createRawArtifactCapture,
     fetcher,
     createId: sequentialIds(),
     now: () => new Date("2026-10-05T12:00:00.000Z"),
@@ -208,6 +215,30 @@ function artifactReference(
   };
 }
 
+function memoryArtifactCapture(
+  persist: ChatGptWebBackendOptions["persistRawArtifact"],
+): RawArtifactCapture {
+  const chunks: Uint8Array[] = [];
+  return {
+    async write(bytes) {
+      chunks.push(Uint8Array.from(bytes));
+    },
+    async commit() {
+      const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+      const bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return persist(bytes);
+    },
+    async abort() {
+      chunks.length = 0;
+    },
+  };
+}
+
 function hash(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -256,9 +287,33 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
 
 test("parses a chunked completed turn and returns run-bound raw and receipt evidence", async () => {
   const bytes = new TextEncoder().encode(
-    sse("response-1", JSON.stringify(workerOutput())),
+    sse(
+      "response-1",
+      JSON.stringify(
+        workerOutput({
+          coverage: {
+            complete: true,
+            paths: ["README.md", "レビュー.md"],
+            limitations: [],
+          },
+        }),
+      ),
+    ),
   );
-  const chunks = [bytes.slice(0, 31), bytes.slice(31, 119), bytes.slice(119)];
+  const chunks: Uint8Array[] = [];
+  const chunkSizes = [1, 2, 5, 3, 13, 8, 21, 4, 34, 7, 11];
+  let offset = 0;
+  let chunkIndex = 0;
+  while (offset < bytes.byteLength) {
+    const chunkSize = chunkSizes[chunkIndex % chunkSizes.length];
+    if (chunkSize === undefined) {
+      throw new Error("Chunk size sequence was unexpectedly empty.");
+    }
+    const end = Math.min(bytes.byteLength, offset + chunkSize);
+    chunks.push(bytes.slice(offset, end));
+    offset = end;
+    chunkIndex += 1;
+  }
   let sentBody: Record<string, unknown> | undefined;
   let sentHeaders: Headers | undefined;
   const { backend, captured } = backendOptions(
@@ -392,6 +447,33 @@ test("keeps incomplete completion ambiguous and never retries it", async () => {
   expect(result.receipt?.outcome).toBe("INCOMPLETE");
   expect(reconciliation).toEqual({ kind: "STILL_UNKNOWN" });
   expect(postCount).toBe(1);
+});
+
+test("persists only the exact bounded prefix of an overlarge response", async () => {
+  const fullResponse = new TextEncoder().encode(
+    sse("response-too-large", JSON.stringify(workerOutput())),
+  );
+  const limit = 128;
+  const { backend, captured } = backendOptions(
+    bridgeFetcher([
+      new Response(
+        streamFromChunks([fullResponse.slice(0, 64), fullResponse.slice(64)]),
+        {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        },
+      ),
+    ]),
+    { maxResponseBytes: limit },
+  );
+
+  const result = await backend.invoke(input());
+  const boundedPrefix = fullResponse.slice(0, limit);
+
+  expect(result.kind).toBe("UNKNOWN_SEND");
+  expect(result.rawBytes).toEqual(boundedPrefix);
+  expect(result.receipt?.outcome).toBe("AMBIGUOUS");
+  expect(captured).toContainEqual(boundedPrefix);
 });
 
 test("keeps a completed turn unknown when its receipt cannot be persisted", async () => {
@@ -654,6 +736,48 @@ test("does not send a Responses turn after cancellation before invocation", asyn
   expect(postCount).toBe(0);
 });
 
+test("records cancellation after preflight as proven unsent before the POST", async () => {
+  const controller = new AbortController();
+  const reportedSendStates: Array<"UNSENT" | "UNKNOWN"> = [];
+  let postCount = 0;
+  const { backend } = backendOptions(
+    bridgeFetcher([], {}, () => {
+      postCount += 1;
+    }),
+    {
+      persistRawArtifact: async (bytes) => {
+        const copy = Uint8Array.from(bytes);
+        const reference = artifactReference(copy, 1);
+        if (Buffer.from(copy).includes(Buffer.from('"models"'))) {
+          controller.abort();
+        }
+        return reference;
+      },
+    },
+  );
+
+  const result = await backend.invoke(
+    input({
+      signal: controller.signal,
+      reportSendState: (state) => reportedSendStates.push(state),
+    }),
+  );
+
+  expect(result).toMatchObject({
+    kind: "PERMANENT_FAILURE",
+    errorClass: "PERMANENT",
+    sendState: "UNSENT",
+    receipt: {
+      outcome: "ABORTED",
+      sendState: "UNSENT",
+      session: { turnIds: [], responseIds: [] },
+    },
+  });
+  expect(result.receiptArtifact).toBeDefined();
+  expect(postCount).toBe(0);
+  expect(reportedSendStates).toEqual(["UNSENT"]);
+});
+
 test("rejects non-loopback bridge URLs before accepting credentials", async () => {
   expect(
     () =>
@@ -664,6 +788,8 @@ test("rejects non-loopback bridge URLs before accepting credentials", async () =
         clientVersion: "0.1.0",
         buildPrompt: () => prompt,
         persistRawArtifact: async () => artifactReference(new Uint8Array(), 1),
+        createRawArtifactCapture: async () =>
+          memoryArtifactCapture(async (bytes) => artifactReference(bytes, 1)),
       }),
   ).toThrow(ChatGptWebBackendError);
 });

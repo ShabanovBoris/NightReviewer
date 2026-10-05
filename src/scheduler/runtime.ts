@@ -44,6 +44,7 @@ interface ActiveClaim {
   readonly cycleId: string;
   readonly controller: AbortController;
   readonly promise: Promise<void>;
+  sendState: "UNSENT" | "UNKNOWN";
 }
 
 type BackendRaceResult<T> =
@@ -163,16 +164,21 @@ export class DurableScheduler {
   }
 
   async cancelCycle(cycleId: string): Promise<void> {
+    const active = [...this.active.entries()].filter(
+      ([, entry]) => entry.cycleId === cycleId,
+    );
     this.store.cancelSchedulerCycle({
       cycleId,
       ownerFencing: this.owner.fencingToken(),
+      activeAttemptSendStates: active.map(([attemptId, entry]) => ({
+        attemptId,
+        sendState: entry.sendState,
+      })),
       occurredAtUtc: this.nowUtc(),
     });
-    const active = [...this.active.values()].filter(
-      (entry) => entry.cycleId === cycleId,
-    );
-    for (const entry of active) entry.controller.abort();
-    await this.waitForClaims(active, this.drainTimeoutMs);
+    const activeClaims = active.map(([, entry]) => entry);
+    for (const entry of activeClaims) entry.controller.abort();
+    await this.waitForClaims(activeClaims, this.drainTimeoutMs);
   }
 
   async drain(timeoutMs = this.drainTimeoutMs): Promise<void> {
@@ -316,6 +322,7 @@ export class DurableScheduler {
           cycleId: claim.cycleId,
           controller,
           promise,
+          sendState: "UNSENT",
         });
         this.maxObservedConcurrency = Math.max(
           this.maxObservedConcurrency,
@@ -375,16 +382,51 @@ export class DurableScheduler {
 
   private async runTurn(input: BackendInvocationInput): Promise<void> {
     if (input.signal.aborted) return;
+    let invocationStarted = false;
+    const backendSendState: { value: "UNSENT" | "UNKNOWN" } = {
+      value: "UNKNOWN",
+    };
+    const activeClaim = this.active.get(input.claim.attemptId);
+    const trackedInput: BackendInvocationInput = {
+      ...input,
+      reportSendState: (state) => {
+        backendSendState.value = state;
+        if (activeClaim !== undefined) activeClaim.sendState = state;
+      },
+    };
     const backendPromise = Promise.resolve().then(() => {
       if (input.signal.aborted) {
         throw new Error("Backend invocation was cancelled before start.");
       }
-      return this.backend.invoke(input);
+      invocationStarted = true;
+      if (activeClaim !== undefined) activeClaim.sendState = "UNKNOWN";
+      return this.backend.invoke(trackedInput);
     });
     const outcome = await this.raceBackend(input, backendPromise);
     if (outcome.kind === "TIMEOUT" || outcome.kind === "ABORTED") {
       if (outcome.kind === "TIMEOUT") {
         this.active.get(input.claim.attemptId)?.controller.abort();
+      }
+      const provenUnsent =
+        !invocationStarted || backendSendState.value === "UNSENT";
+      if (provenUnsent) {
+        const timedOut = outcome.kind === "TIMEOUT";
+        await this.finishAttempt(input, {
+          kind: timedOut ? "RETRYABLE_FAILURE" : "PERMANENT_FAILURE",
+          errorClass: timedOut ? "DEADLINE" : "PERMANENT",
+          rawBytes: markedBytes(this.backend.profile, {
+            runId: input.claim.runId,
+            attemptId: input.claim.attemptId,
+            outcome: timedOut
+              ? "DEADLINE_BEFORE_SEND"
+              : "CANCELLED_BEFORE_SEND",
+          }),
+          sendState: "UNSENT",
+        });
+        this.observeLateResult(backendPromise, (late) =>
+          this.finishAttempt(input, late),
+        );
+        return;
       }
       const bytes = markedBytes(this.backend.profile, {
         runId: input.claim.runId,

@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { invalidArgument, needsReconciliation, StorageError } from "./errors";
-import type { ArtifactReference } from "./types";
+import type { ArtifactReference, RawArtifactCapture } from "./types";
 
 export const DATABASE_FILE_NAME = "database.sqlite";
 export const MANIFEST_FILE_NAME = "manifest.json";
@@ -228,6 +228,100 @@ export async function persistStableArtifactFile(
   }
 
   return reference;
+}
+
+/** Creates a private, fsynced temporary artifact writer for streamed responses. */
+export async function beginRawArtifactCapture(
+  rootDir: string,
+): Promise<RawArtifactCapture> {
+  const directory = await ensurePrivateChildDirectory(
+    rootDir,
+    ARTIFACTS_DIRECTORY,
+  );
+  const temporaryPath = path.join(directory, `.tmp-${randomUUID()}`);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(
+      temporaryPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+      0o600,
+    );
+    await handle.sync();
+    await syncDirectory(directory);
+  } catch (error) {
+    if (handle !== undefined) await handle.close().catch(() => undefined);
+    await unlink(temporaryPath).catch(() => undefined);
+    throw toIoError(error);
+  }
+  if (handle === undefined) {
+    throw new StorageError("IO_ERROR", "Raw artifact capture did not open.");
+  }
+
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  let state: "OPEN" | "COMMITTED" | "ABORTED" = "OPEN";
+
+  return {
+    async write(bytes) {
+      if (state !== "OPEN") {
+        throw invalidArgument("Raw artifact capture is no longer open.");
+      }
+      if (!(bytes instanceof Uint8Array)) {
+        throw invalidArgument("Raw artifact chunks must be exact bytes.");
+      }
+      const stableBytes = new Uint8Array(bytes);
+      let offset = 0;
+      while (offset < stableBytes.byteLength) {
+        const writeResult = await handle.write(
+          stableBytes,
+          offset,
+          stableBytes.byteLength - offset,
+          null,
+        );
+        if (writeResult.bytesWritten === 0) {
+          throw new StorageError(
+            "IO_ERROR",
+            "Raw artifact write made no progress.",
+          );
+        }
+        offset += writeResult.bytesWritten;
+      }
+      hash.update(stableBytes);
+      sizeBytes += stableBytes.byteLength;
+      await handle.sync();
+    },
+    async commit() {
+      if (state !== "OPEN") {
+        throw invalidArgument("Raw artifact capture is no longer open.");
+      }
+      await handle.sync();
+      await handle.close();
+      const bytes = new Uint8Array(await Bun.file(temporaryPath).arrayBuffer());
+      const digest = hash.digest("hex");
+      if (bytes.byteLength !== sizeBytes || sha256Hex(bytes) !== digest) {
+        throw needsReconciliation(
+          "Streamed raw artifact bytes do not match the captured digest.",
+        );
+      }
+      const reference = await persistStableArtifactFile(rootDir, bytes);
+      if (reference.sha256 !== digest || reference.sizeBytes !== sizeBytes) {
+        throw needsReconciliation(
+          "Committed raw artifact does not match the streamed capture.",
+        );
+      }
+      await unlink(temporaryPath);
+      await syncDirectory(directory);
+      state = "COMMITTED";
+      return reference;
+    },
+    async abort() {
+      if (state !== "OPEN") return;
+      state = "ABORTED";
+      await handle.close().catch(() => undefined);
+      await unlink(temporaryPath).catch(() => undefined);
+      await syncDirectory(directory).catch(() => undefined);
+    },
+  };
 }
 
 export async function readVerifiedArtifact(

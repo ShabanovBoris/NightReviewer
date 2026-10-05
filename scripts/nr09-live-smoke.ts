@@ -640,6 +640,7 @@ function buildBackend(
     credentialProfileId: config.credentialProfileId,
     buildPrompt: buildQualificationPrompt,
     persistRawArtifact: (bytes) => store.persistRawArtifact(bytes),
+    createRawArtifactCapture: () => store.beginRawArtifactCapture(),
     fetcher: guardedFetch,
     requestTimeoutMs: 120_000,
   });

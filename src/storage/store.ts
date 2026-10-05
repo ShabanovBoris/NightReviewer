@@ -32,6 +32,7 @@ import {
 import {
   artifactReferenceFor,
   artifactRelativePath,
+  beginRawArtifactCapture,
   DATABASE_FILE_NAME,
   ensureEmptyOwnedDirectory,
   ensurePrivateChildDirectory,
@@ -69,6 +70,7 @@ import type {
   OpenStorageOptions,
   OutboxRecord,
   PersistedIdempotencyRecord,
+  RawArtifactCapture,
   RawFindingInput,
   ReconciliationReport,
   RecordFindingVerificationInput,
@@ -892,6 +894,10 @@ export class SqliteStorage {
     if (!(bytes instanceof Uint8Array))
       throw invalidArgument("Raw artifact must be exact bytes.");
     return persistArtifactFile(this.rootDir, bytes);
+  }
+
+  async beginRawArtifactCapture(): Promise<RawArtifactCapture> {
+    return beginRawArtifactCapture(this.rootDir);
   }
 
   async readRawArtifact(reference: ArtifactReference): Promise<Uint8Array> {
@@ -2605,6 +2611,15 @@ export class SqliteStorage {
 
   cancelSchedulerCycle(input: CancelSchedulerCycleInput): void {
     validateIdentifier(input.cycleId, "cycleId");
+    const activeAttemptSendStates = new Map(
+      (input.activeAttemptSendStates ?? []).map(({ attemptId, sendState }) => {
+        validateIdentifier(attemptId, "attemptId");
+        if (sendState !== "UNSENT" && sendState !== "UNKNOWN") {
+          throw invalidArgument("Cancellation send state is not supported.");
+        }
+        return [attemptId, sendState] as const;
+      }),
+    );
     const now = makeUtcTimestamp(input.occurredAtUtc);
     this.withImmediateTransaction(() => {
       this.assertDaemonFencingToken(input.ownerFencing, now);
@@ -2636,7 +2651,7 @@ export class SqliteStorage {
           if (job.active_work_kind === "TURN") {
             this.recordSchedulerAttemptSendState(
               job.active_attempt_id,
-              "UNKNOWN",
+              activeAttemptSendStates.get(job.active_attempt_id) ?? "UNKNOWN",
             );
           }
           this.db

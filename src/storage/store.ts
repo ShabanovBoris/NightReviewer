@@ -4414,8 +4414,8 @@ export class SqliteStorage {
           now,
           row.active_attempt_id,
         );
-        if (row.active_work_kind === "TURN") {
-          this.recordSchedulerAttemptSendState(row.active_attempt_id, "UNKNOWN");
+      if (row.active_work_kind === "TURN") {
+        this.recordSchedulerAttemptSendState(row.active_attempt_id, "UNKNOWN");
       }
       this.db
         .query(
@@ -4552,9 +4552,9 @@ export class SqliteStorage {
           job.lease_token,
         );
     }
-      if (job.active_attempt_id !== null) {
-        if (job.active_work_kind === "TURN") {
-          this.recordSchedulerAttemptSendState(job.active_attempt_id, "UNKNOWN");
+    if (job.active_attempt_id !== null) {
+      if (job.active_work_kind === "TURN") {
+        this.recordSchedulerAttemptSendState(job.active_attempt_id, "UNKNOWN");
       }
       this.db
         .query(

@@ -2609,7 +2609,6 @@ export class SqliteStorage {
     this.withImmediateTransaction(() => {
       this.assertDaemonFencingToken(input.ownerFencing, now);
       const cycle = this.readCycleRow(input.cycleId);
-      const backendMetadata = this.schedulerBackendMetadata(input.cycleId);
       const state = decodeCycle(cycle.state_json).state;
       if (state !== "CANCEL_REQUESTED" && state !== "CANCELLED") {
         throw conflict(
@@ -2632,6 +2631,7 @@ export class SqliteStorage {
         lease_token: number;
       }>;
       for (const job of jobs) {
+        const backendMetadata = this.schedulerBackendMetadata(input.cycleId);
         if (job.active_attempt_id !== null) {
           if (job.active_work_kind === "TURN") {
             this.recordSchedulerAttemptSendState(

@@ -465,10 +465,17 @@ test("supports a read-only explicit version candidate canary", async () => {
 
 test("marks a broken stream after HTTP acceptance as unknown and preserves captured bytes", async () => {
   const encoder = new TextEncoder();
+  let deliveredChunk = false;
   const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encoder.encode("event: response.output_text.delta\n"));
-      controller.error(new Error("socket closed"));
+    pull(controller) {
+      if (deliveredChunk) {
+        controller.error(new Error("socket closed"));
+      } else {
+        deliveredChunk = true;
+        controller.enqueue(
+          encoder.encode("event: response.output_text.delta\n"),
+        );
+      }
     },
   });
   const { backend, captured } = backendOptions(

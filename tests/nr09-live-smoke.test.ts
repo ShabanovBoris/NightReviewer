@@ -6,6 +6,11 @@ import {
   SmokeHarnessError,
   validatePhaseBDecision,
 } from "../scripts/nr09-live-smoke";
+import {
+  CHATGPT_WEB_AUTH_MODE,
+  CHATGPT_WEB_BRIDGE_ORIGIN,
+  CHATGPT_WEB_BRIDGE_PIN,
+} from "../src/backends/chatgpt-web";
 import type { SchedulerPromptContext } from "../src/scheduler";
 
 const BASE_SHA = "04fa7282d347f02f7c110b9707d87e41a3d40ff0";
@@ -14,8 +19,15 @@ const REQUEST_ID = "phase-b-request-1";
 const SESSION_ID = "d52c4dc6-1aa6-4a14-b880-8b8f66f2bbd0";
 const DECISION_ID = "NR-09-D142-PHASE-B-AUTHORIZED";
 const AUTHORIZATION_ID = "NR-09-C1-D142-PHASE-B-SMOKE";
-const ORIGIN = "http://127.0.0.1:17841";
-const MODEL = "chatgpt-web/gpt-5.6-sol";
+const ORIGIN = CHATGPT_WEB_BRIDGE_ORIGIN;
+const MODEL = CHATGPT_WEB_BRIDGE_PIN.model;
+const clientVersionProvenance = {
+  kind: "active-codex-desktop-bundle",
+  bundleIdentifier: "com.example.codex",
+  applicationPath: "/Applications/Codex.app",
+  observedVersion: "1.2.3",
+  observedAtUtc: "2026-10-16T12:00:00.000Z",
+};
 const phaseBDecision = {
   protocol: "nr-dev/1",
   messageId: "lead-decision-1",
@@ -25,14 +37,13 @@ const phaseBDecision = {
   type: "DECISION",
   repository: "ShabanovBoris/NightReviewer",
   taskId: "NR-09",
-  cycle: 1,
+  cycle: 2,
   payload: {
     decisionId: DECISION_ID,
     selectedOption: "AUTHORIZE_D141_PHASE_B_BOUNDED_LIVE_SMOKES",
     phaseBAuthorization: {
       authorizationId: AUTHORIZATION_ID,
-      route:
-        "EXISTING_RUNNING_PINNED_BRIDGE_WITH_PRIVATE_EXISTING_CREDENTIAL_PROFILE",
+      route: CHATGPT_WEB_AUTH_MODE,
       identity: {
         prUrl: "https://github.com/ShabanovBoris/NightReviewer/pull/10",
         baseSha: BASE_SHA,
@@ -44,18 +55,13 @@ const phaseBDecision = {
         cancellationSchedulerManagedTurn: 1,
       },
       runtime: {
+        authMode: CHATGPT_WEB_AUTH_MODE,
         bridgeOrigin: ORIGIN,
-        bridgeVersion: "6.1.3",
+        bridgeVersion: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
         clientVersion: "1.2.3",
-        credentialProfileId: "existing-profile",
-        credentialSourceRef: {
-          provider: "macos-keychain",
-          service: "NightReviewer.NR09.ProductionBearer",
-          account: "existing-profile",
-        },
-        credentialBindingGeneration: 1,
+        clientVersionProvenance,
         model: MODEL,
-        reasoningEffort: "high",
+        reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
       },
     },
   },
@@ -71,20 +77,31 @@ test("smoke mode requires an explicit mode and exact head binding", () => {
     parseSmokeArguments([
       "--mode=complete",
       "--expected-head-sha=" + HEAD_SHA,
+      "--expected-cycle=2",
       "--phase-b-request-id=" + REQUEST_ID,
       "--phase-b-receipt=.nightreviewer/receipt.raw.txt",
     ]),
   ).toEqual({
     mode: "complete",
     expectedHeadSha: HEAD_SHA,
+    expectedCycle: 2,
     phaseBRequestId: REQUEST_ID,
     phaseBReceiptPath: ".nightreviewer/receipt.raw.txt",
   });
   expect(() => parseSmokeArguments([])).toThrow(SmokeHarnessError);
   expect(() =>
     parseSmokeArguments([
+      "--mode=complete",
+      "--expected-head-sha=" + HEAD_SHA,
+      "--phase-b-request-id=" + REQUEST_ID,
+      "--phase-b-receipt=.nightreviewer/receipt.raw.txt",
+    ]),
+  ).toThrow(SmokeHarnessError);
+  expect(() =>
+    parseSmokeArguments([
       "--mode=unknown",
       "--expected-head-sha=" + HEAD_SHA,
+      "--expected-cycle=2",
       "--phase-b-request-id=" + REQUEST_ID,
       "--phase-b-receipt=.nightreviewer/receipt.raw.txt",
     ]),
@@ -97,6 +114,7 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
+      cycle: 2,
     }),
   ).toMatchObject({
     decisionId: DECISION_ID,
@@ -104,14 +122,9 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
     runtime: {
       bridgeOrigin: ORIGIN,
       model: MODEL,
-      reasoningEffort: "high",
-      credentialProfileId: "existing-profile",
-      credentialBindingGeneration: 1,
-      credentialSourceRef: {
-        provider: "macos-keychain",
-        service: "NightReviewer.NR09.ProductionBearer",
-        account: "existing-profile",
-      },
+      reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
+      authMode: CHATGPT_WEB_AUTH_MODE,
+      clientVersionProvenance,
     },
   });
   const phaseA = {
@@ -126,6 +139,7 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
+      cycle: 2,
     }),
   ).toThrow(SmokeHarnessError);
   expect(() =>
@@ -133,12 +147,13 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: "1111111111111111111111111111111111111111",
+      cycle: 2,
     }),
   ).toThrow(SmokeHarnessError);
 });
 
-test("Phase B requires a fixed credential source reference and generation", () => {
-  const missingSourceRef = {
+test("Phase B requires the direct route and rejects legacy credential identity", () => {
+  const missingProvenance = {
     ...phaseBDecision,
     payload: {
       ...phaseBDecision.payload,
@@ -146,12 +161,12 @@ test("Phase B requires a fixed credential source reference and generation", () =
         ...phaseBDecision.payload.phaseBAuthorization,
         runtime: {
           ...phaseBDecision.payload.phaseBAuthorization.runtime,
-          credentialSourceRef: undefined,
+          clientVersionProvenance: undefined,
         },
       },
     },
   };
-  const invalidGeneration = {
+  const proxyMode = {
     ...phaseBDecision,
     payload: {
       ...phaseBDecision.payload,
@@ -159,24 +174,55 @@ test("Phase B requires a fixed credential source reference and generation", () =
         ...phaseBDecision.payload.phaseBAuthorization,
         runtime: {
           ...phaseBDecision.payload.phaseBAuthorization.runtime,
-          credentialBindingGeneration: 0,
+          authMode: "AUTHENTICATED_PROXY",
         },
       },
     },
   };
 
   expect(() =>
-    validatePhaseBDecision(decisionText(missingSourceRef), {
+    validatePhaseBDecision(decisionText(missingProvenance), {
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
+      cycle: 2,
     }),
   ).toThrow(SmokeHarnessError);
   expect(() =>
-    validatePhaseBDecision(decisionText(invalidGeneration), {
+    validatePhaseBDecision(decisionText(proxyMode), {
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,
+      cycle: 2,
+    }),
+  ).toThrow(SmokeHarnessError);
+  const legacyCredentials = {
+    ...phaseBDecision,
+    payload: {
+      ...phaseBDecision.payload,
+      phaseBAuthorization: {
+        ...phaseBDecision.payload.phaseBAuthorization,
+        runtime: {
+          ...phaseBDecision.payload.phaseBAuthorization.runtime,
+          credentialProfileId: "legacy-profile",
+        },
+      },
+    },
+  };
+  expect(() =>
+    validatePhaseBDecision(decisionText(legacyCredentials), {
+      requestId: REQUEST_ID,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      cycle: 2,
+    }),
+  ).toThrow(SmokeHarnessError);
+  expect(() =>
+    validatePhaseBDecision(decisionText(), {
+      requestId: REQUEST_ID,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      cycle: 1,
     }),
   ).toThrow(SmokeHarnessError);
 });
@@ -252,6 +298,17 @@ test("guarded fetch rejects non-loopback routes and prevents turns in preflight"
   await expect(
     create("complete")(new URL("http://example.com/v1/responses"), {
       method: "POST",
+    }),
+  ).rejects.toThrow(SmokeHarnessError);
+  await expect(
+    create("complete")(new URL("http://127.0.0.1:17842/v1/responses"), {
+      method: "POST",
+    }),
+  ).rejects.toThrow(SmokeHarnessError);
+  await expect(
+    create("complete")(new URL(ORIGIN + "/v1/responses"), {
+      method: "POST",
+      headers: { authorization: "Bearer should-not-be-sent" },
     }),
   ).rejects.toThrow(SmokeHarnessError);
   await expect(

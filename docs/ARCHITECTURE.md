@@ -40,6 +40,12 @@ flowchart TD
 
 `capabilities()` сообщает реальные доступные функции: fresh sessions, tool loop, cancellation, observed identity, concurrency. Не поддержанное требование даёт CONFIGURATION_ERROR, а не silent fallback. HTTP/SSE response done, browser completion и valid JSON — разные факты, все нужны для успешного run.
 
+### NR-09 direct bridge boundary
+
+NR-09 supports one direct route: `LOOPBACK_LOCAL` at `http://127.0.0.1:17841`, pinned to bridge `6.1.3`, model `chatgpt-web/gpt-5.6-sol`, and effort `high`. This is a host-local trust boundary, not bearer-authenticated HTTP. The adapter sends no `Authorization` header and the private v2 binding contains no credential or Keychain fields. The upstream `controlToken` protects `/admin/*`; it is not a credential for `/v1/responses` or `/v1/models`.
+
+The backend identity digest binds the auth mode, exact origin and bridge pin, client version and stable bundle provenance, model, effort, capabilities, and resource limits. Evidence timestamps stay in the private binding but do not change that digest. Other origins and proxy/auth modes fail before fetch. See [ADR 0010](decisions/0010-direct-loopback-auth-boundary.md).
+
 ## Snapshot design
 
 Detached worktree сам по себе не immutable. Источник истины — сохранённые Git objects для base/head и content-addressed manifest. Context читает blobs по pinned SHA, не через свободный filesystem path. Сохранить reachable objects в owned mirror/pinned refs или self-contained bundle, чтобы GC/source repo deletion не сломали review. Worktree — необязательный cache; symlinks не разыменовываются, submodules/LFS явно отмечены.

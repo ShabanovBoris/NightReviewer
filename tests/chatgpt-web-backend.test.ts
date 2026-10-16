@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  CHATGPT_WEB_AUTH_MODE,
+  CHATGPT_WEB_BRIDGE_ORIGIN,
   CHATGPT_WEB_BRIDGE_PIN,
   ChatGptWebBackendError,
   type ChatGptWebBackendOptions,
   ChatGptWebReviewerBackend,
+  createChatGptWebConfigurationDigest,
 } from "../src/backends/chatgpt-web";
 import type { BackendInvocationInput } from "../src/scheduler/types";
 import type { ArtifactReference, RawArtifactCapture } from "../src/storage";
@@ -13,6 +16,13 @@ const prompt = "Review only the run-bound context supplied to this worker.";
 const promptHash = hash(prompt);
 const baseSha = "a".repeat(40);
 const headSha = "b".repeat(40);
+const clientVersionProvenance = {
+  kind: "active-codex-desktop-bundle" as const,
+  bundleIdentifier: "com.example.codex",
+  applicationPath: "/Applications/Codex.app",
+  observedVersion: "0.1.0",
+  observedAtUtc: "2026-10-05T12:00:00.000Z",
+};
 
 function workerOutput(overrides: Record<string, unknown> = {}) {
   return {
@@ -126,10 +136,16 @@ function backendOptions(
   const createRawArtifactCapture =
     options.createRawArtifactCapture ??
     (async () => memoryArtifactCapture(persistRawArtifact));
+  const clientVersion = options.clientVersion ?? "0.1.0";
   const backend = new ChatGptWebReviewerBackend({
-    baseUrl: "http://127.0.0.1:17841/",
-    apiKey: "test-runtime-key",
-    clientVersion: "0.1.0",
+    authMode: CHATGPT_WEB_AUTH_MODE,
+    baseUrl: CHATGPT_WEB_BRIDGE_ORIGIN + "/",
+    clientVersion,
+    clientVersionProvenance: {
+      ...clientVersionProvenance,
+      observedVersion: clientVersion,
+      ...options.clientVersionProvenance,
+    },
     buildPrompt: () => prompt,
     persistRawArtifact,
     createRawArtifactCapture,
@@ -137,14 +153,6 @@ function backendOptions(
     createId: sequentialIds(),
     now: () => new Date("2026-10-05T12:00:00.000Z"),
     ...options,
-    credentialProfileId:
-      options.credentialProfileId ?? "test-credential-profile",
-    credentialSourceRef: options.credentialSourceRef ?? {
-      provider: "macos-keychain",
-      service: "NightReviewer.NR09.TestBearer",
-      account: options.credentialProfileId ?? "test-credential-profile",
-    },
-    credentialBindingGeneration: options.credentialBindingGeneration ?? 1,
   });
   return { backend, captured };
 }
@@ -267,7 +275,7 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
     runPlan: "NR09_LIVE_QUALIFICATION",
     requiredRuns: 1,
   });
-  expect(JSON.stringify(backend.profile)).not.toContain("test-runtime-key");
+  expect(JSON.stringify(backend.profile)).not.toContain("credential");
 
   const compatibility = await backend.checkCompatibility();
 
@@ -291,60 +299,153 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
   ]);
 });
 
-test("configuration digest binds the profile source and generation, never the bearer", () => {
-  const options = {
-    apiKey: "sentinel-bearer-alpha",
-    credentialProfileId: "profile-alpha",
-    credentialSourceRef: {
-      provider: "macos-keychain" as const,
-      service: "NightReviewer.NR09.ProductionBearer",
-      account: "profile-alpha",
-    },
-    credentialBindingGeneration: 1,
-  };
-  const first = backendOptions(bridgeFetcher(), options).backend.profile;
-  const differentBearer = backendOptions(bridgeFetcher(), {
-    ...options,
-    apiKey: "sentinel-production-bearer-beta",
-  }).backend.profile;
-  const otherProfile = backendOptions(bridgeFetcher(), {
-    ...options,
-    credentialProfileId: "profile-beta",
-    credentialSourceRef: {
-      ...options.credentialSourceRef,
-      account: "profile-beta",
-    },
-  }).backend.profile;
-  const otherSource = backendOptions(bridgeFetcher(), {
-    ...options,
-    credentialSourceRef: {
-      ...options.credentialSourceRef,
-      service: "NightReviewer.NR09.Other",
-    },
-  }).backend.profile;
-  const nextGeneration = backendOptions(bridgeFetcher(), {
-    ...options,
-    credentialBindingGeneration: 2,
-  }).backend.profile;
+test("configuration digest binds stable route identity, capabilities, and limits", () => {
+  const first = backendOptions(bridgeFetcher()).backend.profile;
   const otherClientVersion = backendOptions(bridgeFetcher(), {
-    ...options,
     clientVersion: "0.2.0",
+  }).backend.profile;
+  const otherProvenance = backendOptions(bridgeFetcher(), {
+    clientVersionProvenance: {
+      ...clientVersionProvenance,
+      bundleIdentifier: "com.example.codex.preview",
+      applicationPath: "/Applications/Codex Preview.app",
+    },
+  }).backend.profile;
+  const nextTimeout = backendOptions(bridgeFetcher(), {
+    requestTimeoutMs: 120_000,
+  }).backend.profile;
+  const nextLimit = backendOptions(bridgeFetcher(), {
+    maxResponseBytes: 8 * 1024 * 1024,
+  }).backend.profile;
+  const newEvidenceTimestamp = backendOptions(bridgeFetcher(), {
+    clientVersionProvenance: {
+      ...clientVersionProvenance,
+      observedAtUtc: "2026-10-05T13:00:00.000Z",
+    },
   }).backend.profile;
 
   expect(
     new Set([
       first.configurationDigest,
-      otherProfile.configurationDigest,
-      otherSource.configurationDigest,
-      nextGeneration.configurationDigest,
       otherClientVersion.configurationDigest,
+      otherProvenance.configurationDigest,
+      nextTimeout.configurationDigest,
+      nextLimit.configurationDigest,
     ]).size,
   ).toBe(5);
-  expect(differentBearer.configurationDigest).toBe(first.configurationDigest);
-  expect(JSON.stringify(first)).not.toContain("sentinel-bearer-alpha");
-  expect(JSON.stringify(first)).not.toContain(
-    "sentinel-production-bearer-beta",
+  expect(newEvidenceTimestamp.configurationDigest).toBe(
+    first.configurationDigest,
   );
+  const identity = {
+    backend: "LIVE" as const,
+    backendProtocol: "chatgpt-web-responses/1",
+    authMode: "LOOPBACK_LOCAL",
+    bridgeVersionPin: "6.1.3",
+    bridgeOrigin: "http://127.0.0.1:17841",
+    clientVersion: "0.1.0",
+    clientVersionProvenance: {
+      kind: "active-codex-desktop-bundle",
+      bundleIdentifier: "com.example.codex",
+      applicationPath: "/Applications/Codex.app",
+      observedVersion: "0.1.0",
+    },
+    model: CHATGPT_WEB_BRIDGE_PIN.model,
+    reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
+    qualification: "LIVE_PRODUCTION_BRIDGE" as const,
+    requestTimeoutMs: 180_000,
+    maxResponseBytes: 16 * 1024 * 1024,
+    capabilities: ["responses-sse", "fresh-thread", "abort", "schema-repair/1"],
+  };
+  const digestChanges = [
+    { ...identity, authMode: "OTHER_MODE" },
+    { ...identity, bridgeOrigin: "http://127.0.0.1:17842" },
+    { ...identity, bridgeVersionPin: "6.1.2" },
+    { ...identity, clientVersion: "0.2.0" },
+    {
+      ...identity,
+      clientVersionProvenance: {
+        ...identity.clientVersionProvenance,
+        applicationPath: "/Applications/Other.app",
+      },
+    },
+    { ...identity, model: "chatgpt-web/other-model" },
+    { ...identity, reasoningEffort: "low" },
+    { ...identity, capabilities: [...identity.capabilities, "new-capability"] },
+    { ...identity, requestTimeoutMs: 120_000 },
+    { ...identity, maxResponseBytes: 8 * 1024 * 1024 },
+  ].map(createChatGptWebConfigurationDigest);
+  const expectedDigest = createChatGptWebConfigurationDigest(identity);
+
+  expect(first.configurationDigest).toBe(expectedDigest);
+  expect(new Set([expectedDigest, ...digestChanges]).size).toBe(
+    digestChanges.length + 1,
+  );
+});
+
+test("direct route requests omit Authorization and reject unsupported identities before fetch", async () => {
+  const authorizations: Array<string | null> = [];
+  const { backend } = backendOptions((async (request, init) => {
+    const url = new URL(String(request));
+    if (url.pathname === "/healthz") {
+      return Response.json({
+        service: "codex-chatgpt-web",
+        status: "ok",
+        pid: 42,
+        version: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
+        mode: "full",
+        accepting_turns: true,
+        active_http_turns: 0,
+        active_browser_turns: 0,
+      });
+    }
+    authorizations.push(new Headers(init?.headers).get("authorization"));
+    return url.pathname === "/v1/models"
+      ? Response.json({
+          models: [
+            {
+              slug: CHATGPT_WEB_BRIDGE_PIN.model,
+              supported_reasoning_levels: [{ effort: "high" }],
+            },
+          ],
+        })
+      : sse("response-1", JSON.stringify(workerOutput()));
+  }) as typeof fetch);
+  await backend.checkCompatibility();
+  expect(authorizations).toEqual([null]);
+
+  const invalidBaseUrls = [
+    "http://localhost:17841",
+    "http://[::1]:17841",
+    "http://127.0.0.1:17842",
+    "http://127.0.0.1:17841.evil.test",
+    "http://user@127.0.0.1:17841",
+    "http://user:pass@127.0.0.1:17841",
+    "http://127.0.0.1:17841?mode=proxy",
+    "http://127.0.0.1:17841#fragment",
+  ];
+  for (const baseUrl of invalidBaseUrls) {
+    expect(() => backendOptions(bridgeFetcher(), { baseUrl })).toThrow(
+      ChatGptWebBackendError,
+    );
+  }
+  expect(() =>
+    backendOptions(bridgeFetcher(), {
+      authMode: "HTTP_BEARER" as never,
+    }),
+  ).toThrow(ChatGptWebBackendError);
+  expect(() =>
+    backendOptions(bridgeFetcher(), {
+      model: "chatgpt-web/other-model",
+    }),
+  ).toThrow(ChatGptWebBackendError);
+  expect(() =>
+    backendOptions(bridgeFetcher(), {
+      clientVersionProvenance: {
+        ...clientVersionProvenance,
+        observedVersion: "9.9.9",
+      },
+    }),
+  ).toThrow(ChatGptWebBackendError);
 });
 
 test("parses a chunked completed turn and returns run-bound raw and receipt evidence", async () => {
@@ -434,7 +535,7 @@ test("parses a chunked completed turn and returns run-bound raw and receipt evid
     stream: true,
     reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
   });
-  expect(sentHeaders?.get("authorization")).toBe("Bearer test-runtime-key");
+  expect(sentHeaders?.get("authorization")).toBeNull();
   if (sentBody === undefined) throw new Error("Request body was not captured.");
   const clientMetadata = sentBody.client_metadata as Record<string, unknown>;
   const metadata = JSON.parse(
@@ -838,26 +939,4 @@ test("records cancellation after preflight as proven unsent before the POST", as
   expect(result.receiptArtifact).toBeDefined();
   expect(postCount).toBe(0);
   expect(reportedSendStates).toEqual(["UNSENT"]);
-});
-
-test("rejects non-loopback bridge URLs before accepting credentials", async () => {
-  expect(
-    () =>
-      new ChatGptWebReviewerBackend({
-        baseUrl: "https://bridge.example/",
-        apiKey: "unused",
-        credentialProfileId: "test-credential-profile",
-        credentialSourceRef: {
-          provider: "macos-keychain",
-          service: "NightReviewer.NR09.TestBearer",
-          account: "test-credential-profile",
-        },
-        credentialBindingGeneration: 1,
-        clientVersion: "0.1.0",
-        buildPrompt: () => prompt,
-        persistRawArtifact: async () => artifactReference(new Uint8Array(), 1),
-        createRawArtifactCapture: async () =>
-          memoryArtifactCapture(async (bytes) => artifactReference(bytes, 1)),
-      }),
-  ).toThrow(ChatGptWebBackendError);
 });

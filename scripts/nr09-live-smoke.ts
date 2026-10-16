@@ -3,8 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  CHATGPT_WEB_AUTH_MODE,
+  CHATGPT_WEB_BRIDGE_ORIGIN,
   CHATGPT_WEB_BRIDGE_PIN,
   ChatGptWebReviewerBackend,
+  parseChatGptWebClientVersionProvenance,
 } from "../src/backends/chatgpt-web";
 import { DaemonOwner, DaemonReviewRuntime } from "../src/daemon";
 import { validProtocolExamples } from "../src/protocol";
@@ -24,13 +27,10 @@ import {
 import {
   assertProductionBindingMatches,
   createAllowlistedChildProcessEnvironment,
-  createMacOSKeychainCredentialResolver,
   NR09_PRODUCTION_BINDING_RELATIVE_PATH,
   type ProductionBinding,
   ProductionBindingError,
-  parseCredentialSourceRef,
   readPrivateProductionBinding,
-  resolveBoundProductionCredential,
 } from "./nr09-production-binding";
 
 const REPOSITORY = "ShabanovBoris/NightReviewer";
@@ -62,6 +62,7 @@ export type SmokeMode = "preflight" | "complete" | "cancel";
 export interface SmokeArguments {
   readonly mode: SmokeMode;
   readonly expectedHeadSha: string;
+  readonly expectedCycle: number;
   readonly phaseBRequestId: string;
   readonly phaseBReceiptPath: string;
 }
@@ -78,16 +79,11 @@ interface PhaseBAuthorization {
   readonly decisionId: string;
   readonly authorizationId: string;
   readonly runtime: {
+    readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
     readonly bridgeOrigin: string;
     readonly bridgeVersion: string;
     readonly clientVersion: string;
-    readonly credentialProfileId: string;
-    readonly credentialSourceRef: {
-      readonly provider: "macos-keychain";
-      readonly service: string;
-      readonly account: string;
-    };
-    readonly credentialBindingGeneration: number;
+    readonly clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
     readonly model: string;
     readonly reasoningEffort: string;
   };
@@ -99,11 +95,9 @@ interface RuntimeConfig {
   readonly baseSha: string;
   readonly headSha: string;
   readonly bridgeBaseUrl: URL;
-  readonly apiKey: string;
+  readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
   readonly clientVersion: string;
-  readonly credentialProfileId: string;
-  readonly credentialSourceRef: PhaseBAuthorization["runtime"]["credentialSourceRef"];
-  readonly credentialBindingGeneration: number;
+  readonly clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
   readonly phaseB: PhaseBAuthorization;
   readonly phaseBReceipt: {
     readonly messageId: string;
@@ -170,6 +164,7 @@ export function parseSmokeArguments(argv: readonly string[]): SmokeArguments {
       ![
         "--mode",
         "--expected-head-sha",
+        "--expected-cycle",
         "--phase-b-request-id",
         "--phase-b-receipt",
       ].includes(name) ||
@@ -181,19 +176,30 @@ export function parseSmokeArguments(argv: readonly string[]): SmokeArguments {
   }
   const mode = values.get("--mode");
   const expectedHeadSha = values.get("--expected-head-sha");
+  const expectedCycleText = values.get("--expected-cycle");
+  const expectedCycle = Number(expectedCycleText);
   const phaseBRequestId = values.get("--phase-b-request-id");
   const phaseBReceiptPath = values.get("--phase-b-receipt");
   if (
     (mode !== "preflight" && mode !== "complete" && mode !== "cancel") ||
     expectedHeadSha === undefined ||
     !SHA1.test(expectedHeadSha) ||
+    expectedCycleText === undefined ||
+    !/^[1-9]\d*$/.test(expectedCycleText) ||
+    !Number.isSafeInteger(expectedCycle) ||
     phaseBRequestId === undefined ||
     !SAFE_IDENTIFIER.test(phaseBRequestId) ||
     phaseBReceiptPath === undefined
   ) {
     throw new SmokeHarnessError("INVALID_ARGUMENTS");
   }
-  return { mode, expectedHeadSha, phaseBRequestId, phaseBReceiptPath };
+  return {
+    mode,
+    expectedHeadSha,
+    expectedCycle,
+    phaseBRequestId,
+    phaseBReceiptPath,
+  };
 }
 
 export function validatePhaseBDecision(
@@ -202,6 +208,7 @@ export function validatePhaseBDecision(
     readonly requestId: string;
     readonly baseSha: string;
     readonly headSha: string;
+    readonly cycle: number;
   },
 ): PhaseBAuthorization {
   const decision = extractDecision(rawText);
@@ -213,7 +220,9 @@ export function validatePhaseBDecision(
     decision.repository !== REPOSITORY ||
     decision.sessionId !== SESSION_ID ||
     decision.taskId !== TASK_ID ||
-    decision.cycle !== 1 ||
+    !Number.isSafeInteger(expected.cycle) ||
+    expected.cycle < 1 ||
+    decision.cycle !== expected.cycle ||
     decision.inReplyTo !== expected.requestId ||
     payload?.selectedOption !== PHASE_B_OPTION
   ) {
@@ -226,17 +235,19 @@ export function validatePhaseBDecision(
   const messageId = decision.messageId;
   const decisionId = payload.decisionId;
   const authorizationId = authorization?.authorizationId;
+  const authMode = runtime?.authMode;
   const bridgeOrigin = runtime?.bridgeOrigin;
   const bridgeVersion = runtime?.bridgeVersion;
   const clientVersion = runtime?.clientVersion;
-  const credentialProfileId = runtime?.credentialProfileId;
-  const credentialSourceRefValue = runtime?.credentialSourceRef;
-  const credentialBindingGeneration = runtime?.credentialBindingGeneration;
+  const clientVersionProvenanceValue = runtime?.clientVersionProvenance;
   const model = runtime?.model;
   const reasoningEffort = runtime?.reasoningEffort;
-  let credentialSourceRef: PhaseBAuthorization["runtime"]["credentialSourceRef"];
+  let clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
   try {
-    credentialSourceRef = parseCredentialSourceRef(credentialSourceRefValue);
+    clientVersionProvenance = parseChatGptWebClientVersionProvenance(
+      clientVersionProvenanceValue,
+      typeof clientVersion === "string" ? clientVersion : "",
+    );
   } catch {
     throw new SmokeHarnessError("PHASE_B_SCOPE_MISMATCH");
   }
@@ -251,25 +262,43 @@ export function validatePhaseBDecision(
     authorization === undefined ||
     limits === undefined ||
     runtime === undefined ||
+    !hasExactKeys(authorization, [
+      "authorizationId",
+      "identity",
+      "maximumQualifyingActionsAuthorized",
+      "route",
+      "runtime",
+    ]) ||
+    !hasExactKeys(identity, ["baseSha", "headSha", "prUrl"]) ||
+    !hasExactKeys(limits, [
+      "cancellationSchedulerManagedTurn",
+      "compatibilityPreflight",
+      "completeSchedulerManagedReviewerRun",
+    ]) ||
+    !hasExactKeys(runtime, [
+      "authMode",
+      "bridgeOrigin",
+      "bridgeVersion",
+      "clientVersion",
+      "clientVersionProvenance",
+      "model",
+      "reasoningEffort",
+    ]) ||
     identity.prUrl !== PR_URL ||
     identity.baseSha !== expected.baseSha ||
     identity.headSha !== expected.headSha ||
-    authorization.route !==
-      "EXISTING_RUNNING_PINNED_BRIDGE_WITH_PRIVATE_EXISTING_CREDENTIAL_PROFILE" ||
+    authorization.route !== CHATGPT_WEB_AUTH_MODE ||
     limits?.compatibilityPreflight !== ACTION_LIMITS.compatibilityPreflight ||
     limits.completeSchedulerManagedReviewerRun !==
       ACTION_LIMITS.completeSchedulerManagedReviewerRun ||
     limits.cancellationSchedulerManagedTurn !==
       ACTION_LIMITS.cancellationSchedulerManagedTurn ||
+    authMode !== CHATGPT_WEB_AUTH_MODE ||
+    bridgeOrigin !== CHATGPT_WEB_BRIDGE_ORIGIN ||
     bridgeVersion !== CHATGPT_WEB_BRIDGE_PIN.upstreamVersion ||
     model !== CHATGPT_WEB_BRIDGE_PIN.model ||
     reasoningEffort !== CHATGPT_WEB_BRIDGE_PIN.reasoningEffort ||
-    typeof bridgeOrigin !== "string" ||
-    typeof clientVersion !== "string" ||
-    typeof credentialProfileId !== "string" ||
-    typeof credentialBindingGeneration !== "number" ||
-    !Number.isSafeInteger(credentialBindingGeneration) ||
-    credentialBindingGeneration < 1
+    typeof clientVersion !== "string"
   ) {
     throw new SmokeHarnessError("PHASE_B_SCOPE_MISMATCH");
   }
@@ -278,12 +307,11 @@ export function validatePhaseBDecision(
     decisionId,
     authorizationId,
     runtime: {
+      authMode: CHATGPT_WEB_AUTH_MODE,
       bridgeOrigin,
       bridgeVersion: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
       clientVersion,
-      credentialProfileId,
-      credentialSourceRef,
-      credentialBindingGeneration,
+      clientVersionProvenance,
       model: CHATGPT_WEB_BRIDGE_PIN.model,
       reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     },
@@ -304,6 +332,9 @@ export function createGuardedFetcher(options: {
   let responseCount = 0;
   const guardedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input);
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
     const method = (
       init?.method ?? (input instanceof Request ? input.method : "GET")
     ).toUpperCase();
@@ -315,8 +346,10 @@ export function createGuardedFetcher(options: {
             options.expectedClientVersion
         : url.search.length === 0;
     if (
+      options.expectedOrigin !== CHATGPT_WEB_BRIDGE_ORIGIN ||
       url.origin !== options.expectedOrigin ||
       !isLoopbackOrigin(url) ||
+      headers.has("authorization") ||
       !ALLOWED_ROUTES.has(url.pathname) ||
       !validQuery ||
       url.hash.length !== 0
@@ -461,6 +494,17 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
 function safeInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -492,11 +536,7 @@ function isLoopbackUrl(url: URL): boolean {
 
 function isLoopbackOrigin(url: URL): boolean {
   return (
-    url.protocol === "http:" &&
-    (url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "[::1]" ||
-      url.hostname === "::1") &&
+    url.origin === CHATGPT_WEB_BRIDGE_ORIGIN &&
     url.username.length === 0 &&
     url.password.length === 0
   );
@@ -510,6 +550,7 @@ function validateBaseUrl(raw: string): URL {
     throw new SmokeHarnessError("INVALID_BRIDGE_URL");
   }
   if (
+    value.origin !== CHATGPT_WEB_BRIDGE_ORIGIN ||
     !isLoopbackUrl(value) ||
     (value.pathname !== "/" && value.pathname.length !== 0)
   ) {
@@ -582,6 +623,7 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     requestId: args.phaseBRequestId,
     baseSha: ASSIGNED_BASE_SHA,
     headSha,
+    cycle: args.expectedCycle,
   });
 
   let binding: ProductionBinding;
@@ -599,12 +641,11 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
   try {
     bridgeBaseUrl = validateBaseUrl(process.env.BRIDGE_SPIKE_BASE_URL ?? "");
     assertProductionBindingMatches(binding, {
+      authMode: phaseB.runtime.authMode,
       bridgeOrigin: phaseB.runtime.bridgeOrigin,
       bridgeVersion: phaseB.runtime.bridgeVersion,
       clientVersion: phaseB.runtime.clientVersion,
-      credentialProfileId: phaseB.runtime.credentialProfileId,
-      credentialSourceRef: phaseB.runtime.credentialSourceRef,
-      credentialBindingGeneration: phaseB.runtime.credentialBindingGeneration,
+      clientVersionProvenance: phaseB.runtime.clientVersionProvenance,
       model: phaseB.runtime.model,
       reasoningEffort: phaseB.runtime.reasoningEffort,
     });
@@ -618,32 +659,16 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
   if (bridgeBaseUrl.origin !== binding.bridge.origin) {
     throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
   }
-  let apiKey: string;
-  try {
-    apiKey = await resolveBoundProductionCredential(
-      binding,
-      phaseB.runtime,
-      createMacOSKeychainCredentialResolver(),
-    );
-  } catch (error) {
-    if (error instanceof ProductionBindingError) {
-      throw new SmokeHarnessError(error.code);
-    }
-    throw new SmokeHarnessError("CREDENTIAL_SOURCE_UNAVAILABLE");
-  }
   const clientVersion = binding.clientVersion;
-  const credentialProfileId = binding.credentialProfileId;
   return {
     mode: args.mode,
     repoRoot,
     baseSha: ASSIGNED_BASE_SHA,
     headSha,
     bridgeBaseUrl,
-    apiKey,
+    authMode: binding.authMode,
     clientVersion,
-    credentialProfileId,
-    credentialSourceRef: binding.credentialSourceRef,
-    credentialBindingGeneration: binding.credentialBindingGeneration,
+    clientVersionProvenance: binding.clientVersionProvenance,
     phaseB,
     phaseBReceipt: {
       messageId: phaseB.messageId,
@@ -702,12 +727,10 @@ function buildBackend(
     onResponseAttempt: (observation) => responseAttempts.push(observation),
   });
   return new ObservedChatGptWebReviewerBackend({
+    authMode: config.authMode,
     baseUrl: config.bridgeBaseUrl,
-    apiKey: config.apiKey,
     clientVersion: config.clientVersion,
-    credentialProfileId: config.credentialProfileId,
-    credentialSourceRef: config.credentialSourceRef,
-    credentialBindingGeneration: config.credentialBindingGeneration,
+    clientVersionProvenance: config.clientVersionProvenance,
     buildPrompt: buildQualificationPrompt,
     persistRawArtifact: (bytes) => store.persistRawArtifact(bytes),
     createRawArtifactCapture: () => store.beginRawArtifactCapture(),
@@ -1144,13 +1167,13 @@ function safeInvocation(
 
 function safeRuntimeIdentity(config: RuntimeConfig): Record<string, unknown> {
   return {
+    authMode: config.authMode,
     bridgeOrigin: config.bridgeBaseUrl.origin,
     bridgeVersionPin: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
     model: CHATGPT_WEB_BRIDGE_PIN.model,
     reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     clientVersion: config.clientVersion,
-    credentialProfileId: config.credentialProfileId,
-    credentialBindingGeneration: config.credentialBindingGeneration,
+    clientVersionProvenance: config.clientVersionProvenance,
   };
 }
 
@@ -1237,17 +1260,19 @@ async function main(): Promise<void> {
   const args = parseSmokeArguments(process.argv.slice(2));
   const config = await loadRuntimeConfig(args);
   if (
+    config.authMode !== config.phaseB.runtime.authMode ||
     config.bridgeBaseUrl.origin !== config.phaseB.runtime.bridgeOrigin ||
     config.clientVersion !== config.phaseB.runtime.clientVersion ||
-    config.credentialProfileId !== config.phaseB.runtime.credentialProfileId ||
-    config.credentialBindingGeneration !==
-      config.phaseB.runtime.credentialBindingGeneration ||
-    config.credentialSourceRef.provider !==
-      config.phaseB.runtime.credentialSourceRef.provider ||
-    config.credentialSourceRef.service !==
-      config.phaseB.runtime.credentialSourceRef.service ||
-    config.credentialSourceRef.account !==
-      config.phaseB.runtime.credentialSourceRef.account
+    config.clientVersionProvenance.kind !==
+      config.phaseB.runtime.clientVersionProvenance.kind ||
+    config.clientVersionProvenance.bundleIdentifier !==
+      config.phaseB.runtime.clientVersionProvenance.bundleIdentifier ||
+    config.clientVersionProvenance.applicationPath !==
+      config.phaseB.runtime.clientVersionProvenance.applicationPath ||
+    config.clientVersionProvenance.observedVersion !==
+      config.phaseB.runtime.clientVersionProvenance.observedVersion ||
+    config.clientVersionProvenance.observedAtUtc !==
+      config.phaseB.runtime.clientVersionProvenance.observedAtUtc
   ) {
     throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
   }

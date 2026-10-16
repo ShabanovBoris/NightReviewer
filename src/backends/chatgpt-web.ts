@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 import type { ProtocolValueBySchema } from "../protocol";
 import { protocolSchemas, validateProtocolValue } from "../protocol";
 import type {
@@ -26,6 +27,8 @@ export const CHATGPT_WEB_BRIDGE_PIN = {
   model: "chatgpt-web/gpt-5.6-sol",
   reasoningEffort: "high",
 } as const;
+export const CHATGPT_WEB_AUTH_MODE = "LOOPBACK_LOCAL" as const;
+export const CHATGPT_WEB_BRIDGE_ORIGIN = "http://127.0.0.1:17841" as const;
 
 const clientVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const maxResponseBytes = 16 * 1024 * 1024;
@@ -52,29 +55,56 @@ export type ChatGptWebRawArtifactStore = (
 export type ChatGptWebRawArtifactCaptureFactory =
   () => Promise<RawArtifactCapture>;
 
-export interface CredentialSourceRef {
-  readonly provider: "macos-keychain";
-  readonly service: string;
-  readonly account: string;
+export interface ChatGptWebClientVersionProvenance {
+  readonly kind: "active-codex-desktop-bundle";
+  readonly bundleIdentifier: string;
+  readonly applicationPath: string;
+  readonly observedVersion: string;
+  readonly observedAtUtc: string;
 }
 
 export interface ChatGptWebBackendOptions {
+  readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
   readonly baseUrl: string | URL;
-  readonly apiKey: string;
   readonly clientVersion: string;
+  readonly clientVersionProvenance: ChatGptWebClientVersionProvenance;
   readonly model?: string;
   readonly reasoningEffort?: string;
   readonly requestTimeoutMs?: number;
   readonly maxResponseBytes?: number;
-  readonly credentialProfileId: string;
-  readonly credentialSourceRef: CredentialSourceRef;
-  readonly credentialBindingGeneration: number;
   readonly buildPrompt: (context: SchedulerPromptContext) => string;
   readonly persistRawArtifact: ChatGptWebRawArtifactStore;
   readonly createRawArtifactCapture: ChatGptWebRawArtifactCaptureFactory;
   readonly fetcher?: typeof fetch;
   readonly createId?: () => string;
   readonly now?: () => Date;
+}
+
+export interface ChatGptWebConfigurationIdentity {
+  readonly backend: "LIVE";
+  readonly backendProtocol: string;
+  readonly authMode: string;
+  readonly bridgeVersionPin: string;
+  readonly bridgeOrigin: string;
+  readonly clientVersion: string;
+  readonly clientVersionProvenance: {
+    readonly kind: string;
+    readonly bundleIdentifier: string;
+    readonly applicationPath: string;
+    readonly observedVersion: string;
+  };
+  readonly model: string;
+  readonly reasoningEffort: string;
+  readonly qualification: "LIVE_PRODUCTION_BRIDGE";
+  readonly requestTimeoutMs: number;
+  readonly maxResponseBytes: number;
+  readonly capabilities: readonly string[];
+}
+
+export function createChatGptWebConfigurationDigest(
+  identity: ChatGptWebConfigurationIdentity,
+): string {
+  return sha256(Buffer.from(JSON.stringify(identity), "utf8"));
 }
 
 export interface ChatGptWebCompatibility {
@@ -117,7 +147,7 @@ export type ChatGptWebBackendErrorCode =
   | "OUTPUT_BINDING_MISMATCH"
   | "RAW_PERSISTENCE_FAILED";
 
-/** Safe typed adapter failure. It never retains the URL, API key, or raw provider message. */
+/** Safe typed adapter failure. It never retains the URL or raw provider message. */
 export class ChatGptWebBackendError extends Error {
   constructor(
     readonly code: ChatGptWebBackendErrorCode,
@@ -177,8 +207,8 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   readonly backend = "LIVE" as const;
   readonly profile: SchedulerBackendProfile;
   readonly #baseUrl: URL;
-  readonly #apiKey: string;
   readonly #clientVersion: string;
+  readonly #clientVersionProvenance: ChatGptWebClientVersionProvenance;
   readonly #model: string;
   readonly #reasoningEffort: string;
   readonly #expectedBridgeVersion = CHATGPT_WEB_BRIDGE_PIN.upstreamVersion;
@@ -192,9 +222,15 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   readonly #now: () => Date;
 
   constructor(options: ChatGptWebBackendOptions) {
+    if (options.authMode !== CHATGPT_WEB_AUTH_MODE) {
+      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+    }
     this.#baseUrl = validateLoopbackBaseUrl(options.baseUrl);
-    this.#apiKey = requireSecret(options.apiKey);
     this.#clientVersion = validateClientVersion(options.clientVersion);
+    this.#clientVersionProvenance = parseChatGptWebClientVersionProvenance(
+      options.clientVersionProvenance,
+      this.#clientVersion,
+    );
     this.#model = options.model ?? CHATGPT_WEB_BRIDGE_PIN.model;
     this.#reasoningEffort =
       options.reasoningEffort ?? CHATGPT_WEB_BRIDGE_PIN.reasoningEffort;
@@ -226,21 +262,6 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     if (typeof options.createRawArtifactCapture !== "function") {
       throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
     }
-    if (
-      typeof options.credentialProfileId !== "string" ||
-      !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(options.credentialProfileId)
-    ) {
-      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
-    }
-    const credentialSourceRef = normalizeCredentialSourceRef(
-      options.credentialSourceRef,
-    );
-    if (
-      !Number.isSafeInteger(options.credentialBindingGeneration) ||
-      options.credentialBindingGeneration < 1
-    ) {
-      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
-    }
     this.#buildPrompt = options.buildPrompt;
     this.#persistRawArtifact = options.persistRawArtifact;
     this.#createRawArtifactCapture = options.createRawArtifactCapture;
@@ -250,18 +271,27 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     const profileIdentity = {
       backend: "LIVE" as const,
       backendProtocol: "chatgpt-web-responses/1",
+      authMode: CHATGPT_WEB_AUTH_MODE,
       bridgeVersionPin: this.#expectedBridgeVersion,
+      bridgeOrigin: this.#baseUrl.origin,
+      clientVersion: this.#clientVersion,
+      clientVersionProvenance: {
+        kind: this.#clientVersionProvenance.kind,
+        bundleIdentifier: this.#clientVersionProvenance.bundleIdentifier,
+        applicationPath: this.#clientVersionProvenance.applicationPath,
+        observedVersion: this.#clientVersionProvenance.observedVersion,
+      },
       model: this.#model,
       reasoningEffort: this.#reasoningEffort,
       qualification: "LIVE_PRODUCTION_BRIDGE" as const,
-      credentialProfileId: options.credentialProfileId,
-      credentialSourceRef,
-      credentialBindingGeneration: options.credentialBindingGeneration,
-      bridgeOrigin: this.#baseUrl.origin,
-      clientVersion: this.#clientVersion,
       requestTimeoutMs: this.#requestTimeoutMs,
       maxResponseBytes: this.#maxResponseBytes,
-      capabilitySet: "responses-sse,fresh-thread,abort,schema-repair/1",
+      capabilities: [
+        "responses-sse",
+        "fresh-thread",
+        "abort",
+        "schema-repair/1",
+      ],
     };
     this.profile = {
       backend: profileIdentity.backend,
@@ -270,9 +300,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       model: profileIdentity.model,
       reasoningEffort: profileIdentity.reasoningEffort,
       qualification: profileIdentity.qualification,
-      configurationDigest: sha256(
-        Buffer.from(JSON.stringify(profileIdentity), "utf8"),
-      ),
+      configurationDigest: createChatGptWebConfigurationDigest(profileIdentity),
       runPlan: "NR09_LIVE_QUALIFICATION",
       requiredRuns: 1,
     };
@@ -331,7 +359,6 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     const catalog = await this.#getJson(
       catalogUrl,
       {
-        authorization: `Bearer ${this.#apiKey}`,
         accept: "application/json",
       },
       "MODEL_CATALOG",
@@ -744,7 +771,6 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
           {
             method: "POST",
             headers: {
-              authorization: `Bearer ${this.#apiKey}`,
               accept: "text/event-stream",
               "content-type": "application/json",
             },
@@ -1312,28 +1338,6 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   }
 }
 
-function normalizeCredentialSourceRef(
-  value: CredentialSourceRef,
-): CredentialSourceRef {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Object.keys(value).sort().join(",") !== "account,provider,service" ||
-    value.provider !== "macos-keychain" ||
-    typeof value.service !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.service) ||
-    typeof value.account !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.account)
-  ) {
-    throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
-  }
-  return {
-    provider: value.provider,
-    service: value.service,
-    account: value.account,
-  };
-}
-
 function validateLoopbackBaseUrl(input: string | URL): URL {
   let url: URL;
   try {
@@ -1341,10 +1345,8 @@ function validateLoopbackBaseUrl(input: string | URL): URL {
   } catch {
     throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
   }
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (
-    url.protocol !== "http:" ||
-    !loopback ||
+    url.origin !== CHATGPT_WEB_BRIDGE_ORIGIN ||
     url.username !== "" ||
     url.password !== "" ||
     url.pathname !== "/" ||
@@ -1356,11 +1358,34 @@ function validateLoopbackBaseUrl(input: string | URL): URL {
   return url;
 }
 
-function requireSecret(value: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
+export function parseChatGptWebClientVersionProvenance(
+  value: unknown,
+  clientVersion: string,
+): ChatGptWebClientVersionProvenance {
+  const provenance = asRecord(value);
+  if (
+    !isReleaseVersion(clientVersion) ||
+    provenance === undefined ||
+    Object.keys(provenance).sort().join(",") !==
+      "applicationPath,bundleIdentifier,kind,observedAtUtc,observedVersion" ||
+    provenance.kind !== "active-codex-desktop-bundle" ||
+    typeof provenance.bundleIdentifier !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(provenance.bundleIdentifier) ||
+    typeof provenance.applicationPath !== "string" ||
+    !path.isAbsolute(provenance.applicationPath) ||
+    hasControlCharacters(provenance.applicationPath) ||
+    provenance.observedVersion !== clientVersion ||
+    !isUtcTimestamp(provenance.observedAtUtc)
+  ) {
     throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
   }
-  return value;
+  return {
+    kind: "active-codex-desktop-bundle",
+    bundleIdentifier: provenance.bundleIdentifier,
+    applicationPath: provenance.applicationPath,
+    observedVersion: clientVersion,
+    observedAtUtc: provenance.observedAtUtc,
+  };
 }
 
 function validateClientVersion(value: string): string {
@@ -1372,6 +1397,22 @@ function validateClientVersion(value: string): string {
 
 function isReleaseVersion(value: string): boolean {
   return clientVersionPattern.test(value);
+}
+
+function isUtcTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = new Date(value);
+  return (
+    Number.isFinite(timestamp.getTime()) && timestamp.toISOString() === value
+  );
+}
+
+function hasControlCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value.charCodeAt(index);
+    if (character <= 0x1f || character === 0x7f) return true;
+  }
+  return false;
 }
 
 function safeInteger(value: unknown): number | undefined {

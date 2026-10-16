@@ -644,6 +644,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       try {
         response = await this.#fetcher(url, {
           method: "GET",
+          redirect: "error",
           ...(headers === undefined ? {} : { headers }),
           signal: scope.signal,
         });
@@ -775,6 +776,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
               "content-type": "application/json",
             },
             body: JSON.stringify(body),
+            redirect: "error",
             signal: scope.signal,
           },
         );

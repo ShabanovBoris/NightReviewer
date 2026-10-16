@@ -384,8 +384,12 @@ test("configuration digest binds stable route identity, capabilities, and limits
 
 test("direct route requests omit Authorization and reject unsupported identities before fetch", async () => {
   const authorizations: Array<string | null> = [];
+  const requestedPaths: string[] = [];
+  const redirectModes: Array<RequestInit["redirect"]> = [];
   const { backend } = backendOptions((async (request, init) => {
     const url = new URL(String(request));
+    requestedPaths.push(url.pathname);
+    redirectModes.push(init?.redirect);
     if (url.pathname === "/healthz") {
       return Response.json({
         service: "codex-chatgpt-web",
@@ -411,6 +415,8 @@ test("direct route requests omit Authorization and reject unsupported identities
       : sse("response-1", JSON.stringify(workerOutput()));
   }) as typeof fetch);
   await backend.checkCompatibility();
+  expect(requestedPaths).toEqual(["/healthz", "/v1/models"]);
+  expect(redirectModes).toEqual(["error", "error"]);
   expect(authorizations).toEqual([null]);
 
   const invalidBaseUrls = [
@@ -448,6 +454,81 @@ test("direct route requests omit Authorization and reject unsupported identities
   ).toThrow(ChatGptWebBackendError);
 });
 
+test("fails closed on a health redirect without requesting a second origin", async () => {
+  const requestedUrls: string[] = [];
+  const redirectModes: Array<RequestInit["redirect"]> = [];
+  const { backend } = backendOptions((async (
+    request: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    const url = new URL(String(request));
+    requestedUrls.push(url.href);
+    redirectModes.push(init?.redirect);
+    if (init?.redirect !== "error") {
+      requestedUrls.push("https://outside.invalid/healthz");
+    }
+    throw new TypeError("Synthetic redirect rejection.");
+  }) as unknown as typeof fetch);
+
+  await expect(backend.checkCompatibility()).rejects.toMatchObject({
+    code: "BRIDGE_UNAVAILABLE",
+    sendState: "UNSENT",
+  });
+  expect(redirectModes).toEqual(["error"]);
+  expect(requestedUrls).toEqual(["http://127.0.0.1:17841/healthz"]);
+});
+
+test("does not follow or retry a redirected Responses request", async () => {
+  const requestedUrls: string[] = [];
+  const redirectModes: Array<RequestInit["redirect"]> = [];
+  const { backend } = backendOptions((async (request, init) => {
+    const url = new URL(String(request));
+    requestedUrls.push(url.href);
+    redirectModes.push(init?.redirect);
+    if (url.pathname === "/healthz") {
+      return Response.json({
+        service: "codex-chatgpt-web",
+        status: "ok",
+        pid: 42,
+        version: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
+        mode: "full",
+        accepting_turns: true,
+        active_http_turns: 0,
+        active_browser_turns: 0,
+      });
+    }
+    if (url.pathname === "/v1/models") {
+      return Response.json({
+        models: [
+          {
+            slug: CHATGPT_WEB_BRIDGE_PIN.model,
+            supported_reasoning_levels: [
+              { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
+            ],
+          },
+        ],
+      });
+    }
+    if (url.pathname === "/v1/responses") {
+      if (init?.redirect !== "error") {
+        requestedUrls.push("https://outside.invalid/v1/responses");
+      }
+      throw new TypeError("Synthetic redirect rejection.");
+    }
+    throw new Error(`Unexpected endpoint: ${url.pathname}`);
+  }) as typeof fetch);
+
+  const result = await backend.invoke(input());
+
+  expect(result.kind).toBe("UNKNOWN_SEND");
+  expect(requestedUrls).toEqual([
+    "http://127.0.0.1:17841/healthz",
+    "http://127.0.0.1:17841/v1/models?client_version=0.1.0",
+    "http://127.0.0.1:17841/v1/responses",
+  ]);
+  expect(redirectModes).toEqual(["error", "error", "error"]);
+});
+
 test("parses a chunked completed turn and returns run-bound raw and receipt evidence", async () => {
   const bytes = new TextEncoder().encode(
     sse(
@@ -479,6 +560,7 @@ test("parses a chunked completed turn and returns run-bound raw and receipt evid
   }
   let sentBody: Record<string, unknown> | undefined;
   let sentHeaders: Headers | undefined;
+  let sentRedirect: RequestInit["redirect"];
   const { backend, captured } = backendOptions(
     bridgeFetcher(
       [
@@ -491,6 +573,7 @@ test("parses a chunked completed turn and returns run-bound raw and receipt evid
       (request) => {
         sentBody = JSON.parse(String(request.body)) as Record<string, unknown>;
         sentHeaders = new Headers(request.headers);
+        sentRedirect = request.redirect;
       },
     ),
   );
@@ -536,6 +619,7 @@ test("parses a chunked completed turn and returns run-bound raw and receipt evid
     reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
   });
   expect(sentHeaders?.get("authorization")).toBeNull();
+  expect(sentRedirect).toBe("error");
   if (sentBody === undefined) throw new Error("Request body was not captured.");
   const clientMetadata = sentBody.client_metadata as Record<string, unknown>;
   const metadata = JSON.parse(

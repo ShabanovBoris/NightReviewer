@@ -232,6 +232,9 @@ test("LIVE qualification persists one run and does not aggregate or approve", as
       owner: fixture.owner,
       backend: mismatchedBackend,
     });
+    expect(mismatchedBackend.profile.configurationDigest).not.toBe(
+      backend.profile.configurationDigest,
+    );
     expect(() => restartedScheduler.activateCycle(fixture.context)).toThrow(
       "Scheduler cycle is bound to a different backend configuration.",
     );

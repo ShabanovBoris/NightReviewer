@@ -21,6 +21,17 @@ import {
   openStorage,
   type SqliteStorage,
 } from "../src/storage";
+import {
+  assertProductionBindingMatches,
+  createAllowlistedChildProcessEnvironment,
+  createMacOSKeychainCredentialResolver,
+  NR09_PRODUCTION_BINDING_RELATIVE_PATH,
+  type ProductionBinding,
+  ProductionBindingError,
+  parseCredentialSourceRef,
+  readPrivateProductionBinding,
+  resolveBoundProductionCredential,
+} from "./nr09-production-binding";
 
 const REPOSITORY = "ShabanovBoris/NightReviewer";
 const PR_URL = "https://github.com/ShabanovBoris/NightReviewer/pull/10";
@@ -71,6 +82,12 @@ interface PhaseBAuthorization {
     readonly bridgeVersion: string;
     readonly clientVersion: string;
     readonly credentialProfileId: string;
+    readonly credentialSourceRef: {
+      readonly provider: "macos-keychain";
+      readonly service: string;
+      readonly account: string;
+    };
+    readonly credentialBindingGeneration: number;
     readonly model: string;
     readonly reasoningEffort: string;
   };
@@ -85,6 +102,8 @@ interface RuntimeConfig {
   readonly apiKey: string;
   readonly clientVersion: string;
   readonly credentialProfileId: string;
+  readonly credentialSourceRef: PhaseBAuthorization["runtime"]["credentialSourceRef"];
+  readonly credentialBindingGeneration: number;
   readonly phaseB: PhaseBAuthorization;
   readonly phaseBReceipt: {
     readonly messageId: string;
@@ -211,8 +230,16 @@ export function validatePhaseBDecision(
   const bridgeVersion = runtime?.bridgeVersion;
   const clientVersion = runtime?.clientVersion;
   const credentialProfileId = runtime?.credentialProfileId;
+  const credentialSourceRefValue = runtime?.credentialSourceRef;
+  const credentialBindingGeneration = runtime?.credentialBindingGeneration;
   const model = runtime?.model;
   const reasoningEffort = runtime?.reasoningEffort;
+  let credentialSourceRef: PhaseBAuthorization["runtime"]["credentialSourceRef"];
+  try {
+    credentialSourceRef = parseCredentialSourceRef(credentialSourceRefValue);
+  } catch {
+    throw new SmokeHarnessError("PHASE_B_SCOPE_MISMATCH");
+  }
   if (
     typeof messageId !== "string" ||
     !SAFE_IDENTIFIER.test(messageId) ||
@@ -239,7 +266,10 @@ export function validatePhaseBDecision(
     reasoningEffort !== CHATGPT_WEB_BRIDGE_PIN.reasoningEffort ||
     typeof bridgeOrigin !== "string" ||
     typeof clientVersion !== "string" ||
-    typeof credentialProfileId !== "string"
+    typeof credentialProfileId !== "string" ||
+    typeof credentialBindingGeneration !== "number" ||
+    !Number.isSafeInteger(credentialBindingGeneration) ||
+    credentialBindingGeneration < 1
   ) {
     throw new SmokeHarnessError("PHASE_B_SCOPE_MISMATCH");
   }
@@ -252,6 +282,8 @@ export function validatePhaseBDecision(
       bridgeVersion: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
       clientVersion,
       credentialProfileId,
+      credentialSourceRef,
+      credentialBindingGeneration,
       model: CHATGPT_WEB_BRIDGE_PIN.model,
       reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     },
@@ -487,21 +519,25 @@ function validateBaseUrl(raw: string): URL {
 }
 
 async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
+  const childEnvironment = createAllowlistedChildProcessEnvironment();
   const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
     encoding: "utf8",
+    env: childEnvironment,
   }).trim();
   const branch = execFileSync("git", ["branch", "--show-current"], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: childEnvironment,
   }).trim();
   const headSha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: childEnvironment,
   }).trim();
   const worktree = execFileSync(
     "git",
     ["status", "--porcelain", "--untracked-files=normal"],
-    { cwd: repoRoot, encoding: "utf8" },
+    { cwd: repoRoot, encoding: "utf8", env: childEnvironment },
   );
   if (
     branch !== "nr-09-production-bridge-adapter" ||
@@ -517,6 +553,7 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
   execFileSync("git", ["cat-file", "-e", ASSIGNED_BASE_SHA + "^{commit}"], {
     cwd: repoRoot,
     stdio: "ignore",
+    env: childEnvironment,
   });
   const receiptPath = path.resolve(repoRoot, args.phaseBReceiptPath);
   const allowedReceiptRoot = path.resolve(
@@ -547,26 +584,55 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     headSha,
   });
 
-  const bridgeBaseUrl = validateBaseUrl(
-    process.env.BRIDGE_SPIKE_BASE_URL ?? "",
-  );
-  const apiKey = process.env.BRIDGE_SPIKE_API_KEY ?? "";
-  const clientVersion = process.env.BRIDGE_SPIKE_CLIENT_VERSION ?? "";
-  const credentialProfileId = process.env.NR09_CREDENTIAL_PROFILE_ID ?? "";
-  if (
-    apiKey.trim().length === 0 ||
-    clientVersion.length === 0 ||
-    !SAFE_IDENTIFIER.test(credentialProfileId)
-  ) {
-    throw new SmokeHarnessError("PRIVATE_BRIDGE_PROFILE_UNAVAILABLE");
+  let binding: ProductionBinding;
+  try {
+    binding = await readPrivateProductionBinding(
+      path.join(repoRoot, NR09_PRODUCTION_BINDING_RELATIVE_PATH),
+    );
+  } catch (error) {
+    if (error instanceof ProductionBindingError) {
+      throw new SmokeHarnessError(error.code);
+    }
+    throw new SmokeHarnessError("PRODUCTION_BINDING_INVALID");
   }
-  if (
-    bridgeBaseUrl.origin !== phaseB.runtime.bridgeOrigin ||
-    clientVersion !== phaseB.runtime.clientVersion ||
-    credentialProfileId !== phaseB.runtime.credentialProfileId
-  ) {
+  let bridgeBaseUrl: URL;
+  try {
+    bridgeBaseUrl = validateBaseUrl(process.env.BRIDGE_SPIKE_BASE_URL ?? "");
+    assertProductionBindingMatches(binding, {
+      bridgeOrigin: phaseB.runtime.bridgeOrigin,
+      bridgeVersion: phaseB.runtime.bridgeVersion,
+      clientVersion: phaseB.runtime.clientVersion,
+      credentialProfileId: phaseB.runtime.credentialProfileId,
+      credentialSourceRef: phaseB.runtime.credentialSourceRef,
+      credentialBindingGeneration: phaseB.runtime.credentialBindingGeneration,
+      model: phaseB.runtime.model,
+      reasoningEffort: phaseB.runtime.reasoningEffort,
+    });
+  } catch (error) {
+    if (error instanceof ProductionBindingError) {
+      throw new SmokeHarnessError(error.code);
+    }
+    if (error instanceof SmokeHarnessError) throw error;
     throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
   }
+  if (bridgeBaseUrl.origin !== binding.bridge.origin) {
+    throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
+  }
+  let apiKey: string;
+  try {
+    apiKey = await resolveBoundProductionCredential(
+      binding,
+      phaseB.runtime,
+      createMacOSKeychainCredentialResolver(),
+    );
+  } catch (error) {
+    if (error instanceof ProductionBindingError) {
+      throw new SmokeHarnessError(error.code);
+    }
+    throw new SmokeHarnessError("CREDENTIAL_SOURCE_UNAVAILABLE");
+  }
+  const clientVersion = binding.clientVersion;
+  const credentialProfileId = binding.credentialProfileId;
   return {
     mode: args.mode,
     repoRoot,
@@ -576,6 +642,8 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     apiKey,
     clientVersion,
     credentialProfileId,
+    credentialSourceRef: binding.credentialSourceRef,
+    credentialBindingGeneration: binding.credentialBindingGeneration,
     phaseB,
     phaseBReceipt: {
       messageId: phaseB.messageId,
@@ -638,6 +706,8 @@ function buildBackend(
     apiKey: config.apiKey,
     clientVersion: config.clientVersion,
     credentialProfileId: config.credentialProfileId,
+    credentialSourceRef: config.credentialSourceRef,
+    credentialBindingGeneration: config.credentialBindingGeneration,
     buildPrompt: buildQualificationPrompt,
     persistRawArtifact: (bytes) => store.persistRawArtifact(bytes),
     createRawArtifactCapture: () => store.beginRawArtifactCapture(),
@@ -1080,6 +1150,7 @@ function safeRuntimeIdentity(config: RuntimeConfig): Record<string, unknown> {
     reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     clientVersion: config.clientVersion,
     credentialProfileId: config.credentialProfileId,
+    credentialBindingGeneration: config.credentialBindingGeneration,
   };
 }
 
@@ -1168,7 +1239,15 @@ async function main(): Promise<void> {
   if (
     config.bridgeBaseUrl.origin !== config.phaseB.runtime.bridgeOrigin ||
     config.clientVersion !== config.phaseB.runtime.clientVersion ||
-    config.credentialProfileId !== config.phaseB.runtime.credentialProfileId
+    config.credentialProfileId !== config.phaseB.runtime.credentialProfileId ||
+    config.credentialBindingGeneration !==
+      config.phaseB.runtime.credentialBindingGeneration ||
+    config.credentialSourceRef.provider !==
+      config.phaseB.runtime.credentialSourceRef.provider ||
+    config.credentialSourceRef.service !==
+      config.phaseB.runtime.credentialSourceRef.service ||
+    config.credentialSourceRef.account !==
+      config.phaseB.runtime.credentialSourceRef.account
   ) {
     throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
   }

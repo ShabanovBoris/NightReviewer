@@ -52,6 +52,12 @@ export type ChatGptWebRawArtifactStore = (
 export type ChatGptWebRawArtifactCaptureFactory =
   () => Promise<RawArtifactCapture>;
 
+export interface CredentialSourceRef {
+  readonly provider: "macos-keychain";
+  readonly service: string;
+  readonly account: string;
+}
+
 export interface ChatGptWebBackendOptions {
   readonly baseUrl: string | URL;
   readonly apiKey: string;
@@ -61,6 +67,8 @@ export interface ChatGptWebBackendOptions {
   readonly requestTimeoutMs?: number;
   readonly maxResponseBytes?: number;
   readonly credentialProfileId: string;
+  readonly credentialSourceRef: CredentialSourceRef;
+  readonly credentialBindingGeneration: number;
   readonly buildPrompt: (context: SchedulerPromptContext) => string;
   readonly persistRawArtifact: ChatGptWebRawArtifactStore;
   readonly createRawArtifactCapture: ChatGptWebRawArtifactCaptureFactory;
@@ -224,6 +232,15 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     ) {
       throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
     }
+    const credentialSourceRef = normalizeCredentialSourceRef(
+      options.credentialSourceRef,
+    );
+    if (
+      !Number.isSafeInteger(options.credentialBindingGeneration) ||
+      options.credentialBindingGeneration < 1
+    ) {
+      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+    }
     this.#buildPrompt = options.buildPrompt;
     this.#persistRawArtifact = options.persistRawArtifact;
     this.#createRawArtifactCapture = options.createRawArtifactCapture;
@@ -238,6 +255,8 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       reasoningEffort: this.#reasoningEffort,
       qualification: "LIVE_PRODUCTION_BRIDGE" as const,
       credentialProfileId: options.credentialProfileId,
+      credentialSourceRef,
+      credentialBindingGeneration: options.credentialBindingGeneration,
       bridgeOrigin: this.#baseUrl.origin,
       clientVersion: this.#clientVersion,
       requestTimeoutMs: this.#requestTimeoutMs,
@@ -1291,6 +1310,28 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       );
     }
   }
+}
+
+function normalizeCredentialSourceRef(
+  value: CredentialSourceRef,
+): CredentialSourceRef {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Object.keys(value).sort().join(",") !== "account,provider,service" ||
+    value.provider !== "macos-keychain" ||
+    typeof value.service !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.service) ||
+    typeof value.account !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value.account)
+  ) {
+    throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+  }
+  return {
+    provider: value.provider,
+    service: value.service,
+    account: value.account,
+  };
 }
 
 function validateLoopbackBaseUrl(input: string | URL): URL {

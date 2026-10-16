@@ -48,6 +48,12 @@ const phaseBDecision = {
         bridgeVersion: "6.1.3",
         clientVersion: "1.2.3",
         credentialProfileId: "existing-profile",
+        credentialSourceRef: {
+          provider: "macos-keychain",
+          service: "NightReviewer.NR09.ProductionBearer",
+          account: "existing-profile",
+        },
+        credentialBindingGeneration: 1,
         model: MODEL,
         reasoningEffort: "high",
       },
@@ -95,7 +101,18 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
   ).toMatchObject({
     decisionId: DECISION_ID,
     authorizationId: AUTHORIZATION_ID,
-    runtime: { bridgeOrigin: ORIGIN, model: MODEL, reasoningEffort: "high" },
+    runtime: {
+      bridgeOrigin: ORIGIN,
+      model: MODEL,
+      reasoningEffort: "high",
+      credentialProfileId: "existing-profile",
+      credentialBindingGeneration: 1,
+      credentialSourceRef: {
+        provider: "macos-keychain",
+        service: "NightReviewer.NR09.ProductionBearer",
+        account: "existing-profile",
+      },
+    },
   });
   const phaseA = {
     ...phaseBDecision,
@@ -116,6 +133,50 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: "1111111111111111111111111111111111111111",
+    }),
+  ).toThrow(SmokeHarnessError);
+});
+
+test("Phase B requires a fixed credential source reference and generation", () => {
+  const missingSourceRef = {
+    ...phaseBDecision,
+    payload: {
+      ...phaseBDecision.payload,
+      phaseBAuthorization: {
+        ...phaseBDecision.payload.phaseBAuthorization,
+        runtime: {
+          ...phaseBDecision.payload.phaseBAuthorization.runtime,
+          credentialSourceRef: undefined,
+        },
+      },
+    },
+  };
+  const invalidGeneration = {
+    ...phaseBDecision,
+    payload: {
+      ...phaseBDecision.payload,
+      phaseBAuthorization: {
+        ...phaseBDecision.payload.phaseBAuthorization,
+        runtime: {
+          ...phaseBDecision.payload.phaseBAuthorization.runtime,
+          credentialBindingGeneration: 0,
+        },
+      },
+    },
+  };
+
+  expect(() =>
+    validatePhaseBDecision(decisionText(missingSourceRef), {
+      requestId: REQUEST_ID,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+    }),
+  ).toThrow(SmokeHarnessError);
+  expect(() =>
+    validatePhaseBDecision(decisionText(invalidGeneration), {
+      requestId: REQUEST_ID,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
     }),
   ).toThrow(SmokeHarnessError);
 });

@@ -139,6 +139,12 @@ function backendOptions(
     ...options,
     credentialProfileId:
       options.credentialProfileId ?? "test-credential-profile",
+    credentialSourceRef: options.credentialSourceRef ?? {
+      provider: "macos-keychain",
+      service: "NightReviewer.NR09.TestBearer",
+      account: options.credentialProfileId ?? "test-credential-profile",
+    },
+    credentialBindingGeneration: options.credentialBindingGeneration ?? 1,
   });
   return { backend, captured };
 }
@@ -283,6 +289,62 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
     "HEALTH",
     "MODEL_CATALOG",
   ]);
+});
+
+test("configuration digest binds the profile source and generation, never the bearer", () => {
+  const options = {
+    apiKey: "sentinel-bearer-alpha",
+    credentialProfileId: "profile-alpha",
+    credentialSourceRef: {
+      provider: "macos-keychain" as const,
+      service: "NightReviewer.NR09.ProductionBearer",
+      account: "profile-alpha",
+    },
+    credentialBindingGeneration: 1,
+  };
+  const first = backendOptions(bridgeFetcher(), options).backend.profile;
+  const differentBearer = backendOptions(bridgeFetcher(), {
+    ...options,
+    apiKey: "sentinel-production-bearer-beta",
+  }).backend.profile;
+  const otherProfile = backendOptions(bridgeFetcher(), {
+    ...options,
+    credentialProfileId: "profile-beta",
+    credentialSourceRef: {
+      ...options.credentialSourceRef,
+      account: "profile-beta",
+    },
+  }).backend.profile;
+  const otherSource = backendOptions(bridgeFetcher(), {
+    ...options,
+    credentialSourceRef: {
+      ...options.credentialSourceRef,
+      service: "NightReviewer.NR09.Other",
+    },
+  }).backend.profile;
+  const nextGeneration = backendOptions(bridgeFetcher(), {
+    ...options,
+    credentialBindingGeneration: 2,
+  }).backend.profile;
+  const otherClientVersion = backendOptions(bridgeFetcher(), {
+    ...options,
+    clientVersion: "0.2.0",
+  }).backend.profile;
+
+  expect(
+    new Set([
+      first.configurationDigest,
+      otherProfile.configurationDigest,
+      otherSource.configurationDigest,
+      nextGeneration.configurationDigest,
+      otherClientVersion.configurationDigest,
+    ]).size,
+  ).toBe(5);
+  expect(differentBearer.configurationDigest).toBe(first.configurationDigest);
+  expect(JSON.stringify(first)).not.toContain("sentinel-bearer-alpha");
+  expect(JSON.stringify(first)).not.toContain(
+    "sentinel-production-bearer-beta",
+  );
 });
 
 test("parses a chunked completed turn and returns run-bound raw and receipt evidence", async () => {
@@ -785,6 +847,12 @@ test("rejects non-loopback bridge URLs before accepting credentials", async () =
         baseUrl: "https://bridge.example/",
         apiKey: "unused",
         credentialProfileId: "test-credential-profile",
+        credentialSourceRef: {
+          provider: "macos-keychain",
+          service: "NightReviewer.NR09.TestBearer",
+          account: "test-credential-profile",
+        },
+        credentialBindingGeneration: 1,
         clientVersion: "0.1.0",
         buildPrompt: () => prompt,
         persistRawArtifact: async () => artifactReference(new Uint8Array(), 1),

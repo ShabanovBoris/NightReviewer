@@ -36,6 +36,7 @@ import {
 } from "./nr09-production-binding";
 import {
   assertVersionAwareLauncherIdentityMatches,
+  createVersionAwareLauncherIdentityValidator,
   resolveVersionAwareLauncher,
   toChatGptWebClientVersionProvenance,
   toChatGptWebLauncherCompatibilityIdentity,
@@ -107,6 +108,7 @@ interface RuntimeConfig {
   readonly bridgeBaseUrl: URL;
   readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
   readonly clientVersion: string;
+  readonly launcherIdentity: ProductionBinding["launcherIdentity"];
   readonly clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
   readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly phaseB: PhaseBAuthorization;
@@ -727,6 +729,7 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     bridgeBaseUrl,
     authMode: binding.authMode,
     clientVersion,
+    launcherIdentity: currentLauncherIdentity,
     clientVersionProvenance,
     launcherCompatibilityIdentity,
     phaseB,
@@ -775,6 +778,25 @@ function buildBackend(
   responseAttempts: ResponsesRequestObservation[],
   unsafeHealthArtifacts: ArtifactReference[],
 ): ObservedChatGptWebReviewerBackend {
+  const phaseBRoot = path.join(
+    config.repoRoot,
+    ".nightreviewer",
+    "dev",
+    SESSION_ID,
+    "phase-b",
+  );
+  const verifyCurrentClientIdentity =
+    createVersionAwareLauncherIdentityValidator(config.launcherIdentity, {
+      applicationPath: config.launcherIdentity.applicationPath,
+      applicationRoots: ["/Applications"],
+      phaseBRoot,
+      profileRoots: [
+        path.join(phaseBRoot, "profile"),
+        path.join(phaseBRoot, "profile", "codex-home"),
+        path.join(phaseBRoot, "profile", "launcher"),
+      ],
+      expectedUpstreamBridgeVersion: config.phaseB.runtime.bridgeVersion,
+    });
   const guardedFetch = createGuardedFetcher({
     fetcher: fetch,
     mode: runMode,
@@ -790,6 +812,7 @@ function buildBackend(
     authMode: config.authMode,
     baseUrl: config.bridgeBaseUrl,
     clientVersion: config.clientVersion,
+    verifyCurrentClientIdentity,
     clientVersionProvenance: config.clientVersionProvenance,
     launcherCompatibilityIdentity: config.launcherCompatibilityIdentity,
     buildPrompt: buildQualificationPrompt,

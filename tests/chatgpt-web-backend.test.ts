@@ -78,6 +78,10 @@ function sse(
   ].join("\n");
 }
 
+function eventFrame(event: string, body: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(body)}\n\n`;
+}
+
 function streamFromChunks(
   chunks: readonly Uint8Array[],
 ): ReadableStream<Uint8Array> {
@@ -147,7 +151,7 @@ function backendOptions(
   const clientVersion = options.clientVersion ?? "0.1.0";
   const backend = new ChatGptWebReviewerBackend({
     authMode: CHATGPT_WEB_AUTH_MODE,
-    baseUrl: CHATGPT_WEB_BRIDGE_ORIGIN + "/",
+    baseUrl: `${CHATGPT_WEB_BRIDGE_ORIGIN}/`,
     clientVersion,
     clientVersionProvenance: {
       ...clientVersionProvenance,
@@ -160,6 +164,8 @@ function backendOptions(
     persistRawArtifact,
     createRawArtifactCapture,
     fetcher,
+    verifyCurrentClientIdentity:
+      options.verifyCurrentClientIdentity ?? (async () => true),
     createId: sequentialIds(),
     now: () => new Date("2026-10-05T12:00:00.000Z"),
     ...options,
@@ -307,6 +313,126 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
     "HEALTH",
     "MODEL_CATALOG",
   ]);
+});
+
+test("fails before network when the installed client identity changes after backend construction", async () => {
+  let installedIdentity = "bound-identity";
+  const boundIdentity = installedIdentity;
+  const requestPaths: string[] = [];
+  const transport = bridgeFetcher();
+  const { backend } = backendOptions(
+    (async (request, init) => {
+      requestPaths.push(new URL(String(request)).pathname);
+      return transport(request, init);
+    }) as typeof fetch,
+    {
+      verifyCurrentClientIdentity: async () =>
+        installedIdentity === boundIdentity,
+    },
+  );
+  installedIdentity = "updated-identity";
+
+  const result = await backend.invoke(input());
+
+  expect(result.kind).toBe("PERMANENT_FAILURE");
+  expect(result.sendState).toBe("UNSENT");
+  expect(requestPaths).toEqual([]);
+  expect(Buffer.from(result.rawBytes).toString("utf8")).toContain(
+    "LAUNCHER_COMPATIBILITY_UNVERIFIED",
+  );
+});
+
+test("revalidates the installed client identity before the Responses POST", async () => {
+  let validationCalls = 0;
+  const requestPaths: string[] = [];
+  const transport = bridgeFetcher();
+  const { backend } = backendOptions(
+    (async (request, init) => {
+      requestPaths.push(new URL(String(request)).pathname);
+      return transport(request, init);
+    }) as typeof fetch,
+    {
+      verifyCurrentClientIdentity: async () => ++validationCalls < 3,
+    },
+  );
+
+  const result = await backend.invoke(input());
+
+  expect(result.kind).toBe("PERMANENT_FAILURE");
+  expect(result.sendState).toBe("UNSENT");
+  expect(validationCalls).toBe(3);
+  expect(requestPaths).toEqual(["/healthz", "/v1/models"]);
+  expect(Buffer.from(result.rawBytes).toString("utf8")).toContain(
+    "LAUNCHER_COMPATIBILITY_UNVERIFIED",
+  );
+});
+
+test("rejects conflicting terminal SSE outcomes instead of accepting completion", async () => {
+  const responseIdentity = {
+    id: "response-conflicting-terminal",
+    model: CHATGPT_WEB_BRIDGE_PIN.model,
+    reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
+  };
+  const prefix =
+    eventFrame("response.created", {
+      type: "response.created",
+      response: { ...responseIdentity, status: "in_progress" },
+    }) +
+    eventFrame("response.output_text.delta", {
+      type: "response.output_text.delta",
+      delta: JSON.stringify(workerOutput()),
+    });
+  const completed = eventFrame("response.completed", {
+    type: "response.completed",
+    response: { ...responseIdentity, status: "completed" },
+  });
+  const failed = eventFrame("response.failed", {
+    type: "response.failed",
+    response: {
+      ...responseIdentity,
+      status: "failed",
+      error: { type: "connector_error", code: "connector_not_found" },
+    },
+  });
+  const incomplete = eventFrame("response.incomplete", {
+    type: "response.incomplete",
+    response: {
+      ...responseIdentity,
+      status: "incomplete",
+      incomplete_details: { reason: "max_output_tokens" },
+    },
+  });
+  const conflictingFrame = eventFrame("response.completed", {
+    type: "response.failed",
+    response: {
+      ...responseIdentity,
+      status: "failed",
+      error: { type: "connector_error", code: "connector_not_found" },
+    },
+  });
+  const terminalSequences = [
+    [completed, failed],
+    [failed, completed],
+    [completed, incomplete],
+    [conflictingFrame],
+  ];
+
+  for (const terminals of terminalSequences) {
+    const body = `${prefix}${terminals.join("")}data: [DONE]\n\n`;
+    const { backend } = backendOptions(
+      bridgeFetcher([
+        new Response(body, {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      ]),
+    );
+
+    const result = await backend.invoke(input());
+
+    expect(result.kind).toBe("MALFORMED");
+    expect(result.receipt?.outcome).toBe("MALFORMED");
+  }
 });
 
 test("configuration digest binds stable route identity, capabilities, and limits", () => {

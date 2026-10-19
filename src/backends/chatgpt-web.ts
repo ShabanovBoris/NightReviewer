@@ -79,6 +79,7 @@ export interface ChatGptWebBackendOptions {
   readonly clientVersion: string;
   readonly clientVersionProvenance: ChatGptWebClientVersionProvenance;
   readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
+  readonly verifyCurrentClientIdentity: () => Promise<boolean>;
   readonly model?: string;
   readonly reasoningEffort?: string;
   readonly requestTimeoutMs?: number;
@@ -141,6 +142,7 @@ export interface ChatGptWebCompatibility {
 
 export type ChatGptWebBackendErrorCode =
   | "INVALID_CONFIGURATION"
+  | "LAUNCHER_COMPATIBILITY_UNVERIFIED"
   | "BRIDGE_UNAVAILABLE"
   | "UNSUPPORTED_BRIDGE_VERSION"
   | "BRIDGE_NOT_READY"
@@ -222,6 +224,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   readonly #clientVersion: string;
   readonly #clientVersionProvenance: ChatGptWebClientVersionProvenance;
   readonly #launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
+  readonly #verifyCurrentClientIdentity: () => Promise<boolean>;
   readonly #model: string;
   readonly #reasoningEffort: string;
   readonly #expectedBridgeVersion = CHATGPT_WEB_BRIDGE_PIN.upstreamVersion;
@@ -248,6 +251,10 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       parseChatGptWebLauncherCompatibilityIdentity(
         options.launcherCompatibilityIdentity,
       );
+    if (typeof options.verifyCurrentClientIdentity !== "function") {
+      throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+    }
+    this.#verifyCurrentClientIdentity = options.verifyCurrentClientIdentity;
     this.#model = options.model ?? CHATGPT_WEB_BRIDGE_PIN.model;
     this.#reasoningEffort =
       options.reasoningEffort ?? CHATGPT_WEB_BRIDGE_PIN.reasoningEffort;
@@ -483,6 +490,12 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
           { ...session },
         );
       }
+      if (
+        error instanceof ChatGptWebBackendError &&
+        error.code === "LAUNCHER_COMPATIBILITY_UNVERIFIED"
+      ) {
+        return this.#failedBeforeSend(error, rawArtifacts);
+      }
       return this.#unknownAfterSend(error, input, compatibility, rawArtifacts, {
         ...session,
       });
@@ -571,6 +584,23 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
         purpose: "SCHEMA_REPAIR_RESPONSE",
       });
     } catch (error) {
+      if (
+        error instanceof ChatGptWebBackendError &&
+        error.code === "LAUNCHER_COMPATIBILITY_UNVERIFIED"
+      ) {
+        return this.#resultWithReceipt(
+          {
+            kind: "MALFORMED",
+            errorClass: "INVALID_SCHEMA",
+            rawBytes: captured.bytes,
+          },
+          input,
+          compatibility,
+          rawArtifacts,
+          session,
+          "MALFORMED",
+        );
+      }
       return this.#unknownAfterSend(error, input, compatibility, rawArtifacts, {
         ...session,
       });
@@ -659,6 +689,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       Math.min(this.#requestTimeoutMs, 10_000),
     );
     try {
+      await this.#assertCurrentClientIdentity();
       let response: Response;
       try {
         response = await this.#fetcher(url, {
@@ -782,9 +813,16 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       scope.close();
       throw new ChatGptWebBackendError("REQUEST_TIMEOUT", true, "UNSENT");
     }
-    input.reportSendState?.("UNKNOWN");
     let response: Response;
     try {
+      await this.#assertCurrentClientIdentity();
+      if (scope.parentAborted()) {
+        throw new ChatGptWebBackendError("REQUEST_ABORTED", false, "UNSENT");
+      }
+      if (scope.timedOut()) {
+        throw new ChatGptWebBackendError("REQUEST_TIMEOUT", true, "UNSENT");
+      }
+      input.reportSendState?.("UNKNOWN");
       try {
         response = await this.#fetcher(
           new URL("/v1/responses", this.#baseUrl),
@@ -1083,6 +1121,15 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       },
       outcome: "FAILED",
     };
+  }
+
+  async #assertCurrentClientIdentity(): Promise<void> {
+    try {
+      if (await this.#verifyCurrentClientIdentity()) return;
+    } catch {
+      // Keep resolver details out of backend results and diagnostics.
+    }
+    throw new ChatGptWebBackendError("LAUNCHER_COMPATIBILITY_UNVERIFIED");
   }
 
   #parseOutput(

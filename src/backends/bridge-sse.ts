@@ -272,6 +272,7 @@ export async function readBridgeSse(
   let responseId: string | undefined;
   let outputText = "";
   let terminal: BridgeSseOutcome | undefined;
+  let terminalEventKind: BridgeSseTerminalEvent | undefined;
   let rawBytes = 0;
   const events = new Set<string>();
   const cancelOnAbort = (): void => {
@@ -287,6 +288,18 @@ export async function readBridgeSse(
       eventName === "response.failed"
     ) {
       options.onTerminalEvent?.(eventName);
+      if (terminalEventKind !== undefined && terminalEventKind !== eventName) {
+        terminal = {
+          kind: "failed",
+          status: null,
+          responseStatus: null,
+          errorType: "bridge_protocol_error",
+          code: "conflicting_terminal_events",
+          events: [...events],
+        };
+        return;
+      }
+      terminalEventKind ??= eventName;
     }
   };
 

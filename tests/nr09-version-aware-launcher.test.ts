@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   assertVersionAwareLauncherIdentityMatches,
+  createVersionAwareLauncherIdentityValidator,
   DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY,
   type LauncherCompatibilityPolicy,
   type LauncherCompatibilityPolicyEntry,
@@ -20,10 +21,17 @@ import {
   NR09_LAUNCHER_COMPATIBILITY_POLICY_SCHEMA,
   parseVersionAwareLauncherIdentity,
   resolveVersionAwareLauncher,
+  toChatGptWebClientVersionProvenance,
   toChatGptWebLauncherCompatibilityIdentity,
   VersionAwareLauncherError,
   versionAwareLauncherIdentitySha256,
 } from "../scripts/nr09-version-aware-launcher";
+import {
+  CHATGPT_WEB_AUTH_MODE,
+  CHATGPT_WEB_BRIDGE_ORIGIN,
+  ChatGptWebReviewerBackend,
+} from "../src/backends/chatgpt-web";
+import type { BackendInvocationInput } from "../src/scheduler/types";
 
 const BUNDLE_IDENTIFIER = "dev.codexwebgpt.launcher";
 const BRIDGE_VERSION = "6.1.3";
@@ -375,6 +383,103 @@ test("rediscovers a verified update at the normal app path and rejects stale ide
     expect((policyDriftError as VersionAwareLauncherError).code).toBe(
       "LAUNCHER_IDENTITY_CHANGED",
     );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("blocks the next backend invocation when the installed bundle updates after construction", async () => {
+  const fixture = await makeFixture();
+  try {
+    const initialFiles = bundleFiles("6.1.3");
+    const updatedFiles = bundleFiles("6.1.4");
+    await writeBundle(fixture.applicationPath, initialFiles);
+    const policy = policyFor([
+      entryFor("6.1.3", initialFiles),
+      entryFor("6.1.4", updatedFiles),
+    ]);
+    const initialIdentity = await resolveVersionAwareLauncher(
+      optionsFor(fixture, policy),
+    );
+    let fetchCalls = 0;
+    let validatorCalls = 0;
+    const validator = createVersionAwareLauncherIdentityValidator(
+      initialIdentity,
+      optionsFor(fixture, policy),
+    );
+    const prompt = "Review the bound snapshot without changing files.";
+    const promptHash = sha256(Buffer.from(prompt, "utf8"));
+    const persistRawArtifact = async (bytes: Uint8Array) => ({
+      sha256: sha256(bytes),
+      sizeBytes: bytes.byteLength,
+      relativePath: "artifacts/launcher-update-test",
+    });
+    const backend = new ChatGptWebReviewerBackend({
+      authMode: CHATGPT_WEB_AUTH_MODE,
+      baseUrl: `${CHATGPT_WEB_BRIDGE_ORIGIN}/`,
+      clientVersion: initialIdentity.version,
+      clientVersionProvenance:
+        toChatGptWebClientVersionProvenance(initialIdentity),
+      launcherCompatibilityIdentity:
+        toChatGptWebLauncherCompatibilityIdentity(initialIdentity),
+      verifyCurrentClientIdentity: async () => {
+        validatorCalls += 1;
+        return validator();
+      },
+      buildPrompt: () => prompt,
+      persistRawArtifact,
+      createRawArtifactCapture: async () => ({
+        async write() {},
+        async commit() {
+          return persistRawArtifact(new Uint8Array());
+        },
+        async abort() {},
+      }),
+      fetcher: (async () => {
+        fetchCalls += 1;
+        throw new Error("The installed launcher changed before this request.");
+      }) as unknown as typeof fetch,
+      createId: () => "launcher-update-test-id",
+      now: () => new Date("2026-10-19T10:00:00.000Z"),
+    });
+    const input: BackendInvocationInput = {
+      claim: {
+        reviewId: "review-update",
+        cycleId: "cycle-update",
+        runId: "run-update",
+        direction: "correctness",
+        replicaIndex: 1,
+        attemptId: "attempt-update",
+        attemptNumber: 1,
+        workKind: "TURN",
+        deadlineAtUtc: "2026-10-19T11:00:00.000Z",
+        attemptDeadlineAtUtc: "2026-10-19T10:30:00.000Z",
+        lease: { resourceId: "job-update", ownerId: "daemon-update", token: 1 },
+        leaseExpiresAtUtc: "2026-10-19T10:31:00.000Z",
+      },
+      context: {
+        reviewId: "review-update",
+        cycleId: "cycle-update",
+        runId: "run-update",
+        direction: "correctness",
+        replicaIndex: 1,
+        objectFormat: "sha1",
+        baseSha: "a".repeat(40),
+        headSha: "b".repeat(40),
+        promptHash,
+        schemaHash: "c".repeat(64),
+        policyHash: "d".repeat(64),
+      },
+      signal: new AbortController().signal,
+    };
+
+    await writeBundle(fixture.applicationPath, updatedFiles);
+    const result = await backend.invoke(input);
+
+    expect(result.kind).toBe("PERMANENT_FAILURE");
+    expect(result.sendState).toBe("UNSENT");
+    expect(validatorCalls).toBe(1);
+    expect(fetchCalls).toBe(0);
   } finally {
     await fixture.dispose();
   }

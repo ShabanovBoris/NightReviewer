@@ -478,6 +478,21 @@ export function assertVersionAwareLauncherIdentityMatches(
   }
 }
 
+export function createVersionAwareLauncherIdentityValidator(
+  expected: VersionAwareLauncherIdentity,
+  options: ResolveVersionAwareLauncherOptions,
+): () => Promise<boolean> {
+  return async () => {
+    try {
+      const observed = await resolveVersionAwareLauncher(options);
+      assertVersionAwareLauncherIdentityMatches(expected, observed);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+}
+
 function validateCompatibilityPolicy(
   policy: LauncherCompatibilityPolicy,
 ): void {

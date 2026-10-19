@@ -231,7 +231,7 @@ test("treats EOF without a terminal event as incomplete", async () => {
   });
 });
 
-test("preserves a response.completed event that follows an earlier terminal", async () => {
+test("rejects a conflicting response.completed event after an earlier terminal", async () => {
   const source = [
     "event: response.incomplete",
     'data: {"type":"response.incomplete","response":{"id":"resp_partial"}}',
@@ -245,9 +245,11 @@ test("preserves a response.completed event that follows an earlier terminal", as
   const outcome = await readBridgeSse(new Response(source));
 
   expect(outcome).toEqual({
-    kind: "incomplete",
-    responseId: "resp_partial",
-    reason: "unspecified",
+    kind: "failed",
+    status: null,
+    responseStatus: null,
+    errorType: "bridge_protocol_error",
+    code: "conflicting_terminal_events",
     events: ["response.incomplete", "response.completed", "data:[DONE]"],
   });
 });

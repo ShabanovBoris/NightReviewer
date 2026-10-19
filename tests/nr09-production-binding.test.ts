@@ -19,31 +19,67 @@ import {
   readPrivateProductionBinding,
 } from "../scripts/nr09-production-binding";
 import {
+  DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY,
+  launcherCompatibilityPolicySha256,
+  toChatGptWebClientVersionProvenance,
+  toChatGptWebLauncherCompatibilityIdentity,
+  type VersionAwareLauncherIdentity,
+  versionAwareLauncherIdentitySha256,
+} from "../scripts/nr09-version-aware-launcher";
+import {
   CHATGPT_WEB_AUTH_MODE,
   CHATGPT_WEB_BRIDGE_ORIGIN,
   CHATGPT_WEB_BRIDGE_PIN,
 } from "../src/backends/chatgpt-web";
 
-const clientVersionProvenance = {
-  kind: "active-codex-desktop-bundle" as const,
-  bundleIdentifier: "com.example.codex",
-  applicationPath: "/Applications/Codex.app",
-  observedVersion: "1.2.3",
+const launcherPolicyEntry =
+  DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY.entries[0];
+if (launcherPolicyEntry === undefined) {
+  throw new Error("The default launcher policy must contain a release entry.");
+}
+const launcherIdentityStable = {
+  schemaVersion: "nr09-launcher-identity/1" as const,
+  bundleIdentifier:
+    DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY.expectedBundleIdentifier,
+  applicationPath: "/Applications/Codex Web GPT.app",
+  version: launcherPolicyEntry.version,
+  bundleVersion: "6130",
+  executableName: launcherPolicyEntry.executableName,
+  contentHashes: launcherPolicyEntry.contentHashes,
+  signing: launcherPolicyEntry.signing,
+  release: launcherPolicyEntry.release,
+  upstreamBridgeVersion: launcherPolicyEntry.upstreamBridgeVersion,
+  compatibilityPolicyId: DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY.policyId,
+  compatibilityPolicySha256: launcherCompatibilityPolicySha256(
+    DEFAULT_NR09_LAUNCHER_COMPATIBILITY_POLICY,
+  ),
+};
+const launcherIdentity: VersionAwareLauncherIdentity = {
+  ...launcherIdentityStable,
+  identitySha256: versionAwareLauncherIdentitySha256(launcherIdentityStable),
   observedAtUtc: "2026-10-16T12:00:00.000Z",
 };
+const clientVersionProvenance =
+  toChatGptWebClientVersionProvenance(launcherIdentity);
+const launcherCompatibilityIdentity =
+  toChatGptWebLauncherCompatibilityIdentity(launcherIdentity);
 
-const binding: ProductionBinding = {
-  schemaVersion: "nr09-production-binding/2",
+const storedBinding = {
+  schemaVersion: "nr09-production-binding/3",
   authMode: CHATGPT_WEB_AUTH_MODE,
   bridge: {
     origin: CHATGPT_WEB_BRIDGE_ORIGIN,
     versionPin: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
   },
-  clientVersion: "1.2.3",
-  clientVersionProvenance,
+  clientVersion: "6.1.3",
+  launcherIdentity,
   model: CHATGPT_WEB_BRIDGE_PIN.model,
   reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
   createdAtUtc: "2026-10-16T12:00:00.000Z",
+} as const;
+const binding: ProductionBinding = {
+  ...storedBinding,
+  clientVersionProvenance,
 };
 
 function expectedIdentity(
@@ -55,6 +91,9 @@ function expectedIdentity(
     bridgeVersion: value.bridge.versionPin,
     clientVersion: value.clientVersion,
     clientVersionProvenance: value.clientVersionProvenance,
+    launcherCompatibilityIdentity: toChatGptWebLauncherCompatibilityIdentity(
+      value.launcherIdentity,
+    ),
     model: value.model,
     reasoningEffort: value.reasoningEffort,
   };
@@ -74,13 +113,13 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
-function bindingText(value: unknown = binding): string {
+function bindingText(value: unknown = storedBinding): string {
   return canonicalJson(value) + "\n";
 }
 
-test("schema-v2 binding accepts the direct route and rejects legacy or unsupported auth", () => {
+test("schema-v3 binding accepts the direct route and rejects legacy or unsupported auth", () => {
   expect(parseProductionBinding(bindingText())).toMatchObject({
-    schemaVersion: "nr09-production-binding/2",
+    schemaVersion: "nr09-production-binding/3",
     authMode: "LOOPBACK_LOCAL",
     bridge: {
       origin: CHATGPT_WEB_BRIDGE_ORIGIN,
@@ -89,16 +128,18 @@ test("schema-v2 binding accepts the direct route and rejects legacy or unsupport
   });
 
   expect(() =>
-    parseProductionBinding(bindingText({ ...binding, unexpected: "field" })),
+    parseProductionBinding(
+      bindingText({ ...storedBinding, unexpected: "field" }),
+    ),
   ).toThrow(ProductionBindingError);
   expect(() =>
     parseProductionBinding(
-      '{"schemaVersion":"nr09-production-binding/2","schemaVersion":"nr09-production-binding/2"}\n',
+      '{"schemaVersion":"nr09-production-binding/3","schemaVersion":"nr09-production-binding/3"}\n',
     ),
   ).toThrow(ProductionBindingError);
 
   const legacyV1 = {
-    ...binding,
+    ...storedBinding,
     schemaVersion: "nr09-production-binding/1",
     credentialProfileId: "legacy-profile",
     credentialSourceRef: {
@@ -114,7 +155,7 @@ test("schema-v2 binding accepts the direct route and rejects legacy or unsupport
 
   for (const authMode of ["HTTP_BEARER", "AUTHENTICATED_PROXY"]) {
     expect(() =>
-      parseProductionBinding(bindingText({ ...binding, authMode })),
+      parseProductionBinding(bindingText({ ...storedBinding, authMode })),
     ).toThrow(ProductionBindingError);
   }
 });
@@ -133,7 +174,10 @@ test("binding accepts only the exact direct origin", () => {
   for (const origin of invalidOrigins) {
     expect(() =>
       parseProductionBinding(
-        bindingText({ ...binding, bridge: { ...binding.bridge, origin } }),
+        bindingText({
+          ...storedBinding,
+          bridge: { ...storedBinding.bridge, origin },
+        }),
       ),
     ).toThrow(ProductionBindingError);
   }
@@ -154,6 +198,13 @@ test("phase-B binding comparison checks auth, route, provenance, model, and effo
       clientVersionProvenance: {
         ...clientVersionProvenance,
         applicationPath: "/Applications/Other.app",
+      },
+    },
+    {
+      ...expectedIdentity(),
+      launcherCompatibilityIdentity: {
+        ...launcherCompatibilityIdentity,
+        policySha256: "0".repeat(64),
       },
     },
     { ...expectedIdentity(), model: "chatgpt-web/other-model" },

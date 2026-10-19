@@ -6,8 +6,10 @@ import {
   CHATGPT_WEB_AUTH_MODE,
   CHATGPT_WEB_BRIDGE_ORIGIN,
   CHATGPT_WEB_BRIDGE_PIN,
+  type ChatGptWebLauncherCompatibilityIdentity,
   ChatGptWebReviewerBackend,
   parseChatGptWebClientVersionProvenance,
+  parseChatGptWebLauncherCompatibilityIdentity,
 } from "../src/backends/chatgpt-web";
 import { DaemonOwner, DaemonReviewRuntime } from "../src/daemon";
 import { validProtocolExamples } from "../src/protocol";
@@ -32,6 +34,13 @@ import {
   ProductionBindingError,
   readPrivateProductionBinding,
 } from "./nr09-production-binding";
+import {
+  assertVersionAwareLauncherIdentityMatches,
+  resolveVersionAwareLauncher,
+  toChatGptWebClientVersionProvenance,
+  toChatGptWebLauncherCompatibilityIdentity,
+  VersionAwareLauncherError,
+} from "./nr09-version-aware-launcher";
 
 const REPOSITORY = "ShabanovBoris/NightReviewer";
 const PR_URL = "https://github.com/ShabanovBoris/NightReviewer/pull/10";
@@ -84,6 +93,7 @@ interface PhaseBAuthorization {
     readonly bridgeVersion: string;
     readonly clientVersion: string;
     readonly clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
+    readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
     readonly model: string;
     readonly reasoningEffort: string;
   };
@@ -98,6 +108,7 @@ interface RuntimeConfig {
   readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
   readonly clientVersion: string;
   readonly clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
+  readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly phaseB: PhaseBAuthorization;
   readonly phaseBReceipt: {
     readonly messageId: string;
@@ -240,14 +251,21 @@ export function validatePhaseBDecision(
   const bridgeVersion = runtime?.bridgeVersion;
   const clientVersion = runtime?.clientVersion;
   const clientVersionProvenanceValue = runtime?.clientVersionProvenance;
+  const launcherCompatibilityIdentityValue =
+    runtime?.launcherCompatibilityIdentity;
   const model = runtime?.model;
   const reasoningEffort = runtime?.reasoningEffort;
   let clientVersionProvenance: ProductionBinding["clientVersionProvenance"];
+  let launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   try {
     clientVersionProvenance = parseChatGptWebClientVersionProvenance(
       clientVersionProvenanceValue,
       typeof clientVersion === "string" ? clientVersion : "",
     );
+    launcherCompatibilityIdentity =
+      parseChatGptWebLauncherCompatibilityIdentity(
+        launcherCompatibilityIdentityValue,
+      );
   } catch {
     throw new SmokeHarnessError("PHASE_B_SCOPE_MISMATCH");
   }
@@ -281,6 +299,7 @@ export function validatePhaseBDecision(
       "bridgeVersion",
       "clientVersion",
       "clientVersionProvenance",
+      "launcherCompatibilityIdentity",
       "model",
       "reasoningEffort",
     ]) ||
@@ -312,6 +331,7 @@ export function validatePhaseBDecision(
       bridgeVersion: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
       clientVersion,
       clientVersionProvenance,
+      launcherCompatibilityIdentity,
       model: CHATGPT_WEB_BRIDGE_PIN.model,
       reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     },
@@ -637,6 +657,43 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     }
     throw new SmokeHarnessError("PRODUCTION_BINDING_INVALID");
   }
+  const phaseBRoot = path.join(
+    repoRoot,
+    ".nightreviewer",
+    "dev",
+    SESSION_ID,
+    "phase-b",
+  );
+  let currentLauncherIdentity: Awaited<
+    ReturnType<typeof resolveVersionAwareLauncher>
+  >;
+  try {
+    currentLauncherIdentity = await resolveVersionAwareLauncher({
+      applicationPath: binding.launcherIdentity.applicationPath,
+      applicationRoots: ["/Applications"],
+      phaseBRoot,
+      profileRoots: [
+        path.join(phaseBRoot, "profile"),
+        path.join(phaseBRoot, "profile", "codex-home"),
+        path.join(phaseBRoot, "profile", "launcher"),
+      ],
+      expectedUpstreamBridgeVersion: binding.bridge.versionPin,
+    });
+    assertVersionAwareLauncherIdentityMatches(
+      binding.launcherIdentity,
+      currentLauncherIdentity,
+    );
+  } catch (error) {
+    if (error instanceof VersionAwareLauncherError) {
+      throw new SmokeHarnessError(error.code);
+    }
+    throw new SmokeHarnessError("LAUNCHER_COMPATIBILITY_UNVERIFIED");
+  }
+  const clientVersionProvenance = toChatGptWebClientVersionProvenance(
+    currentLauncherIdentity,
+  );
+  const launcherCompatibilityIdentity =
+    toChatGptWebLauncherCompatibilityIdentity(currentLauncherIdentity);
   let bridgeBaseUrl: URL;
   try {
     bridgeBaseUrl = validateBaseUrl(process.env.BRIDGE_SPIKE_BASE_URL ?? "");
@@ -645,7 +702,9 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
       bridgeOrigin: phaseB.runtime.bridgeOrigin,
       bridgeVersion: phaseB.runtime.bridgeVersion,
       clientVersion: phaseB.runtime.clientVersion,
-      clientVersionProvenance: phaseB.runtime.clientVersionProvenance,
+      clientVersionProvenance,
+      launcherCompatibilityIdentity:
+        phaseB.runtime.launcherCompatibilityIdentity,
       model: phaseB.runtime.model,
       reasoningEffort: phaseB.runtime.reasoningEffort,
     });
@@ -668,7 +727,8 @@ async function loadRuntimeConfig(args: SmokeArguments): Promise<RuntimeConfig> {
     bridgeBaseUrl,
     authMode: binding.authMode,
     clientVersion,
-    clientVersionProvenance: binding.clientVersionProvenance,
+    clientVersionProvenance,
+    launcherCompatibilityIdentity,
     phaseB,
     phaseBReceipt: {
       messageId: phaseB.messageId,
@@ -731,6 +791,7 @@ function buildBackend(
     baseUrl: config.bridgeBaseUrl,
     clientVersion: config.clientVersion,
     clientVersionProvenance: config.clientVersionProvenance,
+    launcherCompatibilityIdentity: config.launcherCompatibilityIdentity,
     buildPrompt: buildQualificationPrompt,
     persistRawArtifact: (bytes) => store.persistRawArtifact(bytes),
     createRawArtifactCapture: () => store.beginRawArtifactCapture(),
@@ -1174,6 +1235,7 @@ function safeRuntimeIdentity(config: RuntimeConfig): Record<string, unknown> {
     reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     clientVersion: config.clientVersion,
     clientVersionProvenance: config.clientVersionProvenance,
+    launcherCompatibilityIdentity: config.launcherCompatibilityIdentity,
   };
 }
 
@@ -1271,8 +1333,8 @@ async function main(): Promise<void> {
       config.phaseB.runtime.clientVersionProvenance.applicationPath ||
     config.clientVersionProvenance.observedVersion !==
       config.phaseB.runtime.clientVersionProvenance.observedVersion ||
-    config.clientVersionProvenance.observedAtUtc !==
-      config.phaseB.runtime.clientVersionProvenance.observedAtUtc
+    JSON.stringify(config.launcherCompatibilityIdentity) !==
+      JSON.stringify(config.phaseB.runtime.launcherCompatibilityIdentity)
   ) {
     throw new SmokeHarnessError("RUNTIME_IDENTITY_DIFFERS_FROM_PHASE_B");
   }

@@ -23,10 +23,18 @@ const ORIGIN = CHATGPT_WEB_BRIDGE_ORIGIN;
 const MODEL = CHATGPT_WEB_BRIDGE_PIN.model;
 const clientVersionProvenance = {
   kind: "active-codex-desktop-bundle",
-  bundleIdentifier: "com.example.codex",
-  applicationPath: "/Applications/Codex.app",
-  observedVersion: "1.2.3",
+  bundleIdentifier: "dev.codexwebgpt.launcher",
+  applicationPath: "/Applications/Codex Web GPT.app",
+  observedVersion: "6.1.3",
   observedAtUtc: "2026-10-16T12:00:00.000Z",
+};
+const launcherCompatibilityIdentity = {
+  policyId: "codex-web-gpt-verified-release-components/1",
+  policySha256: "a".repeat(64),
+  launcherIdentitySha256: "b".repeat(64),
+  infoPlistSha256: "c".repeat(64),
+  executableSha256: "d".repeat(64),
+  appArchiveSha256: "e".repeat(64),
 };
 const phaseBDecision = {
   protocol: "nr-dev/1",
@@ -58,8 +66,9 @@ const phaseBDecision = {
         authMode: CHATGPT_WEB_AUTH_MODE,
         bridgeOrigin: ORIGIN,
         bridgeVersion: CHATGPT_WEB_BRIDGE_PIN.upstreamVersion,
-        clientVersion: "1.2.3",
+        clientVersion: "6.1.3",
         clientVersionProvenance,
+        launcherCompatibilityIdentity,
         model: MODEL,
         reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
       },
@@ -125,6 +134,7 @@ test("Phase B requires a correlated lead decision bound to exact PR head and act
       reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
       authMode: CHATGPT_WEB_AUTH_MODE,
       clientVersionProvenance,
+      launcherCompatibilityIdentity,
     },
   });
   const phaseA = {
@@ -162,6 +172,7 @@ test("Phase B requires the direct route and rejects legacy credential identity",
         runtime: {
           ...phaseBDecision.payload.phaseBAuthorization.runtime,
           clientVersionProvenance: undefined,
+          launcherCompatibilityIdentity: undefined,
         },
       },
     },
@@ -179,6 +190,22 @@ test("Phase B requires the direct route and rejects legacy credential identity",
       },
     },
   };
+  const malformedLauncherIdentity = {
+    ...phaseBDecision,
+    payload: {
+      ...phaseBDecision.payload,
+      phaseBAuthorization: {
+        ...phaseBDecision.payload.phaseBAuthorization,
+        runtime: {
+          ...phaseBDecision.payload.phaseBAuthorization.runtime,
+          launcherCompatibilityIdentity: {
+            ...launcherCompatibilityIdentity,
+            policySha256: "invalid",
+          },
+        },
+      },
+    },
+  };
 
   expect(() =>
     validatePhaseBDecision(decisionText(missingProvenance), {
@@ -190,6 +217,14 @@ test("Phase B requires the direct route and rejects legacy credential identity",
   ).toThrow(SmokeHarnessError);
   expect(() =>
     validatePhaseBDecision(decisionText(proxyMode), {
+      requestId: REQUEST_ID,
+      baseSha: BASE_SHA,
+      headSha: HEAD_SHA,
+      cycle: 2,
+    }),
+  ).toThrow(SmokeHarnessError);
+  expect(() =>
+    validatePhaseBDecision(decisionText(malformedLauncherIdentity), {
       requestId: REQUEST_ID,
       baseSha: BASE_SHA,
       headSha: HEAD_SHA,

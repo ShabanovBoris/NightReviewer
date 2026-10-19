@@ -6,10 +6,16 @@ import {
   CHATGPT_WEB_BRIDGE_ORIGIN,
   CHATGPT_WEB_BRIDGE_PIN,
   type ChatGptWebClientVersionProvenance,
-  parseChatGptWebClientVersionProvenance,
+  type ChatGptWebLauncherCompatibilityIdentity,
 } from "../src/backends/chatgpt-web";
+import {
+  parseVersionAwareLauncherIdentity,
+  toChatGptWebClientVersionProvenance,
+  toChatGptWebLauncherCompatibilityIdentity,
+  type VersionAwareLauncherIdentity,
+} from "./nr09-version-aware-launcher";
 
-export const NR09_PRODUCTION_BINDING_SCHEMA = "nr09-production-binding/2";
+export const NR09_PRODUCTION_BINDING_SCHEMA = "nr09-production-binding/3";
 export const NR09_PRODUCTION_BINDING_RELATIVE_PATH = path.join(
   ".nightreviewer",
   "dev",
@@ -36,6 +42,7 @@ export interface ProductionBinding {
     readonly versionPin: typeof CHATGPT_WEB_BRIDGE_PIN.upstreamVersion;
   };
   readonly clientVersion: string;
+  readonly launcherIdentity: VersionAwareLauncherIdentity;
   readonly clientVersionProvenance: ChatGptWebClientVersionProvenance;
   readonly model: typeof CHATGPT_WEB_BRIDGE_PIN.model;
   readonly reasoningEffort: typeof CHATGPT_WEB_BRIDGE_PIN.reasoningEffort;
@@ -48,6 +55,7 @@ export interface ExpectedProductionBindingIdentity {
   readonly bridgeVersion: string;
   readonly clientVersion: string;
   readonly clientVersionProvenance: ChatGptWebClientVersionProvenance;
+  readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly model: string;
   readonly reasoningEffort: string;
 }
@@ -80,8 +88,8 @@ export function parseProductionBinding(rawText: string): ProductionBinding {
       "authMode",
       "bridge",
       "clientVersion",
-      "clientVersionProvenance",
       "createdAtUtc",
+      "launcherIdentity",
       "model",
       "reasoningEffort",
       "schemaVersion",
@@ -98,13 +106,21 @@ export function parseProductionBinding(rawText: string): ProductionBinding {
   }
 
   const bridge = parseBridge(value.bridge);
+  let launcherIdentity: VersionAwareLauncherIdentity;
   let clientVersionProvenance: ChatGptWebClientVersionProvenance;
   try {
-    clientVersionProvenance = parseChatGptWebClientVersionProvenance(
-      value.clientVersionProvenance,
-      value.clientVersion,
+    launcherIdentity = parseVersionAwareLauncherIdentity(
+      value.launcherIdentity,
     );
+    clientVersionProvenance =
+      toChatGptWebClientVersionProvenance(launcherIdentity);
   } catch {
+    throw new ProductionBindingError("PRODUCTION_BINDING_INVALID");
+  }
+  if (
+    launcherIdentity.version !== value.clientVersion ||
+    launcherIdentity.upstreamBridgeVersion !== bridge.versionPin
+  ) {
     throw new ProductionBindingError("PRODUCTION_BINDING_INVALID");
   }
 
@@ -113,6 +129,7 @@ export function parseProductionBinding(rawText: string): ProductionBinding {
     authMode: CHATGPT_WEB_AUTH_MODE,
     bridge,
     clientVersion: value.clientVersion,
+    launcherIdentity,
     clientVersionProvenance,
     model: CHATGPT_WEB_BRIDGE_PIN.model,
     reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
@@ -169,6 +186,10 @@ export function assertProductionBindingMatches(
       binding.clientVersionProvenance,
       expected.clientVersionProvenance,
     ) ||
+    !sameLauncherCompatibilityIdentity(
+      toChatGptWebLauncherCompatibilityIdentity(binding.launcherIdentity),
+      expected.launcherCompatibilityIdentity,
+    ) ||
     binding.model !== expected.model ||
     binding.reasoningEffort !== expected.reasoningEffort
   ) {
@@ -199,8 +220,21 @@ function sameClientVersionProvenance(
     left.kind === right.kind &&
     left.bundleIdentifier === right.bundleIdentifier &&
     left.applicationPath === right.applicationPath &&
-    left.observedVersion === right.observedVersion &&
-    left.observedAtUtc === right.observedAtUtc
+    left.observedVersion === right.observedVersion
+  );
+}
+
+function sameLauncherCompatibilityIdentity(
+  left: ChatGptWebLauncherCompatibilityIdentity,
+  right: ChatGptWebLauncherCompatibilityIdentity,
+): boolean {
+  return (
+    left.policyId === right.policyId &&
+    left.policySha256 === right.policySha256 &&
+    left.launcherIdentitySha256 === right.launcherIdentitySha256 &&
+    left.infoPlistSha256 === right.infoPlistSha256 &&
+    left.executableSha256 === right.executableSha256 &&
+    left.appArchiveSha256 === right.appArchiveSha256
   );
 }
 

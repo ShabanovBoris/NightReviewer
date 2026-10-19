@@ -31,6 +31,7 @@ export const CHATGPT_WEB_AUTH_MODE = "LOOPBACK_LOCAL" as const;
 export const CHATGPT_WEB_BRIDGE_ORIGIN = "http://127.0.0.1:17841" as const;
 
 const clientVersionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const sha256Pattern = /^[a-f0-9]{64}$/;
 const maxResponseBytes = 16 * 1024 * 1024;
 const maxPromptBytes = 1024 * 1024;
 const maxRepairInputBytes = 512 * 1024;
@@ -63,11 +64,21 @@ export interface ChatGptWebClientVersionProvenance {
   readonly observedAtUtc: string;
 }
 
+export interface ChatGptWebLauncherCompatibilityIdentity {
+  readonly policyId: string;
+  readonly policySha256: string;
+  readonly launcherIdentitySha256: string;
+  readonly infoPlistSha256: string;
+  readonly executableSha256: string;
+  readonly appArchiveSha256: string;
+}
+
 export interface ChatGptWebBackendOptions {
   readonly authMode: typeof CHATGPT_WEB_AUTH_MODE;
   readonly baseUrl: string | URL;
   readonly clientVersion: string;
   readonly clientVersionProvenance: ChatGptWebClientVersionProvenance;
+  readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly model?: string;
   readonly reasoningEffort?: string;
   readonly requestTimeoutMs?: number;
@@ -93,6 +104,7 @@ export interface ChatGptWebConfigurationIdentity {
     readonly applicationPath: string;
     readonly observedVersion: string;
   };
+  readonly launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly model: string;
   readonly reasoningEffort: string;
   readonly qualification: "LIVE_PRODUCTION_BRIDGE";
@@ -209,6 +221,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
   readonly #baseUrl: URL;
   readonly #clientVersion: string;
   readonly #clientVersionProvenance: ChatGptWebClientVersionProvenance;
+  readonly #launcherCompatibilityIdentity: ChatGptWebLauncherCompatibilityIdentity;
   readonly #model: string;
   readonly #reasoningEffort: string;
   readonly #expectedBridgeVersion = CHATGPT_WEB_BRIDGE_PIN.upstreamVersion;
@@ -231,6 +244,10 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
       options.clientVersionProvenance,
       this.#clientVersion,
     );
+    this.#launcherCompatibilityIdentity =
+      parseChatGptWebLauncherCompatibilityIdentity(
+        options.launcherCompatibilityIdentity,
+      );
     this.#model = options.model ?? CHATGPT_WEB_BRIDGE_PIN.model;
     this.#reasoningEffort =
       options.reasoningEffort ?? CHATGPT_WEB_BRIDGE_PIN.reasoningEffort;
@@ -270,7 +287,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
     this.#now = options.now ?? (() => new Date());
     const profileIdentity = {
       backend: "LIVE" as const,
-      backendProtocol: "chatgpt-web-responses/1",
+      backendProtocol: "chatgpt-web-responses/2",
       authMode: CHATGPT_WEB_AUTH_MODE,
       bridgeVersionPin: this.#expectedBridgeVersion,
       bridgeOrigin: this.#baseUrl.origin,
@@ -281,6 +298,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
         applicationPath: this.#clientVersionProvenance.applicationPath,
         observedVersion: this.#clientVersionProvenance.observedVersion,
       },
+      launcherCompatibilityIdentity: this.#launcherCompatibilityIdentity,
       model: this.#model,
       reasoningEffort: this.#reasoningEffort,
       qualification: "LIVE_PRODUCTION_BRIDGE" as const,
@@ -291,6 +309,7 @@ export class ChatGptWebReviewerBackend implements ReviewerBackend {
         "fresh-thread",
         "abort",
         "schema-repair/1",
+        "dynamic-launcher-compatibility/1",
       ],
     };
     this.profile = {
@@ -1387,6 +1406,39 @@ export function parseChatGptWebClientVersionProvenance(
     applicationPath: provenance.applicationPath,
     observedVersion: clientVersion,
     observedAtUtc: provenance.observedAtUtc,
+  };
+}
+
+export function parseChatGptWebLauncherCompatibilityIdentity(
+  value: unknown,
+): ChatGptWebLauncherCompatibilityIdentity {
+  const identity = asRecord(value);
+  if (
+    identity === undefined ||
+    Object.keys(identity).sort().join(",") !==
+      "appArchiveSha256,executableSha256,infoPlistSha256,launcherIdentitySha256,policyId,policySha256" ||
+    typeof identity.policyId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(identity.policyId) ||
+    typeof identity.policySha256 !== "string" ||
+    !sha256Pattern.test(identity.policySha256) ||
+    typeof identity.launcherIdentitySha256 !== "string" ||
+    !sha256Pattern.test(identity.launcherIdentitySha256) ||
+    typeof identity.infoPlistSha256 !== "string" ||
+    !sha256Pattern.test(identity.infoPlistSha256) ||
+    typeof identity.executableSha256 !== "string" ||
+    !sha256Pattern.test(identity.executableSha256) ||
+    typeof identity.appArchiveSha256 !== "string" ||
+    !sha256Pattern.test(identity.appArchiveSha256)
+  ) {
+    throw new ChatGptWebBackendError("INVALID_CONFIGURATION");
+  }
+  return {
+    policyId: identity.policyId,
+    policySha256: identity.policySha256,
+    launcherIdentitySha256: identity.launcherIdentitySha256,
+    infoPlistSha256: identity.infoPlistSha256,
+    executableSha256: identity.executableSha256,
+    appArchiveSha256: identity.appArchiveSha256,
   };
 }
 

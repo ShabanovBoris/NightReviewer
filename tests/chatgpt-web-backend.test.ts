@@ -23,6 +23,14 @@ const clientVersionProvenance = {
   observedVersion: "0.1.0",
   observedAtUtc: "2026-10-05T12:00:00.000Z",
 };
+const launcherCompatibilityIdentity = {
+  policyId: "test-policy/1",
+  policySha256: "1".repeat(64),
+  launcherIdentitySha256: "2".repeat(64),
+  infoPlistSha256: "3".repeat(64),
+  executableSha256: "4".repeat(64),
+  appArchiveSha256: "5".repeat(64),
+};
 
 function workerOutput(overrides: Record<string, unknown> = {}) {
   return {
@@ -146,6 +154,8 @@ function backendOptions(
       observedVersion: clientVersion,
       ...options.clientVersionProvenance,
     },
+    launcherCompatibilityIdentity:
+      options.launcherCompatibilityIdentity ?? launcherCompatibilityIdentity,
     buildPrompt: () => prompt,
     persistRawArtifact,
     createRawArtifactCapture,
@@ -267,7 +277,7 @@ test("preflights the exact bridge, model, and advertised effort", async () => {
 
   expect(backend.profile).toMatchObject({
     backend: "LIVE",
-    backendProtocol: "chatgpt-web-responses/1",
+    backendProtocol: "chatgpt-web-responses/2",
     bridgeVersionPin: "6.1.3",
     model: CHATGPT_WEB_BRIDGE_PIN.model,
     reasoningEffort: "high",
@@ -338,7 +348,7 @@ test("configuration digest binds stable route identity, capabilities, and limits
   );
   const identity = {
     backend: "LIVE" as const,
-    backendProtocol: "chatgpt-web-responses/1",
+    backendProtocol: "chatgpt-web-responses/2",
     authMode: "LOOPBACK_LOCAL",
     bridgeVersionPin: "6.1.3",
     bridgeOrigin: "http://127.0.0.1:17841",
@@ -349,12 +359,19 @@ test("configuration digest binds stable route identity, capabilities, and limits
       applicationPath: "/Applications/Codex.app",
       observedVersion: "0.1.0",
     },
+    launcherCompatibilityIdentity,
     model: CHATGPT_WEB_BRIDGE_PIN.model,
     reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
     qualification: "LIVE_PRODUCTION_BRIDGE" as const,
     requestTimeoutMs: 180_000,
     maxResponseBytes: 16 * 1024 * 1024,
-    capabilities: ["responses-sse", "fresh-thread", "abort", "schema-repair/1"],
+    capabilities: [
+      "responses-sse",
+      "fresh-thread",
+      "abort",
+      "schema-repair/1",
+      "dynamic-launcher-compatibility/1",
+    ],
   };
   const digestChanges = [
     { ...identity, authMode: "OTHER_MODE" },
@@ -366,6 +383,20 @@ test("configuration digest binds stable route identity, capabilities, and limits
       clientVersionProvenance: {
         ...identity.clientVersionProvenance,
         applicationPath: "/Applications/Other.app",
+      },
+    },
+    {
+      ...identity,
+      launcherCompatibilityIdentity: {
+        ...identity.launcherCompatibilityIdentity,
+        policySha256: "6".repeat(64),
+      },
+    },
+    {
+      ...identity,
+      launcherCompatibilityIdentity: {
+        ...identity.launcherCompatibilityIdentity,
+        launcherIdentitySha256: "7".repeat(64),
       },
     },
     { ...identity, model: "chatgpt-web/other-model" },
@@ -449,6 +480,14 @@ test("direct route requests omit Authorization and reject unsupported identities
       clientVersionProvenance: {
         ...clientVersionProvenance,
         observedVersion: "9.9.9",
+      },
+    }),
+  ).toThrow(ChatGptWebBackendError);
+  expect(() =>
+    backendOptions(bridgeFetcher(), {
+      launcherCompatibilityIdentity: {
+        ...launcherCompatibilityIdentity,
+        policySha256: "invalid",
       },
     }),
   ).toThrow(ChatGptWebBackendError);

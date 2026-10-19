@@ -17,7 +17,11 @@ Lead decision `NR-09-D140-RATIFY-D139-CORRELATED-B-NARROWED` is correlated to th
 - The NR-09 LIVE qualification plan contains one fresh reviewer session and one durable run. It proves transport execution only. A successful run leaves the review non-approved; LIVE aggregation, canonical finding promotion, semantic adjudication, and production 3×3 are disabled.
 - Lease ownership, fencing, fairness, deadlines, bounded retry, reconciliation, and late-result obsolescence apply to both backend kinds. An ambiguous LIVE send is never blindly resent. A late completion is retained as audit evidence and remains unselected.
 - LIVE response bytes are persisted before parsing. A bound receipt records run, attempt, review SHA pair, bridge/model/effort observations, thread/turn identity, raw references, and terminal/send-state classification. Credentials, cookies, bearer tokens, and context capabilities are never persisted.
-- The adapter's explicit expected-version compatibility check supports a read-only upgrade canary. Normal reviewer invocation remains pinned to `6.1.3` and does not silently fall back or adopt a candidate version.
+- The normal Codex Web GPT installation is re-read for each execution candidate. Its bundle path, version, signing provenance, executable, `Info.plist`, and `app.asar` hashes are checked against the source-controlled compatibility policy; an unknown version or changed identity fails closed. A compatible app update requires a verified policy entry and fresh binding/authorization. This app-update policy does not change the upstream bridge pin `6.1.3`, model, effort, or `LOOPBACK_LOCAL` route, and does not permit fallback or downgrade.
+
+### Cycle 5 version-update contract — Lead D187
+
+Lead decision `NR-09-C5-D187-VERSION-UPDATE-CONTRACT` supersedes the exact-version app-copy requirement from D186. The resolver accepts a normal `.app` bundle directly under `/Applications` and re-reads bundle metadata and content on each future preflight. It binds the complete observed launcher identity and compatibility-policy digest into the private production binding and compact backend identity. Any app or policy drift invalidates that binding before a network-capable action. A new release is usable only after its release provenance, component hashes, and required capabilities/contracts have been independently verified and recorded in the policy; semantic-version similarity alone is insufficient. Phase-B profile roots remain private and separate from the installed app and ordinary user profile.
 
 ## Live gate
 

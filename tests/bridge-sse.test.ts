@@ -308,11 +308,18 @@ test("rejects terminal frames with inconsistent event, body, or response status"
       frame:
         'event: response.completed\ndata: {"type":"response.completed","response":{"status":"failed"}}\n\n',
       code: "terminal_status_mismatch",
+      responseStatus: "failed",
     },
     {
       frame:
         'event: response.incomplete\ndata: {"type":"response.incomplete","response":{"status":"completed"}}\n\n',
       code: "terminal_status_mismatch",
+    },
+    {
+      frame:
+        'event: response.failed\ndata: {"type":"response.failed","response":{"status":"completed","error":{"type":"connector_error","code":"connector_not_found"}}}\n\n',
+      code: "terminal_status_mismatch",
+      responseStatus: "other",
     },
     {
       frame:
@@ -330,7 +337,7 @@ test("rejects terminal frames with inconsistent event, body, or response status"
     },
   ];
 
-  for (const { frame, code } of cases) {
+  for (const { frame, code, responseStatus } of cases) {
     const outcome = await readBridgeSse(
       new Response(`${frame}data: [DONE]\n\n`),
     );
@@ -339,6 +346,7 @@ test("rejects terminal frames with inconsistent event, body, or response status"
       kind: "failed",
       errorType: "bridge_protocol_error",
       code,
+      ...(responseStatus === undefined ? {} : { responseStatus }),
     });
   }
 });

@@ -137,11 +137,12 @@ function hasOwnField(
 function terminalProtocolFailure(
   code: string,
   events: readonly string[],
+  responseStatus: "failed" | "other" | null = null,
 ): BridgeSseOutcome {
   return {
     kind: "failed",
     status: null,
-    responseStatus: null,
+    responseStatus,
     errorType: "bridge_protocol_error",
     code,
     events,
@@ -476,9 +477,11 @@ export async function readBridgeSse(
         observedResponseStatus !== undefined &&
         observedResponseStatus !== expectedStatus
       ) {
-        terminal = terminalProtocolFailure("terminal_status_mismatch", [
-          ...events,
-        ]);
+        terminal = terminalProtocolFailure(
+          "terminal_status_mismatch",
+          [...events],
+          responseStatusField(observedResponseStatus),
+        );
         return;
       }
       const terminalResponseId =

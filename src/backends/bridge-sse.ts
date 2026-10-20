@@ -101,6 +101,12 @@ interface FunctionCallState {
   complete: boolean;
 }
 
+/** Retains optional terminal identity fields so repeated terminal frames can be checked for contradictions. */
+interface TerminalResponseMetadata {
+  readonly id?: string;
+  readonly status?: string;
+}
+
 /** Keeps parsed event data untrusted until it has the object shape expected by the reducer. */
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -111,6 +117,35 @@ function record(value: unknown): Record<string, unknown> | undefined {
 /** Extracts optional protocol strings without coercing numbers or nested values. */
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function isTerminalEvent(value: unknown): value is BridgeSseTerminalEvent {
+  return (
+    value === "response.completed" ||
+    value === "response.incomplete" ||
+    value === "response.failed"
+  );
+}
+
+function hasOwnField(
+  value: Record<string, unknown> | undefined,
+  field: string,
+): boolean {
+  return value !== undefined && Object.hasOwn(value, field);
+}
+
+function terminalProtocolFailure(
+  code: string,
+  events: readonly string[],
+): BridgeSseOutcome {
+  return {
+    kind: "failed",
+    status: null,
+    responseStatus: null,
+    errorType: "bridge_protocol_error",
+    code,
+    events,
+  };
 }
 
 /** Keeps the Responses wrapper status allowlisted and distinct from numeric error.status. */
@@ -273,6 +308,7 @@ export async function readBridgeSse(
   let outputText = "";
   let terminal: BridgeSseOutcome | undefined;
   let terminalEventKind: BridgeSseTerminalEvent | undefined;
+  let terminalResponseMetadata: TerminalResponseMetadata | undefined;
   let rawBytes = 0;
   const events = new Set<string>();
   const cancelOnAbort = (): void => {
@@ -282,21 +318,12 @@ export async function readBridgeSse(
   if (options.signal?.aborted) cancelOnAbort();
   // The control probe must distinguish a terminal SSE frame from later HTTP-owner cleanup.
   const notifyTerminalEvent = (eventName: string | undefined): void => {
-    if (
-      eventName === "response.completed" ||
-      eventName === "response.incomplete" ||
-      eventName === "response.failed"
-    ) {
+    if (isTerminalEvent(eventName)) {
       options.onTerminalEvent?.(eventName);
       if (terminalEventKind !== undefined && terminalEventKind !== eventName) {
-        terminal = {
-          kind: "failed",
-          status: null,
-          responseStatus: null,
-          errorType: "bridge_protocol_error",
-          code: "conflicting_terminal_events",
-          events: [...events],
-        };
+        terminal = terminalProtocolFailure("conflicting_terminal_events", [
+          ...events,
+        ]);
         return;
       }
       terminalEventKind ??= eventName;
@@ -320,6 +347,12 @@ export async function readBridgeSse(
     if (payload === "[DONE]") {
       captureTraceFrame("data:[DONE]", payload);
       events.add("data:[DONE]");
+      if (isTerminalEvent(eventName)) {
+        terminal = terminalProtocolFailure("terminal_event_body_mismatch", [
+          ...events,
+        ]);
+        return;
+      }
       if (terminal) terminal = { ...terminal, events: [...events] };
       return;
     }
@@ -332,40 +365,137 @@ export async function readBridgeSse(
       body = record(JSON.parse(payload));
     } catch {
       captureTraceFrame(eventName, payload);
+      if (isTerminalEvent(eventName)) {
+        terminal = terminalProtocolFailure("invalid_terminal_body", [
+          ...events,
+        ]);
+        return;
+      }
       if (terminal) {
         terminal = { ...terminal, events: [...events] };
         return;
       }
-      terminal = {
-        kind: "failed",
-        status: null,
-        responseStatus: null,
-        errorType: "bridge_protocol_error",
-        code: "invalid_sse_json",
-        events: [...events],
-      };
+      terminal = terminalProtocolFailure("invalid_sse_json", [...events]);
       return;
     }
     if (!body) {
       captureTraceFrame(eventName, payload);
+      if (isTerminalEvent(eventName)) {
+        terminal = terminalProtocolFailure("invalid_terminal_body", [
+          ...events,
+        ]);
+        return;
+      }
       if (terminal) terminal = { ...terminal, events: [...events] };
       return;
     }
 
-    const type = stringField(body.type) ?? eventName;
+    const bodyTypePresent = hasOwnField(body, "type");
+    const bodyType = body.type;
+    if (
+      isTerminalEvent(eventName) &&
+      bodyTypePresent &&
+      (typeof bodyType !== "string" || bodyType.length === 0)
+    ) {
+      terminal = terminalProtocolFailure("invalid_terminal_body", [...events]);
+      return;
+    }
+    const type = stringField(bodyType) ?? eventName;
     captureTraceFrame(eventName, payload, body);
     if (type && observedResponseEvents.has(type)) events.add(type);
     notifyTerminalEvent(type);
-    if (terminal) {
-      // ❌ Удален ранний выход после первого terminal event: D6 требует заметить поздний response.completed.
+    if (
+      terminal?.kind === "failed" &&
+      terminal.errorType === "bridge_protocol_error" &&
+      terminal.code === "conflicting_terminal_events"
+    ) {
       terminal = { ...terminal, events: [...events] };
       return;
     }
+    if (
+      bodyTypePresent &&
+      typeof bodyType === "string" &&
+      eventName !== undefined &&
+      eventName !== bodyType &&
+      (isTerminalEvent(eventName) || isTerminalEvent(bodyType))
+    ) {
+      terminal = terminalProtocolFailure("terminal_event_body_mismatch", [
+        ...events,
+      ]);
+      return;
+    }
     const responseBody = record(body.response);
+    if (
+      isTerminalEvent(type) &&
+      hasOwnField(body, "response") &&
+      responseBody === undefined
+    ) {
+      terminal = terminalProtocolFailure("invalid_terminal_body", [...events]);
+      return;
+    }
+    const idPresent = hasOwnField(responseBody, "id");
+    const statusPresent = hasOwnField(responseBody, "status");
+    const rawResponseId = responseBody?.id;
+    const rawResponseStatus = responseBody?.status;
+    const observedResponseId = stringField(rawResponseId);
+    const observedResponseStatus = stringField(rawResponseStatus);
+    if (isTerminalEvent(type)) {
+      if (
+        (terminalResponseMetadata?.id !== undefined &&
+          idPresent &&
+          terminalResponseMetadata.id !== rawResponseId) ||
+        (terminalResponseMetadata?.status !== undefined &&
+          statusPresent &&
+          terminalResponseMetadata.status !== rawResponseStatus)
+      ) {
+        terminal = terminalProtocolFailure("conflicting_terminal_metadata", [
+          ...events,
+        ]);
+        return;
+      }
+      if (
+        (idPresent &&
+          (observedResponseId === undefined ||
+            observedResponseId.trim().length === 0)) ||
+        (statusPresent &&
+          (observedResponseStatus === undefined ||
+            observedResponseStatus.trim().length === 0))
+      ) {
+        terminal = terminalProtocolFailure("invalid_terminal_metadata", [
+          ...events,
+        ]);
+        return;
+      }
+      const expectedStatus =
+        type === "response.completed"
+          ? "completed"
+          : type === "response.incomplete"
+            ? "incomplete"
+            : "failed";
+      if (
+        observedResponseStatus !== undefined &&
+        observedResponseStatus !== expectedStatus
+      ) {
+        terminal = terminalProtocolFailure("terminal_status_mismatch", [
+          ...events,
+        ]);
+        return;
+      }
+      const terminalResponseId =
+        terminalResponseMetadata?.id ?? observedResponseId;
+      const terminalResponseStatus =
+        terminalResponseMetadata?.status ?? observedResponseStatus;
+      terminalResponseMetadata = {
+        ...(terminalResponseId === undefined ? {} : { id: terminalResponseId }),
+        ...(terminalResponseStatus === undefined
+          ? {}
+          : { status: terminalResponseStatus }),
+      };
+    }
     if (responseBody) {
       const reasoning = record(responseBody.reasoning);
-      const id = stringField(responseBody.id);
-      const status = stringField(responseBody.status);
+      const id = observedResponseId;
+      const status = observedResponseStatus;
       const model = stringField(responseBody.model);
       const reasoningEffort = stringField(reasoning?.effort);
       options.onResponseObservation?.({
@@ -375,7 +505,12 @@ export async function readBridgeSse(
         ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
       });
     }
-    responseId ??= stringField(responseBody?.id);
+    responseId ??= observedResponseId;
+
+    if (terminal) {
+      terminal = { ...terminal, events: [...events] };
+      return;
+    }
 
     if (type === "response.output_text.delta") {
       const delta = body.delta;

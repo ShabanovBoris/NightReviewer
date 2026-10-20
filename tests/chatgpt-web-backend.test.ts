@@ -410,11 +410,53 @@ test("rejects conflicting terminal SSE outcomes instead of accepting completion"
       error: { type: "connector_error", code: "connector_not_found" },
     },
   });
+  const conflictingCompletedStatus = eventFrame("response.completed", {
+    type: "response.completed",
+    response: { ...responseIdentity, status: "failed" },
+  });
+  const conflictingCompletedIdentity = eventFrame("response.completed", {
+    type: "response.completed",
+    response: {
+      ...responseIdentity,
+      id: "response-conflicting-terminal-other",
+      status: "completed",
+    },
+  });
+  const completedWithFailedStatus = eventFrame("response.completed", {
+    type: "response.completed",
+    response: { ...responseIdentity, status: "failed" },
+  });
+  const completedWithMismatchedBodyType = eventFrame("response.completed", {
+    type: "response.output_text.delta",
+    delta: "late",
+  });
+  const terminalBodyUnderNonterminalEvent = eventFrame(
+    "response.output_text.delta",
+    {
+      type: "response.completed",
+      response: { ...responseIdentity, status: "completed" },
+    },
+  );
+  const completedWithInvalidIdentity = eventFrame("response.completed", {
+    type: "response.completed",
+    response: { ...responseIdentity, id: null, status: "completed" },
+  });
+  const completedWithInvalidStatus = eventFrame("response.completed", {
+    type: "response.completed",
+    response: { ...responseIdentity, status: 424 },
+  });
   const terminalSequences = [
     [completed, failed],
     [failed, completed],
     [completed, incomplete],
     [conflictingFrame],
+    [completed, conflictingCompletedStatus],
+    [completed, conflictingCompletedIdentity],
+    [completedWithFailedStatus],
+    [completedWithMismatchedBodyType],
+    [terminalBodyUnderNonterminalEvent],
+    [completedWithInvalidIdentity],
+    [completedWithInvalidStatus],
   ];
 
   for (const terminals of terminalSequences) {

@@ -439,6 +439,73 @@ CREATE TRIGGER scheduler_aggregations_no_delete BEFORE DELETE ON scheduler_aggre
 BEGIN SELECT RAISE(ABORT, 'scheduler aggregations are immutable'); END;
 `;
 
+const migrationFourSql = `
+ALTER TABLE scheduler_attempts
+  ADD COLUMN backend_receipt_sha256 TEXT REFERENCES raw_artifacts(sha256);
+ALTER TABLE scheduler_attempts
+  ADD COLUMN backend_send_state TEXT CHECK (
+    backend_send_state IS NULL OR backend_send_state IN ('UNSENT', 'SENT', 'UNKNOWN')
+  );
+
+CREATE TABLE scheduler_backend_bindings (
+  cycle_id TEXT PRIMARY KEY REFERENCES review_cycles(cycle_id),
+  backend_kind TEXT NOT NULL CHECK (backend_kind IN ('FAKE', 'LIVE')),
+  backend_protocol TEXT NOT NULL CHECK (length(backend_protocol) BETWEEN 1 AND 128),
+  bridge_version_pin TEXT NOT NULL CHECK (length(bridge_version_pin) BETWEEN 1 AND 64),
+  requested_model TEXT NOT NULL CHECK (length(requested_model) BETWEEN 1 AND 256),
+  requested_reasoning_effort TEXT NOT NULL CHECK (length(requested_reasoning_effort) BETWEEN 1 AND 32),
+  qualification TEXT NOT NULL CHECK (qualification IN ('OFFLINE_ONLY', 'LIVE_PRODUCTION_BRIDGE')),
+  configuration_digest TEXT NOT NULL CHECK (
+    length(configuration_digest) = 64 AND configuration_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  run_plan TEXT NOT NULL CHECK (run_plan IN ('NR08_FAKE_3X3', 'NR09_LIVE_QUALIFICATION')),
+  required_run_count INTEGER NOT NULL CHECK (required_run_count IN (1, 9)),
+  binding_json TEXT NOT NULL,
+  created_at_utc TEXT NOT NULL,
+  CHECK (
+    (backend_kind = 'FAKE' AND qualification = 'OFFLINE_ONLY'
+      AND run_plan = 'NR08_FAKE_3X3' AND required_run_count = 9) OR
+    (backend_kind = 'LIVE' AND qualification = 'LIVE_PRODUCTION_BRIDGE'
+      AND run_plan = 'NR09_LIVE_QUALIFICATION' AND required_run_count = 1)
+  )
+);
+
+CREATE TRIGGER scheduler_backend_bindings_no_update BEFORE UPDATE ON scheduler_backend_bindings
+BEGIN SELECT RAISE(ABORT, 'scheduler backend bindings are immutable'); END;
+CREATE TRIGGER scheduler_backend_bindings_no_delete BEFORE DELETE ON scheduler_backend_bindings
+BEGIN SELECT RAISE(ABORT, 'scheduler backend bindings are immutable'); END;
+
+CREATE TABLE scheduler_attempt_artifacts (
+  attempt_id TEXT NOT NULL REFERENCES scheduler_attempts(attempt_id),
+  purpose TEXT NOT NULL CHECK (purpose IN (
+    'HEALTH', 'MODEL_CATALOG', 'TURN_RESPONSE', 'SCHEMA_REPAIR_RESPONSE',
+    'LOCAL_DIAGNOSTIC', 'RECEIPT'
+  )),
+  artifact_sha256 TEXT NOT NULL REFERENCES raw_artifacts(sha256),
+  PRIMARY KEY (attempt_id, purpose)
+);
+CREATE INDEX scheduler_attempt_artifacts_by_hash
+  ON scheduler_attempt_artifacts(artifact_sha256);
+CREATE TRIGGER scheduler_attempt_artifacts_no_update BEFORE UPDATE ON scheduler_attempt_artifacts
+BEGIN SELECT RAISE(ABORT, 'scheduler attempt artifacts are immutable'); END;
+CREATE TRIGGER scheduler_attempt_artifacts_no_delete BEFORE DELETE ON scheduler_attempt_artifacts
+BEGIN SELECT RAISE(ABORT, 'scheduler attempt artifacts are immutable'); END;
+
+INSERT INTO scheduler_backend_bindings
+  (cycle_id, backend_kind, backend_protocol, bridge_version_pin,
+   requested_model, requested_reasoning_effort, qualification,
+   configuration_digest, run_plan, required_run_count, binding_json,
+   created_at_utc)
+SELECT j.cycle_id, 'FAKE', 'nr-fake-scheduler/1', 'not_applicable',
+       'deterministic-fake', 'offline', 'OFFLINE_ONLY',
+       '34c8696160ef88ca5a45c232b0e41bd5535750f1320b4c7c4ed156c048e98988',
+       'NR08_FAKE_3X3', 9,
+       '{"backend":"FAKE","backendProtocol":"nr-fake-scheduler/1","bridgeVersionPin":"not_applicable","model":"deterministic-fake","reasoningEffort":"offline","qualification":"OFFLINE_ONLY","configurationDigest":"34c8696160ef88ca5a45c232b0e41bd5535750f1320b4c7c4ed156c048e98988","runPlan":"NR08_FAKE_3X3","requiredRuns":9}',
+       MIN(j.created_at_utc)
+FROM scheduler_jobs j
+GROUP BY j.cycle_id;
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql, "utf8").digest("hex");
 }
@@ -461,6 +528,12 @@ export const STORAGE_MIGRATIONS: readonly Migration[] = [
     name: "durable-scheduler-fake-backend",
     sql: migrationThreeSql,
     checksum: checksum(migrationThreeSql),
+  },
+  {
+    version: 4,
+    name: "immutable-backend-binding-and-attempt-provenance",
+    sql: migrationFourSql,
+    checksum: checksum(migrationFourSql),
   },
 ];
 

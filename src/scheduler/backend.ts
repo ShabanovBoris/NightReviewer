@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import type { ProtocolValueBySchema } from "../protocol";
 import { RUNTIME_PROTOCOL_VERSION } from "../protocol";
 import type {
@@ -10,8 +11,26 @@ import type {
   FakeScenarioPlan,
   ReviewerBackend,
   SchedulerClock,
+  SchedulerPromptContext,
   SchedulerRunContext,
 } from "./types";
+
+export const NR08_FAKE_PROMPT =
+  "NR-08 deterministic offline scheduler fixture; no semantic review.";
+
+export const NR08_FAKE_BACKEND_PROFILE = {
+  backend: "FAKE",
+  backendProtocol: "nr-fake-scheduler/1",
+  bridgeVersionPin: "not_applicable",
+  model: "deterministic-fake",
+  reasoningEffort: "offline",
+  qualification: "OFFLINE_ONLY",
+  configurationDigest: createHash("sha256")
+    .update("nr08-fake-scheduler-profile/1", "utf8")
+    .digest("hex"),
+  runPlan: "NR08_FAKE_3X3",
+  requiredRuns: 9,
+} as const;
 
 export const systemSchedulerClock: SchedulerClock = {
   nowMs: () => Date.now(),
@@ -39,6 +58,7 @@ export const systemSchedulerClock: SchedulerClock = {
 
 export class FakeReviewerBackend implements ReviewerBackend {
   readonly backend = "FAKE" as const;
+  readonly profile = NR08_FAKE_BACKEND_PROFILE;
   readonly clock: SchedulerClock;
   activeInvocations = 0;
   maxObservedConcurrency = 0;
@@ -67,6 +87,10 @@ export class FakeReviewerBackend implements ReviewerBackend {
   constructor(options: FakeReviewerBackendOptions = {}) {
     this.plans = options.plans ?? new Map();
     this.clock = options.clock ?? systemSchedulerClock;
+  }
+
+  promptForRun(_context: SchedulerPromptContext): string {
+    return NR08_FAKE_PROMPT;
   }
 
   async invoke(

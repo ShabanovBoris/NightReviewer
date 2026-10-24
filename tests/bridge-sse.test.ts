@@ -231,7 +231,7 @@ test("treats EOF without a terminal event as incomplete", async () => {
   });
 });
 
-test("preserves a response.completed event that follows an earlier terminal", async () => {
+test("rejects a conflicting response.completed event after an earlier terminal", async () => {
   const source = [
     "event: response.incomplete",
     'data: {"type":"response.incomplete","response":{"id":"resp_partial"}}',
@@ -245,11 +245,110 @@ test("preserves a response.completed event that follows an earlier terminal", as
   const outcome = await readBridgeSse(new Response(source));
 
   expect(outcome).toEqual({
-    kind: "incomplete",
-    responseId: "resp_partial",
-    reason: "unspecified",
+    kind: "failed",
+    status: null,
+    responseStatus: null,
+    errorType: "bridge_protocol_error",
+    code: "conflicting_terminal_events",
     events: ["response.incomplete", "response.completed", "data:[DONE]"],
   });
+});
+
+test("rejects repeated terminal frames with contradictory response metadata", async () => {
+  const first =
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_terminal","status":"completed"}}\n\n';
+  const conflictingFrames = [
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_terminal","status":"failed"}}\n\n',
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_other","status":"completed"}}\n\n',
+  ];
+
+  for (const conflictingFrame of conflictingFrames) {
+    const outcome = await readBridgeSse(
+      new Response(`${first}${conflictingFrame}data: [DONE]\n\n`),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      errorType: "bridge_protocol_error",
+      code: "conflicting_terminal_metadata",
+      events: ["response.completed", "data:[DONE]"],
+    });
+  }
+});
+
+test("retains identical repeated terminal frames as one completion", async () => {
+  const frame =
+    'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_terminal","status":"completed"}}\n\n';
+  const outcome = await readBridgeSse(
+    new Response(`${frame}${frame}data: [DONE]\n\n`),
+  );
+
+  expect(outcome).toEqual({
+    kind: "completed",
+    responseId: "resp_terminal",
+    outputText: "",
+    functionCalls: [],
+    events: ["response.completed", "data:[DONE]"],
+  });
+});
+
+test("rejects terminal frames with inconsistent event, body, or response status", async () => {
+  const cases = [
+    {
+      frame:
+        'event: response.completed\ndata: {"type":"response.output_text.delta","delta":"late"}\n\n',
+      code: "terminal_event_body_mismatch",
+    },
+    {
+      frame:
+        'event: response.output_text.delta\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      code: "terminal_event_body_mismatch",
+    },
+    {
+      frame:
+        'event: response.completed\ndata: {"type":"response.completed","response":{"status":"failed"}}\n\n',
+      code: "terminal_status_mismatch",
+      responseStatus: "failed",
+    },
+    {
+      frame:
+        'event: response.incomplete\ndata: {"type":"response.incomplete","response":{"status":"completed"}}\n\n',
+      code: "terminal_status_mismatch",
+    },
+    {
+      frame:
+        'event: response.failed\ndata: {"type":"response.failed","response":{"status":"completed","error":{"type":"connector_error","code":"connector_not_found"}}}\n\n',
+      code: "terminal_status_mismatch",
+      responseStatus: "other",
+    },
+    {
+      frame:
+        'event: response.completed\ndata: {"type":"response.completed","response":{"id":null,"status":"completed"}}\n\n',
+      code: "invalid_terminal_metadata",
+    },
+    {
+      frame:
+        'event: response.completed\ndata: {"type":"response.completed","response":{"status":424}}\n\n',
+      code: "invalid_terminal_metadata",
+    },
+    {
+      frame: "event: response.completed\ndata: not-json\n\n",
+      code: "invalid_terminal_body",
+    },
+  ];
+
+  for (const { frame, code, responseStatus } of cases) {
+    const outcome = await readBridgeSse(
+      new Response(`${frame}data: [DONE]\n\n`),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      errorType: "bridge_protocol_error",
+      code,
+      ...(responseStatus === undefined ? {} : { responseStatus }),
+    });
+  }
 });
 
 test("reports a terminal event before the response body closes", async () => {

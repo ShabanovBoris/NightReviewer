@@ -11,8 +11,8 @@
 | NR-05 | COMPLETE — Lead D123 accepted | [PR #6](https://github.com/ShabanovBoris/NightReviewer/pull/6), merged `main` `bac217d5f96f0fe47f222f45acb643a9b05206a7`; resulting-main CI 37161382656; [evidence index](evidence/NR-05.json) |
 | NR-06 | COMPLETE — Lead D126 accepted | [PR #7](https://github.com/ShabanovBoris/NightReviewer/pull/7), merged main `6e78304c78d5833d7902bcf8c955ee9be4bfdd07`; resulting-main CI 37206494469 succeeded; [evidence index](evidence/NR-06.json) |
 | NR-07 | COMPLETE — Lead D129 accepted | [PR #8](https://github.com/ShabanovBoris/NightReviewer/pull/8), resulting main `9f50731fddf106f951e797014586e87a63c7c3b9`; resulting-main CI 37224778533 succeeded; [evidence](evidence/NR-07.json) |
-| NR-08 | IN_PROGRESS — Lead D130 assignment | branch `nr-08-durable-scheduler-fake-backend`, exact base `9f50731fddf106f951e797014586e87a63c7c3b9`; [spec](specs/NR-08.md), [evidence](evidence/NR-08.json) |
-| NR-09 | PLANNED | — |
+| NR-08 | COMPLETE — Lead D137 accepted | [PR #9](https://github.com/ShabanovBoris/NightReviewer/pull/9), merged main `04fa7282d347f02f7c110b9707d87e41a3d40ff0`; resulting-main CI 37246308014 succeeded |
+| NR-09 | IN_PROGRESS — Lead D138 assignment | branch `nr-09-production-bridge-adapter`, exact base `04fa7282d347f02f7c110b9707d87e41a3d40ff0`; [spec](specs/NR-09.md), [task](tasks/NR-09.md) |
 | NR-10 | PLANNED | — |
 | NR-11 | PLANNED | — |
 | NR-12 | PLANNED | — |
@@ -53,9 +53,29 @@ Assignment `NR-07-C1-D127-DAEMON-MCP-LIFECYCLE` started from exact `main` base `
 
 Lead D129 accepted NR-07 after PR #8 merged to `main` at `9f50731fddf106f951e797014586e87a63c7c3b9`. Resulting-main CI run `37224778533` succeeded. This enables NR-08; its evidence index remains at [docs/evidence/NR-07.json](evidence/NR-07.json).
 
-## Current assignment: NR-08 — D130
+## Accepted dependency: NR-08 — Lead D137
 
-Assignment `NR-08-C1-D130-DURABLE-SCHEDULER-FAKE-BACKEND` starts from exact `main` base `9f50731fddf106f951e797014586e87a63c7c3b9` on fresh branch `nr-08-durable-scheduler-fake-backend`. The bound NR-08 spec SHA-256 is `1c95b5ed94325f10dd6cee434854d1ae8f956c5917bd12dc255593360140e2ed`; task prompt SHA-256 is `af942bdcefa3231c1a91b75e23d0a8a92f0e7ca1793015f20ebee0fadf5be36c`. D130 implements nine logical FAKE runs across correctness/tests/design, durable attempts/leases/fencing, a default global concurrency of three, review-level round-robin fairness, bounded retries/deadlines, unknown-send reconciliation, provisional finding aggregation and an offline-only gate. It performs no LIVE model, connector, tunnel or production-runtime action. NR-08 remains IN_PROGRESS pending exact-head verification, reviewer approval, Lead merge authorization, merge and resulting-main CI.
+Lead D137 accepted NR-08 after PR #9 merged to `main` at `04fa7282d347f02f7c110b9707d87e41a3d40ff0`. The merge commit parents are the assigned NR-08 base `9f50731fddf106f951e797014586e87a63c7c3b9` and reviewed head `a75d524a83e42ec14d489c39156d9f2d16f5df05`. Exact-head verification run `37242203495` and resulting-main CI run `37246308014` succeeded. Lead D137 recorded the task complete and assigned NR-09; the stale NR-08 evidence index remains historical and is not the completion receipt.
+
+## Current assignment: NR-09 cycle 5 — Lead D187
+
+Lead D187 supersedes D186's copied exact-version app requirement and assigns offline implementation only on PR #10. The assignment is bound to base `04fa7282d347f02f7c110b9707d87e41a3d40ff0`, branch `nr-09-production-bridge-adapter`, and the pre-change local `HEAD` `24931772a8f758cdb1d023c71427c229f7884ada`; publication, reviewer traffic, runtime, browser, connector, network, and LIVE actions are not authorized.
+
+The new version-aware resolver inspects the normal installed Codex Web GPT bundle directly under `/Applications`; it rejects copies under Phase B, the repository, or temporary directories. It re-reads bundle metadata and exact component hashes, checks source-controlled release/signing/capability policy, and binds the result and policy digest to the Phase-B production binding and backend configuration. The private binding is schema v3; prior schemas fail closed. Phase-B roots remain owner-only and separate from the application and normal user profile. An updated bundle invalidates the previous binding; only a separately verified policy entry can make an update compatible, and a fresh binding/Lead authorization is then required. The upstream bridge remains pinned to `6.1.3`, `LOOPBACK_LOCAL`, model `chatgpt-web/gpt-5.6-sol`, effort `high`.
+
+The offline implementation is complete for this assignment. Bun 1.4.2: the four assigned focused suites passed (41 tests); `bun run verify` passed typecheck and lint, then reported 177/178 tests passing. The sole failure is unchanged `tests/mcp/stdio.integration.test.ts`, where the local daemon did not become ready; D162 recorded the same environment failure. `bun run build` passed separately after verify stopped at the suite failure. A read-only `Info.plist` inspection observed the normally installed app at version `6.1.11`; the current default policy verifies only `6.1.3`, so `6.1.11` remains unsupported and unqualified until its compatibility evidence is verified and added under a separate authorization. AC1/AC4 remain `NOT_RUN`; no installed app was launched and no runtime, browser, network, connector, or LIVE action occurred. The local implementation has not been published, reviewed, merged, or accepted.
+
+## Historical NR-09 cycle 1 baseline — D138
+
+Assignment `NR-09-C1-D138-PRODUCTION-BRIDGE-ADAPTER` starts from exact `main` base `04fa7282d347f02f7c110b9707d87e41a3d40ff0` on fresh branch `nr-09-production-bridge-adapter`. The bound NR-09 spec SHA-256 is `f1f223010cd600694b4f71d1a4bf1cbb09703099970c3903b56c1ffe28f272e1`; task prompt SHA-256 is `015067629b6715437428d689683f5daa40b74721ffb7c0ff4c2b4ac4b6c78e02`. Scope adds the production ChatGPT Web backend around the NR-02 wire contract, run-bound receipts, exact bridge/model/effort checks, raw-before-parse capture, bounded schema repair, ambiguous-send reconciliation, abort cleanup and recorded offline fixtures. Live bridge/runtime actions are not authorized by D138; required live checks remain `NOT_RUN` until a separate bounded authorization.
+
+### Cycle 2 auth-boundary correction — D161/D162
+
+Lead D161 established that the pinned direct `6.1.3` routes `/v1/models` and `/v1/responses` do not validate a bearer token. The upstream `controlToken` is for administrative `/admin/*` routes. D162 supersedes D156's bearer/Keychain assumption only for the direct `LOOPBACK_LOCAL` route and authorizes offline remediation on PR #10; the NR-09 spec, task prompt, and AC1–AC4 are unchanged.
+
+The corrected contract pins `http://127.0.0.1:17841`, bridge `6.1.3`, model `chatgpt-web/gpt-5.6-sol`, and effort `high`. Binding schema v2 has no credential or Keychain fields. The backend omits `Authorization`, rejects other origins and auth modes before fetch, and binds validated client-version provenance and stable route identity into `configurationDigest`; timestamps remain evidence metadata. Phase-B authorization validates an explicitly supplied expected cycle and keeps exact PR, request, runtime, and action-limit correlation.
+
+PR #10 remains open. The pre-D162 head `02864df85fde7ae4f5a7a2a11f52962cb04560d2` had successful CI run `38919721540`; D162 requires fresh exact-head CI for this remediation. With the only local binary available (Bun 1.4.0; the package pins 1.4.2), typecheck and lint passed, the targeted deterministic suite passed (31 tests), and build passed. The full suite reported 167 passing tests and one failure in the unchanged `tests/mcp/stdio.integration.test.ts` because its local daemon did not become ready; the isolated test reproduces it. AC1 and AC4 LIVE remain `NOT_RUN`; Phase B, reviewer traffic, merge, and task acceptance remain unauthorized pending their separate gates. See [ADR 0010](decisions/0010-direct-loopback-auth-boundary.md).
 
 ## Historical record: NR-02 cycle 2 — D105 snapshot (before D109)
 

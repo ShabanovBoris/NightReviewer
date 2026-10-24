@@ -3,7 +3,12 @@ import type {
   WorkerDirection,
   WorkerFinding,
 } from "../protocol";
-import type { ClaimedSchedulerJob } from "../storage";
+import type {
+  ArtifactReference,
+  ClaimedSchedulerJob,
+  SchedulerAttemptArtifact,
+  SchedulerBackendProfile,
+} from "../storage";
 
 export type ReviewerBackendScenario =
   | "COMPLETE_NO_FINDINGS"
@@ -35,15 +40,75 @@ export interface SchedulerRunContext {
   readonly baseSha: string;
   readonly headSha: string;
   readonly promptHash: string;
+  readonly schemaHash: string;
+  readonly policyHash: string;
 }
+
+export type SchedulerPromptContext = Omit<SchedulerRunContext, "promptHash">;
 
 export interface BackendInvocationInput {
   readonly claim: ClaimedSchedulerJob;
   readonly context: SchedulerRunContext;
   readonly signal: AbortSignal;
+  readonly reportSendState?: (state: "UNSENT" | "UNKNOWN") => void;
 }
 
-export type BackendInvocationResult =
+export interface BackendTurnReceipt {
+  readonly schemaVersion: "nr-backend-turn-receipt/1";
+  readonly backend: "LIVE";
+  readonly qualification: "LIVE_PRODUCTION_BRIDGE";
+  readonly reviewId: string;
+  readonly cycleId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly direction: WorkerDirection;
+  readonly objectFormat: "sha1" | "sha256";
+  readonly reviewedBaseSha: string;
+  readonly reviewedHeadSha: string;
+  readonly promptHash: string;
+  readonly schemaHash: string;
+  readonly policyHash: string;
+  readonly bridge: {
+    readonly service: "codex-chatgpt-web";
+    readonly pid: number;
+    readonly version: string;
+    readonly mode: "full";
+  };
+  readonly model: {
+    readonly requested: string;
+    readonly observed: string | null;
+    readonly reasoningEffortRequested: string;
+    readonly reasoningEffortObserved: string | null;
+    readonly advertisedReasoningEfforts: readonly string[];
+  };
+  readonly session: {
+    readonly threadId: string;
+    readonly turnIds: readonly string[];
+    readonly responseIds: readonly string[];
+    readonly freshForAttempt: true;
+  };
+  readonly outcome:
+    | "COMPLETED"
+    | "INCOMPLETE"
+    | "FAILED"
+    | "DISCONNECTED"
+    | "ABORTED"
+    | "AMBIGUOUS"
+    | "MALFORMED";
+  readonly sendState: "UNSENT" | "SENT" | "UNKNOWN";
+  readonly rawArtifacts: readonly SchedulerAttemptArtifact[];
+  readonly generatedAtUtc: string;
+}
+
+export interface BackendResultEvidence {
+  readonly receipt?: BackendTurnReceipt;
+  readonly receiptArtifact?: ArtifactReference;
+  readonly primaryRawArtifact?: ArtifactReference;
+  readonly rawArtifacts?: readonly SchedulerAttemptArtifact[];
+  readonly sendState?: "UNSENT" | "SENT" | "UNKNOWN";
+}
+
+export type BackendInvocationResult = (
   | {
       readonly kind: "SUCCESS";
       readonly rawBytes: Uint8Array;
@@ -69,7 +134,9 @@ export type BackendInvocationResult =
       readonly kind: "UNKNOWN_SEND";
       readonly rawBytes: Uint8Array;
       readonly errorClass: "UNKNOWN_SEND";
-    };
+    }
+) &
+  BackendResultEvidence;
 
 export type BackendReconciliationResult =
   | { readonly kind: "PROVEN_UNSENT" }
@@ -82,6 +149,8 @@ export type BackendReconciliationResult =
 
 export interface ReviewerBackend {
   readonly backend: "FAKE" | "LIVE";
+  readonly profile: SchedulerBackendProfile;
+  promptForRun(context: SchedulerPromptContext): string;
   invoke(input: BackendInvocationInput): Promise<BackendInvocationResult>;
   reconcile(
     input: BackendInvocationInput,

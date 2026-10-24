@@ -359,8 +359,11 @@ export const SchedulerProvisionalFindingSchema = closedObject({
 });
 
 export const SchedulerStatusSchema = closedObject({
-  backend: Type.Literal("FAKE"),
-  qualification: Type.Literal("OFFLINE_ONLY"),
+  backend: stringEnum(["FAKE", "LIVE"] as const),
+  qualification: stringEnum([
+    "OFFLINE_ONLY",
+    "LIVE_PRODUCTION_BRIDGE",
+  ] as const),
   state: stringEnum([
     "QUEUED",
     "RUNNING",

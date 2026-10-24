@@ -101,10 +101,16 @@ interface FunctionCallState {
   complete: boolean;
 }
 
-/** Retains optional terminal identity fields so repeated terminal frames can be checked for contradictions. */
+/** Retains terminal metadata so duplicate terminal frames cannot revise accepted state. */
 interface TerminalResponseMetadata {
+  readonly idPresent: boolean;
   readonly id?: string;
+  readonly statusPresent: boolean;
   readonly status?: string;
+  readonly modelPresent: boolean;
+  readonly model?: string;
+  readonly reasoningEffortPresent: boolean;
+  readonly reasoningEffort?: string;
 }
 
 /** Keeps parsed event data untrusted until it has the object shape expected by the reducer. */
@@ -372,6 +378,15 @@ export async function readBridgeSse(
         ]);
         return;
       }
+      if (
+        terminalResponseMetadata !== undefined &&
+        eventName?.startsWith("response.")
+      ) {
+        terminal = terminalProtocolFailure("post_terminal_response_event", [
+          ...events,
+        ]);
+        return;
+      }
       if (terminal) {
         terminal = { ...terminal, events: [...events] };
         return;
@@ -425,6 +440,17 @@ export async function readBridgeSse(
       ]);
       return;
     }
+    if (
+      terminalResponseMetadata !== undefined &&
+      typeof type === "string" &&
+      type.startsWith("response.") &&
+      !isTerminalEvent(type)
+    ) {
+      terminal = terminalProtocolFailure("post_terminal_response_event", [
+        ...events,
+      ]);
+      return;
+    }
     const responseBody = record(body.response);
     if (
       isTerminalEvent(type) &&
@@ -440,14 +466,28 @@ export async function readBridgeSse(
     const rawResponseStatus = responseBody?.status;
     const observedResponseId = stringField(rawResponseId);
     const observedResponseStatus = stringField(rawResponseStatus);
+    const reasoning = record(responseBody?.reasoning);
+    const modelPresent = hasOwnField(responseBody, "model");
+    const rawModel = responseBody?.model;
+    const observedModel = stringField(rawModel);
+    const reasoningEffortPresent = hasOwnField(reasoning, "effort");
+    const rawReasoningEffort = reasoning?.effort;
+    const observedReasoningEffort = stringField(rawReasoningEffort);
+    const previousTerminalMetadata = terminalResponseMetadata;
+    const terminalMetadataAlreadyAccepted =
+      previousTerminalMetadata !== undefined;
     if (isTerminalEvent(type)) {
       if (
-        (terminalResponseMetadata?.id !== undefined &&
-          idPresent &&
-          terminalResponseMetadata.id !== rawResponseId) ||
-        (terminalResponseMetadata?.status !== undefined &&
-          statusPresent &&
-          terminalResponseMetadata.status !== rawResponseStatus)
+        previousTerminalMetadata !== undefined &&
+        (previousTerminalMetadata.idPresent !== idPresent ||
+          previousTerminalMetadata.id !== observedResponseId ||
+          previousTerminalMetadata.statusPresent !== statusPresent ||
+          previousTerminalMetadata.status !== observedResponseStatus ||
+          previousTerminalMetadata.modelPresent !== modelPresent ||
+          previousTerminalMetadata.model !== observedModel ||
+          previousTerminalMetadata.reasoningEffortPresent !==
+            reasoningEffortPresent ||
+          previousTerminalMetadata.reasoningEffort !== observedReasoningEffort)
       ) {
         terminal = terminalProtocolFailure("conflicting_terminal_metadata", [
           ...events,
@@ -461,6 +501,18 @@ export async function readBridgeSse(
         (statusPresent &&
           (observedResponseStatus === undefined ||
             observedResponseStatus.trim().length === 0))
+      ) {
+        terminal = terminalProtocolFailure("invalid_terminal_metadata", [
+          ...events,
+        ]);
+        return;
+      }
+      if (
+        (modelPresent &&
+          (observedModel === undefined || observedModel.trim().length === 0)) ||
+        (reasoningEffortPresent &&
+          (observedReasoningEffort === undefined ||
+            observedReasoningEffort.trim().length === 0))
       ) {
         terminal = terminalProtocolFailure("invalid_terminal_metadata", [
           ...events,
@@ -484,28 +536,41 @@ export async function readBridgeSse(
         );
         return;
       }
-      const terminalResponseId =
-        terminalResponseMetadata?.id ?? observedResponseId;
-      const terminalResponseStatus =
-        terminalResponseMetadata?.status ?? observedResponseStatus;
-      terminalResponseMetadata = {
-        ...(terminalResponseId === undefined ? {} : { id: terminalResponseId }),
-        ...(terminalResponseStatus === undefined
-          ? {}
-          : { status: terminalResponseStatus }),
-      };
+      if (!terminalMetadataAlreadyAccepted) {
+        terminalResponseMetadata = {
+          idPresent,
+          ...(observedResponseId === undefined
+            ? {}
+            : { id: observedResponseId }),
+          statusPresent,
+          ...(observedResponseStatus === undefined
+            ? {}
+            : { status: observedResponseStatus }),
+          modelPresent,
+          ...(observedModel === undefined ? {} : { model: observedModel }),
+          reasoningEffortPresent,
+          ...(observedReasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: observedReasoningEffort }),
+        };
+      }
     }
+
+    if (terminalMetadataAlreadyAccepted) {
+      if (terminal) terminal = { ...terminal, events: [...events] };
+      return;
+    }
+
     if (responseBody) {
-      const reasoning = record(responseBody.reasoning);
       const id = observedResponseId;
       const status = observedResponseStatus;
-      const model = stringField(responseBody.model);
-      const reasoningEffort = stringField(reasoning?.effort);
       options.onResponseObservation?.({
         ...(id === undefined ? {} : { id }),
         ...(status === undefined ? {} : { status }),
-        ...(model === undefined ? {} : { model }),
-        ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+        ...(observedModel === undefined ? {} : { model: observedModel }),
+        ...(observedReasoningEffort === undefined
+          ? {}
+          : { reasoningEffort: observedReasoningEffort }),
       });
     }
     responseId ??= observedResponseId;

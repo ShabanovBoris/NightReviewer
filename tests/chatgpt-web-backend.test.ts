@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readBridgeSse as readProductionBridgeSse } from "../src/backends/bridge-sse";
 import {
   CHATGPT_WEB_AUTH_MODE,
   CHATGPT_WEB_BRIDGE_ORIGIN,
@@ -475,6 +476,158 @@ test("rejects conflicting terminal SSE outcomes instead of accepting completion"
     expect(result.kind).toBe("MALFORMED");
     expect(result.receipt?.outcome).toBe("MALFORMED");
   }
+});
+
+test("rejects post-terminal response observations without mutating terminal metadata", async () => {
+  const responseId = "response-post-terminal-observation";
+  const observations: Array<{
+    id?: string;
+    status?: string;
+    model?: string;
+    reasoningEffort?: string;
+  }> = [];
+  const body =
+    eventFrame("response.completed", {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        status: "completed",
+        model: "model-incompatible",
+        reasoning: { effort: "low" },
+      },
+    }) +
+    eventFrame("response.created", {
+      type: "response.created",
+      response: {
+        id: responseId,
+        status: "completed",
+        model: CHATGPT_WEB_BRIDGE_PIN.model,
+        reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
+      },
+    }) +
+    "data: [DONE]\n\n";
+
+  const outcome = await readProductionBridgeSse(new Response(body), {
+    onResponseObservation: (observation) => observations.push(observation),
+  });
+
+  expect(outcome).toMatchObject({
+    kind: "failed",
+    errorType: "bridge_protocol_error",
+    code: "post_terminal_response_event",
+  });
+  expect(observations).toEqual([
+    {
+      id: responseId,
+      status: "completed",
+      model: "model-incompatible",
+      reasoningEffort: "low",
+    },
+  ]);
+});
+
+test("keeps identical terminal duplicates immutable and rejects changed metadata", async () => {
+  const responseId = "response-identical-terminal";
+  const terminalResponse = {
+    id: responseId,
+    status: "completed",
+    model: CHATGPT_WEB_BRIDGE_PIN.model,
+    reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
+  };
+  const frame = eventFrame("response.completed", {
+    type: "response.completed",
+    response: terminalResponse,
+  });
+  const observations: Array<{
+    id?: string;
+    status?: string;
+    model?: string;
+    reasoningEffort?: string;
+  }> = [];
+  const duplicateOutcome = await readProductionBridgeSse(
+    new Response(`${frame}${frame}data: [DONE]\n\n`),
+    { onResponseObservation: (observation) => observations.push(observation) },
+  );
+
+  expect(duplicateOutcome).toMatchObject({
+    kind: "completed",
+    responseId,
+    events: ["response.completed", "data:[DONE]"],
+  });
+  expect(observations).toEqual([
+    {
+      id: responseId,
+      status: "completed",
+      model: CHATGPT_WEB_BRIDGE_PIN.model,
+      reasoningEffort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort,
+    },
+  ]);
+
+  const conflictingFrames = [
+    eventFrame("response.completed", {
+      type: "response.completed",
+      response: { ...terminalResponse, model: "other-model" },
+    }),
+    eventFrame("response.completed", {
+      type: "response.completed",
+      response: {
+        ...terminalResponse,
+        reasoning: { effort: "low" },
+      },
+    }),
+  ];
+  for (const conflictingFrame of conflictingFrames) {
+    const outcome = await readProductionBridgeSse(
+      new Response(`${frame}${conflictingFrame}data: [DONE]\n\n`),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "failed",
+      errorType: "bridge_protocol_error",
+      code: "conflicting_terminal_metadata",
+    });
+  }
+});
+
+test("rejects a post-terminal compatible observation instead of accepting success", async () => {
+  const responseId = "response-post-terminal-observation";
+  const body =
+    eventFrame("response.output_text.delta", {
+      type: "response.output_text.delta",
+      delta: JSON.stringify(workerOutput()),
+    }) +
+    eventFrame("response.completed", {
+      type: "response.completed",
+      response: {
+        id: responseId,
+        status: "completed",
+        model: "model-incompatible",
+        reasoning: { effort: "low" },
+      },
+    }) +
+    eventFrame("response.created", {
+      type: "response.created",
+      response: {
+        id: responseId,
+        status: "completed",
+        model: CHATGPT_WEB_BRIDGE_PIN.model,
+        reasoning: { effort: CHATGPT_WEB_BRIDGE_PIN.reasoningEffort },
+      },
+    }) +
+    "data: [DONE]\n\n";
+  const { backend } = backendOptions(
+    bridgeFetcher([
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ]),
+  );
+
+  const result = await backend.invoke(input());
+
+  expect(result.kind).toBe("MALFORMED");
+  expect(result.receipt?.outcome).toBe("MALFORMED");
 });
 
 test("configuration digest binds stable route identity, capabilities, and limits", () => {
